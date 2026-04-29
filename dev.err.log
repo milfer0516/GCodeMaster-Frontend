@@ -1,0 +1,11 @@
+Error: [31m  Failed to scan for dependencies from entries:
+  C:/Users/USER/Documents/Proyectos_Pyhton/Proyecto_Automatizacion_CNC/Frontend_GCodeMaster/index.html
+
+  [39mspawn EPERM
+    at ChildProcess.spawn (node:internal/child_process:420:11)
+    at Object.spawn (node:child_process:786:9)
+    at ensureServiceIsRunning (C:\Users\USER\Documents\Proyectos_Pyhton\Proyecto_Automatizacion_CNC\Frontend_GCodeMaster\node_modules\esbuild\lib\main.js:1978:29)
+    at Object.context (C:\Users\USER\Documents\Proyectos_Pyhton\Proyecto_Automatizacion_CNC\Frontend_GCodeMaster\node_modules\esbuild\lib\main.js:1877:33)
+    at prepareEsbuildScanner (file:///C:/Users/USER/Documents/Proyectos_Pyhton/Proyecto_Automatizacion_CNC/Frontend_GCodeMaster/node_modules/vite/dist/node/chunks/dep-D4NMHUTW.js:14266:24)
+    at async file:///C:/Users/USER/Documents/Proyectos_Pyhton/Proyecto_Automatizacion_CNC/Frontend_GCodeMaster/node_modules/vite/dist/node/chunks/dep-D4NMHUTW.js:47014:28
+^C
