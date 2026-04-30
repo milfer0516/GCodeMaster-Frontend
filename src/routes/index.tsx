@@ -9,6 +9,7 @@ import { ForgotPasswordPage } from "../modules/auth/pages/ForgotPasswordPage";
 import { ResetPasswordPage } from "../modules/auth/pages/ResetPasswordPage";
 import { useAuthStore } from "../modules/auth/store/authStore";
 import { AppLayout } from "../components/layout/AppLayout";
+import { OnboardingPage } from "../modules/onboarding/pages/OnboardingPage";
 
 function PlaceholderPage({ title }: { title: string }) {
   return (
@@ -56,10 +57,7 @@ export function AppRoutes() {
       <Route element={<ProtectedRoute />}>
         <Route element={<AppLayout />}>
           <Route element={<OnboardingGuard />}>
-            <Route
-              path="/onboarding"
-              element={<PlaceholderPage title="Onboarding" />}
-            />
+            <Route path="/onboarding" element={<OnboardingPage />} />
             <Route
               path="/dashboard"
               element={<PlaceholderPage title="Dashboard" />}
