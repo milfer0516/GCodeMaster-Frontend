@@ -14,9 +14,9 @@ export interface MaterialGlobal {
 }
 
 // ── Analizar archivo STEP ─────────────────────────────────────────────────
-export async function analyzeSteп(archivo: File, idProyecto?: number) {
+export async function analyzeStep(archivo: File, idProyecto?: number) {
   const form = new FormData();
-  form.append("step_file", archivo);
+  form.append("file", archivo);
   if (idProyecto) form.append("id_proyecto", String(idProyecto));
 
   const { data } = await api.post("/cam/analyze", form, {

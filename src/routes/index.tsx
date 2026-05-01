@@ -13,6 +13,7 @@ import { OnboardingPage } from "../modules/onboarding/pages/OnboardingPage";
 import { DashboardPage } from "../modules/dashboard/pages/DashboardPage";
 import { HerramientasPage } from "../modules/tools/HerramientasPage";
 import { MaquinasPage } from "../modules/machines/MaquinasPage";
+import { CamWizardPage } from "../modules/cam/pages/CamWizardPage";
 
 function PlaceholderPage({ title }: { title: string }) {
   return (
@@ -68,10 +69,7 @@ export function AppRoutes() {
               path="/proyectos"
               element={<PlaceholderPage title="Proyectos" />}
             />
-            <Route
-              path="/cam"
-              element={<PlaceholderPage title="CAM Wizard" />}
-            />
+            <Route path="/cam" element={<CamWizardPage />} />
             <Route path="/jobs" element={<PlaceholderPage title="Jobs" />} />
             <Route
               path="/cuenta"

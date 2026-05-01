@@ -107,7 +107,12 @@ export const useCamStore = create<CamState>((set) => ({
 
   setStep: (step) => set({ step }),
   setArchivo: (archivo) => set({ archivo, nombreArchivo: archivo.name }),
-  setAnalisis: (idJob, analisis) => set({ idJob, analisis }),
+  setAnalisis: (idJob, analisis) =>
+    set({
+      idJob,
+      analisis,
+      operaciones: convertirOperaciones(analisis.operaciones),
+    }),
   setOperaciones: (operaciones) => set({ operaciones }),
   toggleOperacion: (id) =>
     set((state) => ({
@@ -135,3 +140,44 @@ export const useCamStore = create<CamState>((set) => ({
       gcodeSetups: [],
     }),
 }));
+
+// Reemplaza la función convertirOperaciones al final del archivo
+const convertirOperaciones = (analisis: Record<string, any>): Operacion[] => {
+  const ops: Operacion[] = [];
+
+  // Extraer operaciones de lado_a (setup 1)
+  const opsLadoA = analisis?.lados?.lado_a?.operaciones ?? [];
+  opsLadoA.forEach((op: any, idx: number) => {
+    ops.push({
+      id: `setup1_${op.tipo}_${idx}`,
+      tipo: op.tipo,
+      descripcion: op.descripcion,
+      setup: 1,
+      seleccionada: true,
+      herramienta_sugerida: op.fresa_max_mm
+        ? `Máx Ø${op.fresa_max_mm}mm`
+        : op.diametro_mm
+          ? `Ø${op.diametro_mm}mm`
+          : undefined,
+    });
+  });
+
+  // Extraer operaciones de lado_b (setup 2)
+  const opsLadoB = analisis?.lados?.lado_b?.operaciones ?? [];
+  opsLadoB.forEach((op: any, idx: number) => {
+    ops.push({
+      id: `setup2_${op.tipo}_${idx}`,
+      tipo: op.tipo,
+      descripcion: op.descripcion,
+      setup: 2,
+      seleccionada: true,
+      herramienta_sugerida: op.fresa_max_mm
+        ? `Máx Ø${op.fresa_max_mm}mm`
+        : op.diametro_mm
+          ? `Ø${op.diametro_mm}mm`
+          : undefined,
+    });
+  });
+
+  return ops;
+};

@@ -36,7 +36,6 @@ export function LoginForm() {
     try {
       setLoading(true);
       const response = await login(values);
-      console.log("Login response:", response);
 
       if (response.mfa_required) {
         setMfaPendiente(true, values.email);
