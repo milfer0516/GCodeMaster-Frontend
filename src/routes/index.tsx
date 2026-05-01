@@ -10,6 +10,9 @@ import { ResetPasswordPage } from "../modules/auth/pages/ResetPasswordPage";
 import { useAuthStore } from "../modules/auth/store/authStore";
 import { AppLayout } from "../components/layout/AppLayout";
 import { OnboardingPage } from "../modules/onboarding/pages/OnboardingPage";
+import { DashboardPage } from "../modules/dashboard/pages/DashboardPage";
+import { HerramientasPage } from "../modules/tools/HerramientasPage";
+import { MaquinasPage } from "../modules/machines/MaquinasPage";
 
 function PlaceholderPage({ title }: { title: string }) {
   return (
@@ -58,9 +61,12 @@ export function AppRoutes() {
         <Route element={<AppLayout />}>
           <Route element={<OnboardingGuard />}>
             <Route path="/onboarding" element={<OnboardingPage />} />
+            <Route path="/dashboard" element={<DashboardPage />} />
+            <Route path="/herramientas" element={<HerramientasPage />} />
+            <Route path="/maquinas" element={<MaquinasPage />} />
             <Route
-              path="/dashboard"
-              element={<PlaceholderPage title="Dashboard" />}
+              path="/proyectos"
+              element={<PlaceholderPage title="Proyectos" />}
             />
             <Route
               path="/cam"

@@ -149,6 +149,7 @@ export interface EmpresaSession {
   nombre_empresa: string;
   responsable_tecnico: string | null;
   plan_activo: EmpresaPlan;
+  fecha_registro: string | null; // ← agregar esta línea
   fecha_vencimiento: string | null;
   setup_completo: boolean;
 }
