@@ -1,119 +1,293 @@
 // src/modules/cam/components/steps/StepOperaciones.tsx
+import { useEffect, useState } from "react";
 import { useCamStore } from "../../store/camStore";
+import { CamViewer3D } from "../CamViewer3D";
+import {
+  ChevronRight,
+  Layers,
+  Drill,
+  Box,
+  CircleDot,
+  Wrench,
+} from "lucide-react";
+
+function tipoIcono(tipo: string) {
+  switch (tipo) {
+    case "planeado":
+      return <Layers className="h-3.5 w-3.5" />;
+    case "taladrado":
+      return <Drill className="h-3.5 w-3.5" />;
+    case "cajera":
+      return <Box className="h-3.5 w-3.5" />;
+    case "contorneado_exterior":
+      return <CircleDot className="h-3.5 w-3.5" />;
+    default:
+      return <Wrench className="h-3.5 w-3.5" />;
+  }
+}
+
+function tipoColor(tipo: string) {
+  switch (tipo) {
+    case "planeado":
+      return "border-blue-500/30 bg-blue-500/10 text-blue-400";
+    case "taladrado":
+      return "border-green-500/30 bg-green-500/10 text-green-400";
+    case "cajera":
+      return "border-purple-500/30 bg-purple-500/10 text-purple-400";
+    case "contorneado_exterior":
+      return "border-orange-500/30 bg-orange-500/10 text-orange-400";
+    default:
+      return "border-border bg-bg-elevated text-text-muted";
+  }
+}
 
 export const StepOperaciones = () => {
-  const { operaciones, toggleOperacion, ordenSetups, setOrdenSetups, setStep } =
-    useCamStore();
+  const {
+    analisis,
+    operaciones,
+    toggleOperacion,
+    ordenSetups,
+    setOrdenSetups,
+    setStep,
+    idJob,
+  } = useCamStore();
+
+  const [archivoAbierto, setArchivoAbierto] = useState(false);
+
+  // ── ABRIR ARCHIVO AUTOMÁTICAMENTE AL MONTAR ──────────────────────────
+  useEffect(() => {
+    if (!idJob || archivoAbierto) return;
+
+    const abrir = async () => {
+      try {
+        const token = localStorage.getItem("token");
+        const formData = new FormData();
+        formData.append("id_job", String(idJob));
+
+        await fetch("http://20.237.194.126:8000/cam/open-in-freecad", {
+          method: "POST",
+          headers: { Authorization: `Bearer ${token}` },
+          body: formData,
+        });
+        setArchivoAbierto(true);
+      } catch (err) {
+        console.error("Error al abrir archivo en FreeCAD:", err);
+      }
+    };
+
+    abrir();
+  }, [idJob, archivoAbierto]);
+  // ─────────────────────────────────────────────────────────────────────
+
+  const dimensiones = analisis?.dimensiones ?? { x: 100, y: 100, z: 50 };
+  const operacionesBackend = [
+    ...(analisis?.lados?.lado_a?.operaciones ?? []),
+    ...(analisis?.lados?.lado_b?.operaciones ?? []),
+  ];
 
   const opsSetup1 = operaciones.filter((op) => op.setup === 1);
   const opsSetup2 = operaciones.filter((op) => op.setup === 2);
-  const tieneAmbosLados = opsSetup1.length > 0 && opsSetup2.length > 0;
-
+  const tieneAmbos = opsSetup1.length > 0 && opsSetup2.length > 0;
   const haySeleccionadas = operaciones.some((op) => op.seleccionada);
+  const seleccionadas = operaciones
+    .filter((op) => op.seleccionada)
+    .map((op) => op.id);
+
+  const renderOp = (op: (typeof operaciones)[0]) => (
+    <button
+      key={op.id}
+      onClick={() => toggleOperacion(op.id)}
+      className={`w-full rounded-xl border p-3 text-left transition active:scale-[0.99] ${
+        op.seleccionada
+          ? "border-accent-blue/30 bg-accent-blue/5"
+          : "border-border bg-bg-primary hover:border-accent-blue/20"
+      }`}
+    >
+      <div className="flex items-start gap-3">
+        <div
+          className={`mt-0.5 flex-shrink-0 rounded-full border p-1.5 ${tipoColor(op.tipo)}`}
+        >
+          {tipoIcono(op.tipo)}
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-medium text-text-primary">
+            {op.descripcion}
+          </p>
+          {op.herramienta_sugerida && (
+            <p className="mt-0.5 text-xs text-text-muted">
+              🔧 {op.herramienta_sugerida}
+            </p>
+          )}
+        </div>
+        <div
+          className={`flex-shrink-0 h-5 w-5 rounded border-2 transition mt-0.5 ${
+            op.seleccionada
+              ? "border-accent-blue bg-accent-blue"
+              : "border-border"
+          }`}
+        >
+          {op.seleccionada && (
+            <svg viewBox="0 0 12 12" className="h-full w-full text-white p-0.5">
+              <path
+                d="M2 6l3 3 5-5"
+                stroke="currentColor"
+                strokeWidth="2"
+                fill="none"
+                strokeLinecap="round"
+              />
+            </svg>
+          )}
+        </div>
+      </div>
+    </button>
+  );
 
   return (
-    <div className="space-y-6">
-      {/* Operaciones Cara Superior */}
+    <div className="space-y-4">
+      {/* Header */}
       <div>
-        <h3 className="text-md font-semibold text-text-primary mb-2">
-          Cara Superior (Setup 1)
-        </h3>
-        {opsSetup1.length === 0 ? (
-          <p className="text-sm text-text-muted">
-            No hay operaciones detectadas en esta cara.
-          </p>
-        ) : (
-          <div className="space-y-2">
-            {opsSetup1.map((op) => (
-              <label key={op.id} className="flex items-center gap-2 text-sm">
-                <input
-                  type="checkbox"
-                  checked={op.seleccionada}
-                  onChange={() => toggleOperacion(op.id)}
-                  className="rounded border-gray-300"
-                />
-                <span>
-                  {op.descripcion}
-                  {op.herramienta_sugerida && (
-                    <span className="ml-2 text-xs text-text-muted">
-                      ({op.herramienta_sugerida})
-                    </span>
-                  )}
-                </span>
-              </label>
-            ))}
-          </div>
-        )}
+        <h2 className="text-lg font-semibold text-text-primary">
+          Operaciones detectadas
+        </h2>
+        <p className="mt-0.5 text-sm text-text-muted">
+          Selecciona desde la lista o haz clic en la pieza 3D.{" "}
+          <span className="text-accent-blue font-medium">
+            {seleccionadas.length}
+          </span>{" "}
+          de <span className="font-medium">{operaciones.length}</span>{" "}
+          seleccionadas.
+        </p>
       </div>
 
-      {/* Operaciones Cara Inferior */}
-      <div>
-        <h3 className="text-md font-semibold text-text-primary mb-2">
-          Cara Inferior (Setup 2)
-        </h3>
-        {opsSetup2.length === 0 ? (
-          <p className="text-sm text-text-muted">
-            No hay operaciones detectadas en esta cara.
-          </p>
-        ) : (
-          <div className="space-y-2">
-            {opsSetup2.map((op) => (
-              <label key={op.id} className="flex items-center gap-2 text-sm">
-                <input
-                  type="checkbox"
-                  checked={op.seleccionada}
-                  onChange={() => toggleOperacion(op.id)}
-                  className="rounded border-gray-300"
+      {/* Layout dos columnas */}
+      <div className="grid gap-4 lg:grid-cols-[1fr_360px]">
+        {/* ── Viewer 3D ── */}
+        <div className="rounded-xl border border-border bg-bg-primary overflow-hidden">
+          <div className="flex flex-wrap items-center gap-3 border-b border-border px-4 py-2">
+            <p className="text-[10px] uppercase tracking-widest text-text-muted">
+              Leyenda:
+            </p>
+            {[
+              { color: "bg-blue-400", label: "Planeado" },
+              { color: "bg-green-400", label: "Taladrado" },
+              { color: "bg-purple-400", label: "Cajera" },
+              { color: "bg-orange-400", label: "Contorneado" },
+              { color: "bg-yellow-400", label: "Seleccionada" },
+            ].map(({ color, label }) => (
+              <span
+                key={label}
+                className="flex items-center gap-1 text-[10px] text-text-muted"
+              >
+                <span
+                  className={`inline-block h-2 w-2 rounded-full ${color}`}
                 />
-                <span>{op.descripcion}</span>
-              </label>
+                {label}
+              </span>
             ))}
           </div>
-        )}
-      </div>
 
-      {/* Selección de orden (solo si hay ambos lados y al menos una operación seleccionada en cada uno) */}
-      {tieneAmbosLados &&
-        opsSetup1.some((op) => op.seleccionada) &&
-        opsSetup2.some((op) => op.seleccionada) && (
-          <div className="pt-4 border-t border-border">
-            <h3 className="text-md font-semibold text-text-primary mb-2">
-              Orden de mecanizado
-            </h3>
-            <div className="space-y-2">
-              <label className="flex items-center gap-2 text-sm">
-                <input
-                  type="radio"
-                  name="orden"
-                  value="superior_primero"
-                  checked={ordenSetups === "superior_primero"}
-                  onChange={() => setOrdenSetups("superior_primero")}
-                />
-                Primero Cara Superior (OP10) → luego Cara Inferior (OP20)
-              </label>
-              <label className="flex items-center gap-2 text-sm">
-                <input
-                  type="radio"
-                  name="orden"
-                  value="inferior_primero"
-                  checked={ordenSetups === "inferior_primero"}
-                  onChange={() => setOrdenSetups("inferior_primero")}
-                />
-                Primero Cara Inferior (OP10) → luego Cara Superior (OP20)
-              </label>
-            </div>
+          <div style={{ height: "400px" }}>
+            <CamViewer3D
+              dimensiones={dimensiones}
+              operaciones={operaciones}
+              operacionesBackend={operacionesBackend}
+              seleccionadas={seleccionadas}
+              onToggle={toggleOperacion}
+            />
           </div>
-        )}
 
-      {/* Botón siguiente */}
-      <div className="pt-4 flex justify-end">
-        <button
-          onClick={() => setStep("material")}
-          disabled={!haySeleccionadas}
-          className="rounded-lg bg-accent-blue px-4 py-2 text-sm font-medium text-white hover:bg-opacity-90 disabled:bg-gray-400 disabled:cursor-not-allowed"
-        >
-          Siguiente
-        </button>
+          <p className="border-t border-border px-4 py-2 text-[10px] text-text-muted">
+            🖱 Arrastra para rotar · Scroll para zoom · Clic en operación para
+            seleccionar
+          </p>
+        </div>
+
+        {/* ── Lista operaciones ── */}
+        <div className="flex flex-col gap-3">
+          <div
+            className="flex-1 space-y-4 overflow-y-auto pr-1"
+            style={{ maxHeight: "460px" }}
+          >
+            {opsSetup1.length > 0 && (
+              <div className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <span className="rounded-full bg-accent-blue/10 px-2.5 py-0.5 text-xs font-semibold text-accent-blue">
+                    Setup 1 — Cara Superior
+                  </span>
+                  <span className="text-xs text-text-muted">
+                    {opsSetup1.filter((o) => o.seleccionada).length}/
+                    {opsSetup1.length} sel.
+                  </span>
+                </div>
+                {opsSetup1.map(renderOp)}
+              </div>
+            )}
+
+            {opsSetup2.length > 0 && (
+              <div className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <span className="rounded-full bg-purple-500/10 px-2.5 py-0.5 text-xs font-semibold text-purple-400">
+                    Setup 2 — Cara Inferior
+                  </span>
+                  <span className="text-xs text-text-muted">
+                    {opsSetup2.filter((o) => o.seleccionada).length}/
+                    {opsSetup2.length} sel.
+                  </span>
+                </div>
+                {opsSetup2.map(renderOp)}
+              </div>
+            )}
+
+            {tieneAmbos &&
+              opsSetup1.some((o) => o.seleccionada) &&
+              opsSetup2.some((o) => o.seleccionada) && (
+                <div className="rounded-xl border border-border bg-bg-primary p-4">
+                  <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-text-muted">
+                    Orden de mecanizado
+                  </p>
+                  <div className="space-y-2">
+                    {[
+                      {
+                        value: "superior_primero",
+                        label: "Cara Superior primero (OP10 → OP20)",
+                      },
+                      {
+                        value: "inferior_primero",
+                        label: "Cara Inferior primero (OP10 → OP20)",
+                      },
+                    ].map((opt) => (
+                      <label
+                        key={opt.value}
+                        className="flex items-center gap-2 cursor-pointer"
+                      >
+                        <div
+                          onClick={() => setOrdenSetups(opt.value)}
+                          className={`h-4 w-4 rounded-full border-2 flex-shrink-0 transition ${
+                            ordenSetups === opt.value
+                              ? "border-accent-blue bg-accent-blue"
+                              : "border-border"
+                          }`}
+                        />
+                        <span className="text-xs text-text-primary">
+                          {opt.label}
+                        </span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              )}
+          </div>
+
+          <div className="border-t border-border pt-2">
+            <button
+              onClick={() => setStep("material")}
+              disabled={!haySeleccionadas}
+              className="flex w-full items-center justify-center gap-2 rounded-xl bg-accent-blue px-6 py-2.5 text-sm font-semibold text-white transition hover:bg-accent-blue/90 disabled:opacity-50 disabled:cursor-not-allowed active:scale-[0.98]"
+            >
+              Siguiente <ChevronRight className="h-4 w-4" />
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   );

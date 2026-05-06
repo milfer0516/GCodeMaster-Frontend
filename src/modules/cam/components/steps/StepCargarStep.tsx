@@ -37,16 +37,17 @@ export const StepCargarStep = () => {
     /* const result = await analyzeStep(archivo);
     console.log("RESULT COMPLETO:", JSON.stringify(result, null, 2)); // ← agrega
     setAnalisis(result.id_job, result.analisis); */
+
     try {
       const result = await analyzeStep(archivo);
-      /* console.log("RESULT:", result); // ← agrega
-      console.log("ID_JOB:", result.id_job); // ← agrega */
-      setAnalisis(result.id_job, result);
+      /* #console.log("RESULT COMPLETO:", JSON.stringify(result, null, 2)); */
+      setAnalisis(result.id_job, result.analisis);
       setStep("analisis");
     } catch (err: any) {
       console.error("ERROR COMPLETO:", err);
       console.error("RESPONSE:", err?.response?.data);
       console.error("STATUS:", err?.response?.status);
+      console.error("DETAIL:", JSON.stringify(err?.response?.data?.detail));
       setError(
         err?.response?.data?.detail
           ? Array.isArray(err.response.data.detail)

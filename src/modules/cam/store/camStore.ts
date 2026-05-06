@@ -1,5 +1,6 @@
 // src/modules/cam/store/camStore.ts
 import { create } from "zustand";
+import type { MeshData } from "../services/camService";
 
 export type CamStep =
   | "cargar"
@@ -59,6 +60,11 @@ interface CamState {
   // Paso 3 — Operaciones
   operaciones: Operacion[];
 
+  // Paso 3 — Mesh OCC real (teselación)
+  meshData: MeshData | null;
+  meshLoading: boolean;
+  meshError: string | null;
+
   // Paso 4 — Material
   material: MaterialSeleccionado | null;
 
@@ -81,6 +87,9 @@ interface CamState {
   setDatumConfig: (config: DatumConfig) => void;
   setOrdenSetups: (orden: string) => void;
   setGcodeSetups: (setups: SetupResultado[]) => void;
+  setMeshData: (data: MeshData) => void;
+  setMeshLoading: (loading: boolean) => void;
+  setMeshError: (error: string | null) => void;
   reset: () => void;
 }
 
@@ -99,6 +108,9 @@ export const useCamStore = create<CamState>((set) => ({
   idJob: null,
   analisis: null,
   operaciones: [],
+  meshData: null,
+  meshLoading: false,
+  meshError: null,
   material: null,
   stockConfig: STOCK_INICIAL,
   datumConfig: DATUM_INICIAL,
@@ -107,12 +119,10 @@ export const useCamStore = create<CamState>((set) => ({
 
   setStep: (step) => set({ step }),
   setArchivo: (archivo) => set({ archivo, nombreArchivo: archivo.name }),
-  setAnalisis: (idJob, analisis) =>
-    set({
-      idJob,
-      analisis,
-      operaciones: convertirOperaciones(analisis.operaciones),
-    }),
+  setAnalisis: (idJob, analisis) => {
+    const ops = convertirOperaciones(analisis);
+    set({ idJob, analisis, operaciones: ops });
+  },
   setOperaciones: (operaciones) => set({ operaciones }),
   toggleOperacion: (id) =>
     set((state) => ({
@@ -125,6 +135,10 @@ export const useCamStore = create<CamState>((set) => ({
   setDatumConfig: (datumConfig) => set({ datumConfig }),
   setOrdenSetups: (ordenSetups) => set({ ordenSetups }),
   setGcodeSetups: (gcodeSetups) => set({ gcodeSetups }),
+  setMeshData: (meshData) =>
+    set({ meshData, meshLoading: false, meshError: null }),
+  setMeshLoading: (meshLoading) => set({ meshLoading }),
+  setMeshError: (meshError) => set({ meshError, meshLoading: false }),
   reset: () =>
     set({
       step: "cargar",
@@ -133,6 +147,9 @@ export const useCamStore = create<CamState>((set) => ({
       idJob: null,
       analisis: null,
       operaciones: [],
+      meshData: null,
+      meshLoading: false,
+      meshError: null,
       material: null,
       stockConfig: STOCK_INICIAL,
       datumConfig: DATUM_INICIAL,
@@ -141,43 +158,18 @@ export const useCamStore = create<CamState>((set) => ({
     }),
 }));
 
-// Reemplaza la función convertirOperaciones al final del archivo
 const convertirOperaciones = (analisis: Record<string, any>): Operacion[] => {
-  const ops: Operacion[] = [];
-
-  // Extraer operaciones de lado_a (setup 1)
-  const opsLadoA = analisis?.lados?.lado_a?.operaciones ?? [];
-  opsLadoA.forEach((op: any, idx: number) => {
-    ops.push({
-      id: `setup1_${op.tipo}_${idx}`,
-      tipo: op.tipo,
-      descripcion: op.descripcion,
-      setup: 1,
-      seleccionada: true,
-      herramienta_sugerida: op.fresa_max_mm
-        ? `Máx Ø${op.fresa_max_mm}mm`
-        : op.diametro_mm
-          ? `Ø${op.diametro_mm}mm`
-          : undefined,
-    });
-  });
-
-  // Extraer operaciones de lado_b (setup 2)
-  const opsLadoB = analisis?.lados?.lado_b?.operaciones ?? [];
-  opsLadoB.forEach((op: any, idx: number) => {
-    ops.push({
-      id: `setup2_${op.tipo}_${idx}`,
-      tipo: op.tipo,
-      descripcion: op.descripcion,
-      setup: 2,
-      seleccionada: true,
-      herramienta_sugerida: op.fresa_max_mm
-        ? `Máx Ø${op.fresa_max_mm}mm`
-        : op.diametro_mm
-          ? `Ø${op.diametro_mm}mm`
-          : undefined,
-    });
-  });
-
-  return ops;
+  const opsBackend = analisis?.operaciones ?? [];
+  return opsBackend.map((op: any, idx: number) => ({
+    id: `setup${op.setup}_${op.tipo}_${idx}`,
+    tipo: op.tipo,
+    descripcion: op.descripcion,
+    setup: op.setup ?? 1,
+    seleccionada: true,
+    herramienta_sugerida: op.fresa_max_mm
+      ? `Máx Ø${op.fresa_max_mm}mm`
+      : op.diametro_mm
+        ? `Ø${op.diametro_mm}mm`
+        : undefined,
+  }));
 };

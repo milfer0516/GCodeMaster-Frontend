@@ -13,6 +13,34 @@ export interface MaterialGlobal {
   fz_max: number;
 }
 
+// ── Tipos del mesh OCC ────────────────────────────────────────────────────
+
+export interface FaceMetadata {
+  face_id: number;
+  start: number; // índice inicial en buffer global de indices
+  count: number; // cantidad de índices (triángulos × 3)
+  surface_type: string; // plane | cylinder | cone | sphere | torus | other
+  feature: any | null;
+}
+
+export interface MeshData {
+  positions: number[]; // flat [x,y,z, ...]
+  normals: number[]; // flat [nx,ny,nz, ...]
+  indices: number[]; // flat [i,i,i, ...]
+  faces: FaceMetadata[]; // metadata por cara para picking
+  bounding_box: {
+    min: number[];
+    max: number[];
+    center: number[];
+  };
+  stats: {
+    total_faces: number;
+    total_vertices: number;
+    total_triangles: number;
+    total_indices: number;
+  };
+}
+
 // ── Analizar archivo STEP ─────────────────────────────────────────────────
 export async function analyzeStep(archivo: File, idProyecto?: number) {
   const form = new FormData();
@@ -23,6 +51,24 @@ export async function analyzeStep(archivo: File, idProyecto?: number) {
     headers: { "Content-Type": "multipart/form-data" },
   });
   return data;
+}
+
+// ── Teselar archivo STEP → mesh OCC real ─────────────────────────────────
+// Se llama después de analyzeStep, usando el mismo archivo en memoria.
+// El backend FastAPI reenvía al contenedor FreeCAD /tessellate.
+export async function tessellateStep(
+  archivo: File,
+  idJob: number,
+): Promise<MeshData> {
+  const form = new FormData();
+  form.append("file", archivo);
+  form.append("id_job", String(idJob));
+
+  const { data } = await api.post("/cam/tessellate", form, {
+    headers: { "Content-Type": "multipart/form-data" },
+  });
+
+  return data as MeshData;
 }
 
 // ── Generar G-Code ────────────────────────────────────────────────────────

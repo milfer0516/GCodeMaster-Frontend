@@ -159,6 +159,7 @@ export interface PermisosSession {
   puede_copiar: boolean;
   simulador_gl: boolean;
   ai_copilot: boolean;
+  freecad_gui: boolean;
 }
 
 export interface AuthLoginResponse {

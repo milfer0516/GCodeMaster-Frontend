@@ -48,13 +48,15 @@ export const StepAnalisis = () => {
   const analisis = useCamStore((s) => s.analisis);
   const nombreArchivo = useCamStore((s) => s.nombreArchivo);
   const setStep = useCamStore((s) => s.setStep);
+  const operaciones = useCamStore((s) => s.operaciones); // ← agrega esta
+  console.log("OPS EN ANALISIS:", operaciones.length);
 
   if (!analisis) return null;
 
-  const { dimensiones, resumen, lados } = analisis;
-  const ladoA = lados?.lado_a;
-  const ladoB = lados?.lado_b;
-  const totalOps = (ladoA?.total_ops ?? 0) + (ladoB?.total_ops ?? 0);
+  const { dimensiones, resumen, operaciones: opsBackend } = analisis;
+  const opsSetup1 = (opsBackend ?? []).filter((op: any) => op.setup === 1);
+  const opsSetup2 = (opsBackend ?? []).filter((op: any) => op.setup === 2);
+  const totalOps = (opsBackend ?? []).length;
 
   return (
     <div className="space-y-6">
@@ -125,27 +127,26 @@ export const StepAnalisis = () => {
 
       {/* Setups */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        {[ladoA, ladoB].filter(Boolean).map((lado: any) => (
-          <div
-            key={lado.setup}
-            className="rounded-xl border border-border bg-bg-primary p-4"
-          >
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="text-sm font-semibold text-text-primary">
-                Setup {lado.setup} — {lado.descripcion}
-              </h3>
-              <span className="text-xs text-text-muted">
-                {lado.total_ops} op{lado.total_ops !== 1 ? "s" : ""}
-              </span>
-            </div>
-
-            {lado.total_ops === 0 ? (
-              <p className="text-xs text-text-muted">
-                Sin operaciones detectadas
-              </p>
-            ) : (
+        {[
+          { setup: 1, label: "Cara Superior", ops: opsSetup1 },
+          { setup: 2, label: "Cara Inferior", ops: opsSetup2 },
+        ]
+          .filter((s) => s.ops.length > 0)
+          .map((lado) => (
+            <div
+              key={lado.setup}
+              className="rounded-xl border border-border bg-bg-primary p-4"
+            >
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-sm font-semibold text-text-primary">
+                  Setup {lado.setup} — {lado.label}
+                </h3>
+                <span className="text-xs text-text-muted">
+                  {lado.ops.length} op{lado.ops.length !== 1 ? "s" : ""}
+                </span>
+              </div>
               <div className="space-y-2">
-                {lado.operaciones.map((op: any, idx: number) => (
+                {lado.ops.map((op: any, idx: number) => (
                   <div key={idx} className="flex items-start gap-2">
                     <span
                       className={`flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-medium flex-shrink-0 ${tipoColor(op.tipo)}`}
@@ -159,9 +160,8 @@ export const StepAnalisis = () => {
                   </div>
                 ))}
               </div>
-            )}
-          </div>
-        ))}
+            </div>
+          ))}
       </div>
 
       {/* Botón siguiente */}
