@@ -17,10 +17,11 @@ export interface MaterialGlobal {
 
 export interface FaceMetadata {
   face_id: number;
-  start: number; // índice inicial en buffer global de indices
-  count: number; // cantidad de índices (triángulos × 3)
-  surface_type: string; // plane | cylinder | cone | sphere | torus | other
+  start: number;
+  count: number;
+  surface_type: string;
   feature: any | null;
+  face_normal: [number, number, number];
 }
 
 export interface MeshData {
