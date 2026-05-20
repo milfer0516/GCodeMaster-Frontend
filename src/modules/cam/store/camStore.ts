@@ -2,9 +2,11 @@
 import { create } from "zustand";
 import type { MeshData } from "../services/camService";
 
+// DESPUÉS
 export type CamStep =
   | "cargar"
   | "analisis"
+  | "montaje"
   | "operaciones"
   | "material"
   | "maquina"
@@ -39,6 +41,13 @@ export interface DatumConfig {
   z: number;
 }
 
+export interface MontajeConfig {
+  tipo_sujecion: "prensa" | "mordaza" | "plato" | "bridas" | null;
+  face_id_apoyo: number | null;
+  wcs: "G54" | "G55" | "G56" | "G57";
+  notas: string;
+}
+
 export interface SetupResultado {
   nombre: string;
   gcode: string;
@@ -56,6 +65,8 @@ interface CamState {
   // Paso 2 — Análisis
   idJob: number | null;
   analisis: Record<string, any> | null;
+
+  montajeConfig: MontajeConfig;
 
   // Paso 3 — Operaciones
   operaciones: Operacion[];
@@ -80,6 +91,7 @@ interface CamState {
   setStep: (step: CamStep) => void;
   setArchivo: (archivo: File) => void;
   setAnalisis: (idJob: number, analisis: Record<string, any>) => void;
+  setMontajeConfig: (config: Partial<MontajeConfig>) => void;
   setOperaciones: (ops: Operacion[]) => void;
   toggleOperacion: (id: string) => void;
   setMaterial: (material: MaterialSeleccionado) => void;
@@ -102,6 +114,7 @@ const STOCK_INICIAL: StockConfig = {
 const DATUM_INICIAL: DatumConfig = { x: 0, y: 0, z: 0 };
 
 export const useCamStore = create<CamState>((set) => ({
+  // DESPUÉS — agrega montajeConfig después de datumConfig
   step: "cargar",
   archivo: null,
   nombreArchivo: "",
@@ -114,6 +127,12 @@ export const useCamStore = create<CamState>((set) => ({
   material: null,
   stockConfig: STOCK_INICIAL,
   datumConfig: DATUM_INICIAL,
+  montajeConfig: {
+    tipo_sujecion: null,
+    face_id_apoyo: null,
+    wcs: "G54",
+    notas: "",
+  },
   ordenSetups: "superior_primero",
   gcodeSetups: [],
 
@@ -129,6 +148,10 @@ export const useCamStore = create<CamState>((set) => ({
       operaciones: state.operaciones.map((op) =>
         op.id === id ? { ...op, seleccionada: !op.seleccionada } : op,
       ),
+    })),
+  setMontajeConfig: (config) =>
+    set((state) => ({
+      montajeConfig: { ...state.montajeConfig, ...config },
     })),
   setMaterial: (material) => set({ material }),
   setStockConfig: (stockConfig) => set({ stockConfig }),
@@ -153,6 +176,12 @@ export const useCamStore = create<CamState>((set) => ({
       material: null,
       stockConfig: STOCK_INICIAL,
       datumConfig: DATUM_INICIAL,
+      montajeConfig: {
+        tipo_sujecion: null,
+        face_id_apoyo: null,
+        wcs: "G54",
+        notas: "",
+      },
       ordenSetups: "superior_primero",
       gcodeSetups: [],
     }),

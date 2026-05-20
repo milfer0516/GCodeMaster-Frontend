@@ -49,7 +49,6 @@ export const StepAnalisis = () => {
   const nombreArchivo = useCamStore((s) => s.nombreArchivo);
   const setStep = useCamStore((s) => s.setStep);
   const operaciones = useCamStore((s) => s.operaciones); // ← agrega esta
-  console.log("OPS EN ANALISIS:", operaciones.length);
 
   if (!analisis) return null;
 
@@ -167,10 +166,10 @@ export const StepAnalisis = () => {
       {/* Botón siguiente */}
       <div className="flex justify-end">
         <button
-          onClick={() => setStep("operaciones")}
+          onClick={() => setStep("montaje")}
           className="flex items-center gap-2 rounded-xl bg-accent-blue px-6 py-2.5 text-sm font-semibold text-white transition hover:bg-accent-blue/90 active:scale-[0.98]"
         >
-          Configurar operaciones <ChevronRight className="h-4 w-4" />
+          Configurar montaje <ChevronRight className="h-4 w-4" />
         </button>
       </div>
     </div>

@@ -9,14 +9,15 @@ import type { Operacion } from "../store/camStore";
 import { Loader2, AlertCircle } from "lucide-react";
 
 // ── Props — mismas que el visor anterior para no romper StepOperaciones ──
+// DESPUÉS
 interface Props {
   dimensiones: { x: number; y: number; z: number };
-  operaciones: Operacion[];
-  operacionesBackend: any[];
-  seleccionadas: string[];
-  onToggle: (id: string) => void;
+  operaciones?: Operacion[];
+  operacionesBackend?: any[];
+  seleccionadas?: string[];
+  onToggle?: (id: string) => void;
+  onFaceClick?: (faceId: number) => void;
 }
-
 // ── Colores ────────────────────────────────────────────────────────────────
 const COLOR_BASE = new THREE.Color(0x4a90d9); // azul acero — cara sin feature
 const COLOR_HOVER = new THREE.Color(0xfbbf24); // amarillo — hover
@@ -93,12 +94,14 @@ function buildMaterials(
 }
 
 // ── Componente principal ───────────────────────────────────────────────────
+// DESPUÉS — misma ubicación
 export function CamViewer3D({
   dimensiones,
-  operaciones,
-  operacionesBackend,
-  seleccionadas,
-  onToggle,
+  operaciones = [],
+  operacionesBackend = [],
+  seleccionadas = [],
+  onToggle = () => {},
+  onFaceClick,
 }: Props) {
   const mountRef = useRef<HTMLDivElement>(null);
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
@@ -395,7 +398,10 @@ export function CamViewer3D({
     const handleClick = (e: MouseEvent) => {
       const faceId = getHitFaceId(e);
       if (faceId === null) return;
-
+      if (onFaceClick) {
+        onFaceClick(faceId);
+        return;
+      }
       const opId = faceToOpId.get(faceId);
       if (opId) onToggle(opId);
     };
