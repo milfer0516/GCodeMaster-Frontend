@@ -42,10 +42,10 @@ export const StepMontaje = () => {
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         {/* ── Visor 3D ── */}
-        <div className="h-80 rounded-xl overflow-hidden border border-border">
-          <CamViewer3D dimensiones={dimensiones} />
-        </div>
-
+        <CamViewer3D
+          dimensiones={dimensiones}
+          onFaceClick={(faceId) => setMontajeConfig({ face_id_apoyo: faceId })}
+        />
         {/* ── Configuración ── */}
         <div className="space-y-5">
           {/* Tipo de sujeción */}
