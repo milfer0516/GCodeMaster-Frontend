@@ -21,9 +21,36 @@ export const StepMontaje = () => {
 
   const dimensiones = analisis?.dimensiones ?? { x: 0, y: 0, z: 0 };
 
-  // Caras planas disponibles para selección de apoyo
-  const carasPlanas =
-    meshData?.faces.filter((f) => f.surface_type === "plane") ?? [];
+  // DESPUÉS
+  // Clasificar caras planas por orientación usando face_normal
+  const UMBRAL = 0.9; // tolerancia para considerar normal alineada con eje
+
+  const carasClasificadas =
+    meshData?.faces
+      .filter((f) => f.surface_type === "plane" && f.face_normal)
+      .map((f) => {
+        const [nx, ny, nz] = f.face_normal;
+        let orientacion = "Lateral";
+        if (Math.abs(nz) >= UMBRAL)
+          orientacion = nz > 0 ? "Cara Superior" : "Cara Inferior";
+        else if (Math.abs(ny) >= UMBRAL)
+          orientacion = ny > 0 ? "Lateral Frontal" : "Lateral Trasera";
+        else if (Math.abs(nx) >= UMBRAL)
+          orientacion = nx > 0 ? "Lateral Derecha" : "Lateral Izquierda";
+        return { ...f, orientacion };
+      })
+      // Eliminar duplicados por orientación — quedarse con la cara de mayor área
+      .reduce(
+        (acc, cara) => {
+          const existente = acc.find((c) => c.orientacion === cara.orientacion);
+          if (!existente) acc.push(cara);
+          else if (cara.count > existente.count) {
+            acc[acc.indexOf(existente)] = cara;
+          }
+          return acc;
+        },
+        [] as Array<(typeof meshData.faces)[0] & { orientacion: string }>,
+      ) ?? [];
 
   const puedeAvanzar = montajeConfig.tipo_sujecion !== null;
 
@@ -78,9 +105,9 @@ export const StepMontaje = () => {
                 (cara plana que apoya sobre la mesa)
               </span>
             </p>
-            {carasPlanas.length === 0 ? (
+            {carasClasificadas.length === 0 ? (
               <p className="text-xs text-text-muted">
-                No hay caras planas detectadas.
+                No hay caras de apoyo detectadas.
               </p>
             ) : (
               <select
@@ -93,10 +120,10 @@ export const StepMontaje = () => {
                 }
                 className="w-full rounded-xl border border-border bg-bg-primary px-3 py-2 text-sm text-text-primary focus:border-accent-blue focus:outline-none"
               >
-                <option value="">Seleccionar cara...</option>
-                {carasPlanas.map((f) => (
+                <option value="">Seleccionar cara de apoyo...</option>
+                {carasClasificadas.map((f) => (
                   <option key={f.face_id} value={f.face_id}>
-                    Cara {f.face_id} — {f.surface_type}
+                    {f.orientacion}
                   </option>
                 ))}
               </select>
