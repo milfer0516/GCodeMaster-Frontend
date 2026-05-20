@@ -12,6 +12,13 @@ const TIPOS_SUJECION = [
 
 const WCS_OPCIONES = ["G54", "G55", "G56", "G57"] as const;
 
+const UMBRAL = 0.9;
+
+interface CaraApoyo {
+  face_id: number;
+  orientacion: string;
+}
+
 export const StepMontaje = () => {
   const setStep = useCamStore((s) => s.setStep);
   const analisis = useCamStore((s) => s.analisis);
@@ -21,36 +28,28 @@ export const StepMontaje = () => {
 
   const dimensiones = analisis?.dimensiones ?? { x: 0, y: 0, z: 0 };
 
-  // DESPUÉS
   // Clasificar caras planas por orientación usando face_normal
-  const UMBRAL = 0.9; // tolerancia para considerar normal alineada con eje
-
-  const carasClasificadas =
-    meshData?.faces
+  const carasClasificadas: CaraApoyo[] = [];
+  if (meshData) {
+    const vistas = new Map<string, CaraApoyo>();
+    meshData.faces
       .filter((f) => f.surface_type === "plane" && f.face_normal)
-      .map((f) => {
+      .forEach((f) => {
         const [nx, ny, nz] = f.face_normal;
-        let orientacion = "Lateral";
-        if (Math.abs(nz) >= UMBRAL)
-          orientacion = nz > 0 ? "Cara Superior" : "Cara Inferior";
-        else if (Math.abs(ny) >= UMBRAL)
-          orientacion = ny > 0 ? "Lateral Frontal" : "Lateral Trasera";
-        else if (Math.abs(nx) >= UMBRAL)
-          orientacion = nx > 0 ? "Lateral Derecha" : "Lateral Izquierda";
-        return { ...f, orientacion };
-      })
-      // Eliminar duplicados por orientación — quedarse con la cara de mayor área
-      .reduce(
-        (acc, cara) => {
-          const existente = acc.find((c) => c.orientacion === cara.orientacion);
-          if (!existente) acc.push(cara);
-          else if (cara.count > existente.count) {
-            acc[acc.indexOf(existente)] = cara;
-          }
-          return acc;
-        },
-        [] as Array<(typeof meshData.faces)[0] & { orientacion: string }>,
-      ) ?? [];
+        let orientacion = "";
+        if (nz >= UMBRAL) orientacion = "Cara Superior";
+        else if (nz <= -UMBRAL) orientacion = "Cara Inferior";
+        else if (ny >= UMBRAL) orientacion = "Lateral Frontal";
+        else if (ny <= -UMBRAL) orientacion = "Lateral Trasera";
+        else if (nx >= UMBRAL) orientacion = "Lateral Derecha";
+        else if (nx <= -UMBRAL) orientacion = "Lateral Izquierda";
+        else return;
+        if (!vistas.has(orientacion)) {
+          vistas.set(orientacion, { face_id: f.face_id, orientacion });
+        }
+      });
+    carasClasificadas.push(...vistas.values());
+  }
 
   const puedeAvanzar = montajeConfig.tipo_sujecion !== null;
 
@@ -69,10 +68,15 @@ export const StepMontaje = () => {
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         {/* ── Visor 3D ── */}
-        <CamViewer3D
-          dimensiones={dimensiones}
-          onFaceClick={(faceId) => setMontajeConfig({ face_id_apoyo: faceId })}
-        />
+        <div className="h-80 rounded-xl overflow-hidden border border-border">
+          <CamViewer3D
+            dimensiones={dimensiones}
+            onFaceClick={(faceId) =>
+              setMontajeConfig({ face_id_apoyo: faceId })
+            }
+          />
+        </div>
+
         {/* ── Configuración ── */}
         <div className="space-y-5">
           {/* Tipo de sujeción */}
@@ -102,7 +106,7 @@ export const StepMontaje = () => {
             <p className="text-sm font-medium text-text-primary mb-2">
               Cara de apoyo{" "}
               <span className="text-xs text-text-muted font-normal">
-                (cara plana que apoya sobre la mesa)
+                (cara que apoya sobre la mesa o haz clic en la pieza)
               </span>
             </p>
             {carasClasificadas.length === 0 ? (
@@ -121,12 +125,20 @@ export const StepMontaje = () => {
                 className="w-full rounded-xl border border-border bg-bg-primary px-3 py-2 text-sm text-text-primary focus:border-accent-blue focus:outline-none"
               >
                 <option value="">Seleccionar cara de apoyo...</option>
-                {carasClasificadas.map((f) => (
-                  <option key={f.face_id} value={f.face_id}>
-                    {f.orientacion}
+                {carasClasificadas.map((c) => (
+                  <option key={c.face_id} value={c.face_id}>
+                    {c.orientacion}
                   </option>
                 ))}
               </select>
+            )}
+            {montajeConfig.face_id_apoyo !== null && (
+              <p className="mt-1 text-xs text-accent-blue">
+                ✓ Cara seleccionada:{" "}
+                {carasClasificadas.find(
+                  (c) => c.face_id === montajeConfig.face_id_apoyo,
+                )?.orientacion ?? `ID ${montajeConfig.face_id_apoyo}`}
+              </p>
             )}
           </div>
 
