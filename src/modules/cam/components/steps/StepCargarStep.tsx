@@ -6,7 +6,15 @@ import { UploadCloud, FileCheck, AlertCircle, Loader2 } from "lucide-react";
 
 export const StepCargarStep = () => {
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const { archivo, setArchivo, setAnalisis, setStep } = useCamStore();
+  // DESPUÉS
+  const {
+    archivo,
+    setArchivo,
+    setAnalisis,
+    setStep,
+    setMeshData,
+    setMeshError,
+  } = useCamStore();
   const [cargando, setCargando] = useState(false);
   const [error, setError] = useState("");
 
@@ -41,6 +49,8 @@ export const StepCargarStep = () => {
     try {
       const result = await analyzeStep(archivo);
       /* #console.log("RESULT COMPLETO:", JSON.stringify(result, null, 2)); */
+      setMeshData(null as any);
+      setMeshError(null);
       setAnalisis(result.id_job, result.analisis);
       setStep("analisis");
     } catch (err: any) {

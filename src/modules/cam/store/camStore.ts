@@ -140,7 +140,7 @@ export const useCamStore = create<CamState>((set) => ({
   setArchivo: (archivo) => set({ archivo, nombreArchivo: archivo.name }),
   setAnalisis: (idJob, analisis) => {
     const ops = convertirOperaciones(analisis);
-    set({ idJob, analisis, operaciones: ops });
+    set({ idJob, analisis, operaciones: ops, meshData: null, meshError: null });
   },
   setOperaciones: (operaciones) => set({ operaciones }),
   toggleOperacion: (id) =>

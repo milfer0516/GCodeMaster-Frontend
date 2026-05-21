@@ -25,6 +25,7 @@ export const StepMontaje = () => {
   const montajeConfig = useCamStore((s) => s.montajeConfig);
   const setMontajeConfig = useCamStore((s) => s.setMontajeConfig);
   const meshData = useCamStore((s) => s.meshData);
+  //console.log("face_normal ejemplo:", meshData?.faces[0]?.face_normal);
 
   const dimensiones = analisis?.dimensiones ?? { x: 0, y: 0, z: 0 };
 
@@ -74,6 +75,7 @@ export const StepMontaje = () => {
             onFaceClick={(faceId) =>
               setMontajeConfig({ face_id_apoyo: faceId })
             }
+            faceIdDestacada={montajeConfig.face_id_apoyo}
           />
         </div>
 

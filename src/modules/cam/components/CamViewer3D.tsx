@@ -15,6 +15,7 @@ interface Props {
   operaciones?: Operacion[];
   operacionesBackend?: any[];
   seleccionadas?: string[];
+  faceIdDestacada?: number | null;
   onToggle?: (id: string) => void;
   onFaceClick?: (faceId: number) => void;
 }
@@ -100,6 +101,7 @@ export function CamViewer3D({
   operaciones = [],
   operacionesBackend = [],
   seleccionadas = [],
+  faceIdDestacada = null,
   onToggle = () => {},
   onFaceClick,
 }: Props) {
@@ -322,11 +324,21 @@ export function CamViewer3D({
       mat.transparent = isSeleccionada;
       mat.opacity = isSeleccionada ? 0.92 : 1.0;
     });
-  }, [seleccionadas, operaciones, meshData]);
+
+    meshData.faces.forEach((face) => {
+      const mat = materialsRef.current[face.face_id];
+      if (!mat) return;
+      if (face.face_id === faceIdDestacada) {
+        mat.color.set(0x00ff88);
+        mat.emissive.set(0x003311);
+      }
+    });
+  }, [seleccionadas, operaciones, meshData, faceIdDestacada]);
 
   // ── 5. Picking por cara — hover y click ────────────────────────────────
   useEffect(() => {
-    if (!rendererRef.current || !meshRef.current || !cameraRef.current) return;
+    if (!rendererRef.current || !cameraRef.current) return;
+    if (!meshRef.current) return;
 
     const el = mountRef.current!;
     const renderer = rendererRef.current;
@@ -397,6 +409,7 @@ export function CamViewer3D({
     // Click
     const handleClick = (e: MouseEvent) => {
       const faceId = getHitFaceId(e);
+      //console.log("CLICK faceId:", faceId);
       if (faceId === null) return;
       if (onFaceClick) {
         onFaceClick(faceId);
@@ -413,7 +426,7 @@ export function CamViewer3D({
       renderer.domElement.removeEventListener("mousemove", handleMouseMove);
       renderer.domElement.removeEventListener("click", handleClick);
     };
-  }, [meshData, operaciones, seleccionadas, onToggle]);
+  }, [meshData, operaciones, seleccionadas, onToggle, onFaceClick]);
 
   // ── Render ─────────────────────────────────────────────────────────────
   if (meshLoading) {
