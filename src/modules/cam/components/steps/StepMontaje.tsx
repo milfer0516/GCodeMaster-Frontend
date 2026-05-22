@@ -22,6 +22,8 @@ interface CaraApoyo {
 export const StepMontaje = () => {
   const setStep = useCamStore((s) => s.setStep);
   const analisis = useCamStore((s) => s.analisis);
+  console.log("tipo_pieza:", analisis?.tipo_pieza);
+  console.log("caras_planas count:", analisis?.caras_planas?.length);
   const montajeConfig = useCamStore((s) => s.montajeConfig);
   const setMontajeConfig = useCamStore((s) => s.setMontajeConfig);
   const meshData = useCamStore((s) => s.meshData);
@@ -31,26 +33,29 @@ export const StepMontaje = () => {
 
   // Clasificar caras planas por orientación usando face_normal
   const carasClasificadas: CaraApoyo[] = [];
-  if (meshData) {
-    const vistas = new Map<string, CaraApoyo>();
-    meshData.faces
-      .filter((f) => f.surface_type === "plane" && f.face_normal)
-      .forEach((f) => {
-        const [nx, ny, nz] = f.face_normal;
-        let orientacion = "";
-        if (nz >= UMBRAL) orientacion = "Cara Superior";
-        else if (nz <= -UMBRAL) orientacion = "Cara Inferior";
-        else if (ny >= UMBRAL) orientacion = "Lateral Frontal";
-        else if (ny <= -UMBRAL) orientacion = "Lateral Trasera";
-        else if (nx >= UMBRAL) orientacion = "Lateral Derecha";
-        else if (nx <= -UMBRAL) orientacion = "Lateral Izquierda";
-        else return;
-        if (!vistas.has(orientacion)) {
-          vistas.set(orientacion, { face_id: f.face_id, orientacion });
-        }
-      });
-    carasClasificadas.push(...vistas.values());
-  }
+  const carasPlanas = analisis?.caras_planas ?? [];
+  const vistas = new Map<string, CaraApoyo>();
+
+  carasPlanas.forEach((c: any) => {
+    let orientacion = "";
+    if (c.apunta_arriba) orientacion = "Cara Superior";
+    else if (c.apunta_abajo) orientacion = "Cara Inferior";
+    else if (c.es_vertical) orientacion = "Cara Lateral";
+    else return;
+
+    // Quedarse con la cara de mayor área por orientación
+    const existente = vistas.get(orientacion);
+    if (
+      !existente ||
+      c.area_mm2 >
+        (carasPlanas.find((x: any) => x.face_index === existente.face_id)
+          ?.area_mm2 ?? 0)
+    ) {
+      vistas.set(orientacion, { face_id: c.face_index, orientacion });
+    }
+  });
+
+  carasClasificadas.push(...vistas.values());
 
   const puedeAvanzar = montajeConfig.tipo_sujecion !== null;
 
