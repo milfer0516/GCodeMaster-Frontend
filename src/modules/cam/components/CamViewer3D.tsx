@@ -335,6 +335,61 @@ export function CamViewer3D({
     });
   }, [seleccionadas, operaciones, meshData, faceIdDestacada]);
 
+  // ── 4b. Rotar mesh con animación suave según cara de apoyo ─────────────
+  useEffect(() => {
+    if (!meshRef.current || !meshData || faceIdDestacada === null) return;
+
+    const face = meshData.faces.find((f) => f.face_id === faceIdDestacada);
+    if (!face || !face.face_normal) return;
+
+    const [nx, ny, nz] = face.face_normal;
+    const normalThree = new THREE.Vector3(nx, nz, -ny).normalize();
+    const targetDown = new THREE.Vector3(0, -1, 0);
+
+    // Quaternion destino: normal de cara apunta hacia -Y (mesa)
+    const qDelta = new THREE.Quaternion();
+    qDelta.setFromUnitVectors(normalThree, targetDown);
+
+    const baseQ = new THREE.Quaternion().setFromEuler(
+      new THREE.Euler(-Math.PI / 2, 0, 0),
+    );
+    const qTarget = qDelta.multiply(baseQ);
+
+    // Calcular posición Y para que la pieza quede sobre la grilla
+    // El bounding box rotado determina cuánto debe subirse el mesh
+    const bb = meshData.bounding_box;
+    const halfDiag =
+      Math.sqrt(
+        (bb.max[0] - bb.min[0]) ** 2 +
+          (bb.max[1] - bb.min[1]) ** 2 +
+          (bb.max[2] - bb.min[2]) ** 2,
+      ) / 2;
+    const posYTarget = halfDiag * 0.5;
+    const posYStart = meshRef.current.position.y;
+
+    // Animación slerp — 600ms
+    const DURACION_MS = 600;
+    const qStart = meshRef.current.quaternion.clone();
+    const inicio = performance.now();
+    let animId: number;
+
+    const animar = (ahora: number) => {
+      if (!meshRef.current) return;
+      const t = Math.min((ahora - inicio) / DURACION_MS, 1);
+      const ease = t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t;
+      meshRef.current.quaternion.slerpQuaternions(qStart, qTarget, ease);
+      // Ajustar Y simultáneamente con la rotación
+      meshRef.current.position.y = posYStart + (posYTarget - posYStart) * ease;
+      if (t < 1) {
+        animId = requestAnimationFrame(animar);
+      }
+    };
+
+    animId = requestAnimationFrame(animar);
+
+    return () => cancelAnimationFrame(animId);
+  }, [faceIdDestacada, meshData]);
+
   // ── 5. Picking por cara — hover y click ────────────────────────────────
   useEffect(() => {
     if (!rendererRef.current || !cameraRef.current) return;

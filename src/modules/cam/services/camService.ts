@@ -15,12 +15,18 @@ export interface MaterialGlobal {
 
 // ── Tipos del mesh OCC ────────────────────────────────────────────────────
 
+export interface FeatureInfo {
+  op_id: string | null;
+  op_tipo: string | null;
+  tipo: string | null;
+}
+
 export interface FaceMetadata {
   face_id: number;
   start: number;
   count: number;
   surface_type: string;
-  feature: any | null;
+  feature: FeatureInfo | null;
   face_normal: [number, number, number];
 }
 

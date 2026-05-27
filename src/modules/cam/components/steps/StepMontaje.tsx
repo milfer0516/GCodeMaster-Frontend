@@ -14,11 +14,6 @@ const WCS_OPCIONES = ["G54", "G55", "G56", "G57"] as const;
 
 const UMBRAL = 0.9;
 
-interface CaraApoyo {
-  face_id: number;
-  orientacion: string;
-}
-
 export const StepMontaje = () => {
   const setStep = useCamStore((s) => s.setStep);
   const analisis = useCamStore((s) => s.analisis);
@@ -32,30 +27,20 @@ export const StepMontaje = () => {
   const dimensiones = analisis?.dimensiones ?? { x: 0, y: 0, z: 0 };
 
   // Clasificar caras planas por orientación usando face_normal
-  const carasClasificadas: CaraApoyo[] = [];
+  // POR ESTO:
   const carasPlanas = analisis?.caras_planas ?? [];
-  const vistas = new Map<string, CaraApoyo>();
-
-  carasPlanas.forEach((c: any) => {
-    let orientacion = "";
-    if (c.apunta_arriba) orientacion = "Cara Superior";
-    else if (c.apunta_abajo) orientacion = "Cara Inferior";
-    else if (c.es_vertical) orientacion = "Cara Lateral";
-    else return;
-
-    // Quedarse con la cara de mayor área por orientación
-    const existente = vistas.get(orientacion);
-    if (
-      !existente ||
-      c.area_mm2 >
-        (carasPlanas.find((x: any) => x.face_index === existente.face_id)
-          ?.area_mm2 ?? 0)
-    ) {
-      vistas.set(orientacion, { face_id: c.face_index, orientacion });
-    }
-  });
-
-  carasClasificadas.push(...vistas.values());
+  const carasParaSelector = [...carasPlanas]
+    .sort((a: any, b: any) => b.area_mm2 - a.area_mm2)
+    .map((c: any) => {
+      let orientacion = "Lateral";
+      if (c.apunta_arriba) orientacion = "Superior";
+      else if (c.apunta_abajo) orientacion = "Inferior";
+      return {
+        face_id: c.face_index,
+        label: `${orientacion} — Área ${Math.round(c.area_mm2)} mm² — Z=${c.z_mm}mm`,
+        normal: c.normal,
+      };
+    });
 
   const puedeAvanzar = montajeConfig.tipo_sujecion !== null;
 
@@ -77,9 +62,20 @@ export const StepMontaje = () => {
         <div className="h-80 rounded-xl overflow-hidden border border-border">
           <CamViewer3D
             dimensiones={dimensiones}
-            onFaceClick={(faceId) =>
-              setMontajeConfig({ face_id_apoyo: faceId })
-            }
+            // POR ESTO:
+            onFaceClick={(faceId) => {
+              const caraPlana = carasPlanas.find(
+                (c: any) => c.face_index === faceId,
+              );
+              const faceNormal = caraPlana
+                ? caraPlana.normal
+                : (meshData?.faces.find((f) => f.face_id === faceId)
+                    ?.face_normal ?? null);
+              setMontajeConfig({
+                face_id_apoyo: faceId,
+                face_normal_apoyo: faceNormal,
+              });
+            }}
             faceIdDestacada={montajeConfig.face_id_apoyo}
           />
         </div>
@@ -116,25 +112,30 @@ export const StepMontaje = () => {
                 (cara que apoya sobre la mesa o haz clic en la pieza)
               </span>
             </p>
-            {carasClasificadas.length === 0 ? (
+            {carasParaSelector.length === 0 ? (
               <p className="text-xs text-text-muted">
                 No hay caras de apoyo detectadas.
               </p>
             ) : (
               <select
                 value={montajeConfig.face_id_apoyo ?? ""}
-                onChange={(e) =>
+                onChange={(e) => {
+                  const faceId =
+                    e.target.value === "" ? null : Number(e.target.value);
+                  const cara = carasParaSelector.find(
+                    (c) => c.face_id === faceId,
+                  );
                   setMontajeConfig({
-                    face_id_apoyo:
-                      e.target.value === "" ? null : Number(e.target.value),
-                  })
-                }
+                    face_id_apoyo: faceId,
+                    face_normal_apoyo: cara ? cara.normal : null,
+                  });
+                }}
                 className="w-full rounded-xl border border-border bg-bg-primary px-3 py-2 text-sm text-text-primary focus:border-accent-blue focus:outline-none"
               >
                 <option value="">Seleccionar cara de apoyo...</option>
-                {carasClasificadas.map((c) => (
+                {carasParaSelector.map((c) => (
                   <option key={c.face_id} value={c.face_id}>
-                    {c.orientacion}
+                    {c.label}
                   </option>
                 ))}
               </select>
@@ -142,9 +143,9 @@ export const StepMontaje = () => {
             {montajeConfig.face_id_apoyo !== null && (
               <p className="mt-1 text-xs text-accent-blue">
                 ✓ Cara seleccionada:{" "}
-                {carasClasificadas.find(
+                {carasParaSelector.find(
                   (c) => c.face_id === montajeConfig.face_id_apoyo,
-                )?.orientacion ?? `ID ${montajeConfig.face_id_apoyo}`}
+                )?.label ?? `ID ${montajeConfig.face_id_apoyo}`}
               </p>
             )}
           </div>
@@ -196,7 +197,13 @@ export const StepMontaje = () => {
           <ChevronLeft className="h-4 w-4" /> Análisis
         </button>
         <button
-          onClick={() => setStep("operaciones")}
+          onClick={() => {
+            console.log(
+              "montajeConfig al confirmar:",
+              JSON.stringify(montajeConfig, null, 2),
+            );
+            setStep("operaciones");
+          }}
           disabled={!puedeAvanzar}
           className="flex items-center gap-2 rounded-xl bg-accent-blue px-6 py-2.5 text-sm font-semibold text-white transition hover:bg-accent-blue/90 active:scale-[0.98] disabled:opacity-40 disabled:cursor-not-allowed"
         >

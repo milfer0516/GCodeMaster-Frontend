@@ -44,6 +44,7 @@ export interface DatumConfig {
 export interface MontajeConfig {
   tipo_sujecion: "prensa" | "mordaza" | "plato" | "bridas" | null;
   face_id_apoyo: number | null;
+  face_normal_apoyo: number[] | null;
   wcs: "G54" | "G55" | "G56" | "G57";
   notas: string;
 }
@@ -111,6 +112,14 @@ const STOCK_INICIAL: StockConfig = {
   z_inferior_mm: 1.0,
 };
 
+const MONTAJE_INICIAL: MontajeConfig = {
+  tipo_sujecion: null,
+  face_id_apoyo: null,
+  face_normal_apoyo: null,
+  wcs: "G54",
+  notas: "",
+};
+
 const DATUM_INICIAL: DatumConfig = { x: 0, y: 0, z: 0 };
 
 export const useCamStore = create<CamState>((set) => ({
@@ -127,12 +136,7 @@ export const useCamStore = create<CamState>((set) => ({
   material: null,
   stockConfig: STOCK_INICIAL,
   datumConfig: DATUM_INICIAL,
-  montajeConfig: {
-    tipo_sujecion: null,
-    face_id_apoyo: null,
-    wcs: "G54",
-    notas: "",
-  },
+  montajeConfig: MONTAJE_INICIAL,
   ordenSetups: "superior_primero",
   gcodeSetups: [],
 
@@ -176,12 +180,7 @@ export const useCamStore = create<CamState>((set) => ({
       material: null,
       stockConfig: STOCK_INICIAL,
       datumConfig: DATUM_INICIAL,
-      montajeConfig: {
-        tipo_sujecion: null,
-        face_id_apoyo: null,
-        wcs: "G54",
-        notas: "",
-      },
+      montajeConfig: MONTAJE_INICIAL,
       ordenSetups: "superior_primero",
       gcodeSetups: [],
     }),
@@ -189,8 +188,9 @@ export const useCamStore = create<CamState>((set) => ({
 
 const convertirOperaciones = (analisis: Record<string, any>): Operacion[] => {
   const opsBackend = analisis?.operaciones ?? [];
-  return opsBackend.map((op: any, idx: number) => ({
-    id: `setup${op.setup}_${op.tipo}_${idx}`,
+
+  const ops = opsBackend.map((op: any, idx: number) => ({
+    id: op.op_id ?? `setup${op.setup}_${op.tipo}_${idx}`,
     tipo: op.tipo,
     descripcion: op.descripcion,
     setup: op.setup ?? 1,
@@ -201,4 +201,12 @@ const convertirOperaciones = (analisis: Record<string, any>): Operacion[] => {
         ? `Ø${op.diametro_mm}mm`
         : undefined,
   }));
+
+  console.log(
+    "OP IDs generados:",
+    ops.map((o: Operacion) => o.id),
+  );
+  console.log("Operaciones backend RAW:", opsBackend);
+
+  return ops;
 };
