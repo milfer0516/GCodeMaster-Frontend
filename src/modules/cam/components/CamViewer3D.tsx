@@ -270,18 +270,27 @@ export function CamViewer3D({
     mesh.castShadow = true;
     mesh.receiveShadow = true;
 
-    // DESPUÉS
+    // Convertir coordenadas OCC → Three.js
     // OCC: Z=altura → Three.js: Y=altura
-    // Rotar -90° en X para que la base Z=0 quede apoyada en la grilla Y=0
+    // Rotar -90° en X para que el eje Z de OCC apunte hacia Y en Three.js
     mesh.rotation.x = -Math.PI / 2;
-    mesh.position.set(0, 0, 0);
-    // OCC: X=largo, Y=ancho, Z=alto → Three.js: X=largo, Y=alto, Z=ancho
 
-    scene.add(mesh);
-    meshRef.current = mesh;
+    // Después de rotar -90° en X:
+    // - El eje Z de OCC (altura) se convierte en el eje Y de Three.js
+    // - La base de la pieza (ZMin=0 en OCC) debe quedar en Y=0 en Three.js
+    // - El centro OCC es [cx, cy, cz] → en Three.js tras rotar: [cx, cz, -cy]
+    // Para centrar XZ y apoyar la base en Y=0:
+    const center = meshData.bounding_box.center;
+    const bbMin = meshData.bounding_box.min;
+    const halfHeight = center[2] - bbMin[2]; // mitad de la altura en OCC = cz - zmin
+
+    mesh.position.set(
+      -center[0], // centrar en X
+      halfHeight, // subir en Y para que la base toque Y=0
+      center[1], // centrar en Z (Y de OCC invertido)
+    );
 
     // Ajustar cámara al tamaño real de la pieza
-    const bbMin = meshData.bounding_box.min;
     const bbMax = meshData.bounding_box.max;
     const diagonal = Math.sqrt(
       (bbMax[0] - bbMin[0]) ** 2 +
