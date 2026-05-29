@@ -287,7 +287,7 @@ export function CamViewer3D({
     mesh.position.set(
       -center[0], // centrar en X
       halfHeight, // subir en Y para que la base toque Y=0
-      center[1], // centrar en Z (Y de OCC invertido)
+      -center[1], // centrar en Z (Y de OCC — negado por la rotación)
     );
 
     // Ajustar cámara al tamaño real de la pieza
