@@ -289,6 +289,11 @@ export function CamViewer3D({
       -center[1], // centrar en Z (Y de OCC — negado por la rotación)
     );
 
+    console.log("[MESH INIT] bounding_box completo:", JSON.stringify(meshData.bounding_box));
+    console.log("[MESH INIT] bb.min:", bbMin);
+    console.log("[MESH INIT] bb.max:", meshData.bounding_box.max);
+    console.log("[MESH INIT] posición inicial mesh:", mesh.position.toArray());
+
     scene.add(mesh);
     meshRef.current = mesh;
 
@@ -387,6 +392,13 @@ export function CamViewer3D({
     const posYTarget = halfDiag * 0.5;
     const posYStart = meshRef.current.position.y;
 
+    console.log("[MONTAJE] bb.min:", bb.min);
+    console.log("[MONTAJE] bb.max:", bb.max);
+    console.log("[MONTAJE] halfDiag:", halfDiag);
+    console.log("[MONTAJE] posYStart:", posYStart);
+    console.log("[MONTAJE] posYTarget:", posYTarget);
+    console.log("[MONTAJE] qTarget (xyzw):", qTarget.x, qTarget.y, qTarget.z, qTarget.w);
+
     // Animación slerp — 600ms
     const DURACION_MS = 600;
     const qStart = meshRef.current.quaternion.clone();
@@ -402,6 +414,8 @@ export function CamViewer3D({
       meshRef.current.position.y = posYStart + (posYTarget - posYStart) * ease;
       if (t < 1) {
         animId = requestAnimationFrame(animar);
+      } else {
+        console.log("[MONTAJE] posición final mesh:", meshRef.current.position.toArray());
       }
     };
 
