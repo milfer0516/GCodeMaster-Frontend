@@ -297,14 +297,20 @@ export function CamViewer3D({
         (bbMax[1] - bbMin[1]) ** 2 +
         (bbMax[2] - bbMin[2]) ** 2,
     );
-    camera.position.set(diagonal * 1.0, diagonal * 0.8, diagonal * 1.0);
-    controls.target.set(0, 0, 0);
+    // El centro visual del mesh en Three.js tras la rotación y posicionamiento
+    const meshCenterY = halfHeight;
+    camera.position.set(
+      diagonal * 1.0,
+      meshCenterY + diagonal * 0.8,
+      diagonal * 1.0,
+    );
+    controls.target.set(0, meshCenterY, 0);
     camera.near = diagonal * 0.001;
     camera.far = diagonal * 20;
     camera.updateProjectionMatrix();
     controls.minDistance = diagonal * 0.1;
     controls.maxDistance = diagonal * 6;
-    controls.target.set(0, 0, 0);
+    controls.target.set(0, meshCenterY, 0);
     controls.update();
     console.log("useEffect 3 ejecutado — meshData:", meshData?.stats);
   }, [meshData]);
