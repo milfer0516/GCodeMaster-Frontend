@@ -282,8 +282,7 @@ export function CamViewer3D({
     // Para centrar XZ y apoyar la base en Y=0:
     const center = meshData.bounding_box.center;
     const bbMin = meshData.bounding_box.min;
-    const halfHeight = center[2] - bbMin[2]; // mitad de la altura en OCC = cz - zmin
-
+    const halfHeight = (meshData.bounding_box.max[2] - bbMin[2]) / 2;
     mesh.position.set(
       -center[0], // centrar en X
       halfHeight, // subir en Y para que la base toque Y=0
