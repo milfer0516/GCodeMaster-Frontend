@@ -368,17 +368,29 @@ export function CamViewer3D({
     if (!face || !face.face_normal) return;
 
     const [nx, ny, nz] = face.face_normal;
+    console.log("[NORMAL] face_id seleccionado:", faceIdDestacada);
+    console.log("[NORMAL] face_normal OCC original (nx,ny,nz):", nx, ny, nz);
+
     const normalThree = new THREE.Vector3(nx, nz, -ny).normalize();
+    console.log("[NORMAL] normalThree OCC→Three.js (nx, nz, -ny):", normalThree.toArray());
+
     const targetDown = new THREE.Vector3(0, -1, 0);
+    console.log("[NORMAL] vector objetivo (targetDown):", targetDown.toArray());
 
     // Quaternion destino: normal de cara apunta hacia -Y (mesa)
     const qDelta = new THREE.Quaternion();
     qDelta.setFromUnitVectors(normalThree, targetDown);
+    console.log("[NORMAL] qDelta (xyzw):", qDelta.x, qDelta.y, qDelta.z, qDelta.w);
 
     const baseQ = new THREE.Quaternion().setFromEuler(
       new THREE.Euler(-Math.PI / 2, 0, 0),
     );
     const qTarget = qDelta.multiply(baseQ);
+    console.log("[NORMAL] qTarget (xyzw):", qTarget.x, qTarget.y, qTarget.z, qTarget.w);
+
+    const normalResultante = normalThree.clone().applyQuaternion(qTarget);
+    console.log("[NORMAL] normal resultante en espacio mundo:", normalResultante.toArray());
+    console.log("[NORMAL] ¿apunta hacia -Y?", normalResultante.y.toFixed(4), "(esperado: -1.0000)");
 
     // Calcular posición Y para que la pieza quede sobre la grilla
     // El bounding box rotado determina cuánto debe subirse el mesh
