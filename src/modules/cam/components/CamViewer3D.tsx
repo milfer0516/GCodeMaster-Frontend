@@ -290,6 +290,9 @@ export function CamViewer3D({
       -center[1], // centrar en Z (Y de OCC — negado por la rotación)
     );
 
+    scene.add(mesh);
+    meshRef.current = mesh;
+
     // Ajustar cámara al tamaño real de la pieza
     const bbMax = meshData.bounding_box.max;
     const diagonal = Math.sqrt(
