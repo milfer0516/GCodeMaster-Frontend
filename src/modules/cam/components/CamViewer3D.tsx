@@ -306,6 +306,7 @@ export function CamViewer3D({
     controls.maxDistance = diagonal * 6;
     controls.target.set(0, 0, 0);
     controls.update();
+    console.log("useEffect 3 ejecutado — meshData:", meshData?.stats);
   }, [meshData]);
 
   // ── 4. Actualizar colores cuando cambia selección ───────────────────────
