@@ -313,6 +313,8 @@ export function CamViewer3D({
     controls.target.set(0, meshCenterY, 0);
     controls.update();
     console.log("useEffect 3 ejecutado — meshData:", meshData?.stats);
+    console.log("scene existe:", !!sceneRef.current);
+    console.log("mesh agregado:", !!meshRef.current);
   }, [meshData]);
 
   // ── 4. Actualizar colores cuando cambia selección ───────────────────────
