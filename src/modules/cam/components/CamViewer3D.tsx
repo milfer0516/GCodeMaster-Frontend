@@ -392,24 +392,28 @@ export function CamViewer3D({
     console.log("[NORMAL] normal resultante en espacio mundo:", normalResultante.toArray());
     console.log("[NORMAL] ¿apunta hacia -Y?", normalResultante.y.toFixed(4), "(esperado: -1.0000)");
 
-    // Calcular posición Y para que la pieza quede sobre la grilla
-    // El bounding box rotado determina cuánto debe subirse el mesh
+    // Calcular posición Y: transformar las 8 esquinas del AABB OCC por qTarget
+    // y tomar el mínimo Y resultante → mesh.position.y = -minYTransformado
     const bb = meshData.bounding_box;
-    const halfDiag =
-      Math.sqrt(
-        (bb.max[0] - bb.min[0]) ** 2 +
-          (bb.max[1] - bb.min[1]) ** 2 +
-          (bb.max[2] - bb.min[2]) ** 2,
-      ) / 2;
-    const posYTarget = halfDiag * 0.5;
+    const corners: THREE.Vector3[] = [
+      [bb.min[0], bb.min[1], bb.min[2]],
+      [bb.max[0], bb.min[1], bb.min[2]],
+      [bb.min[0], bb.max[1], bb.min[2]],
+      [bb.max[0], bb.max[1], bb.min[2]],
+      [bb.min[0], bb.min[1], bb.max[2]],
+      [bb.max[0], bb.min[1], bb.max[2]],
+      [bb.min[0], bb.max[1], bb.max[2]],
+      [bb.max[0], bb.max[1], bb.max[2]],
+    ].map(([x, y, z]) => new THREE.Vector3(x, y, z).applyQuaternion(qTarget));
+
+    const minYTransformado = Math.min(...corners.map((v) => v.y));
+    const posYTarget = -minYTransformado;
     const posYStart = meshRef.current.position.y;
 
-    console.log("[MONTAJE] bb.min:", bb.min);
-    console.log("[MONTAJE] bb.max:", bb.max);
-    console.log("[MONTAJE] halfDiag:", halfDiag);
-    console.log("[MONTAJE] posYStart:", posYStart);
-    console.log("[MONTAJE] posYTarget:", posYTarget);
-    console.log("[MONTAJE] qTarget (xyzw):", qTarget.x, qTarget.y, qTarget.z, qTarget.w);
+    console.log("[POSICION] bb.min:", bb.min, "bb.max:", bb.max);
+    console.log("[POSICION] minYTransformado:", minYTransformado);
+    console.log("[POSICION] posYTarget calculado:", posYTarget);
+    console.log("[POSICION] posYStart:", posYStart);
 
     // Animación slerp — 600ms
     const DURACION_MS = 600;
@@ -427,7 +431,9 @@ export function CamViewer3D({
       if (t < 1) {
         animId = requestAnimationFrame(animar);
       } else {
-        console.log("[MONTAJE] posición final mesh:", meshRef.current.position.toArray());
+        console.log("[POSICION] posición final mesh:", meshRef.current.position.toArray());
+        const bbFinal = new THREE.Box3().setFromObject(meshRef.current);
+        console.log("[POSICION] BB final mundo → min Y:", bbFinal.min.y.toFixed(4), "(esperado: 0.0000)");
       }
     };
 
