@@ -240,7 +240,7 @@ const convertirOperaciones = (analisis: Record<string, any>): Operacion[] => {
     tipo: op.tipo,
     descripcion: op.descripcion,
     setup: op.setup ?? 1,
-    seleccionada: true,
+    seleccionada: false,
     herramienta_sugerida: op.fresa_max_mm
       ? `Máx Ø${op.fresa_max_mm}mm`
       : op.diametro_mm
