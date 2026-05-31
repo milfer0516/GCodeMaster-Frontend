@@ -14,10 +14,16 @@ export interface Maquina {
   potencia_husillo_kw: number | null;
   cono_husillo: string | null;
   avance_max_mmmin: number;
+  rapido_x_mmmin: number;
+  rapido_y_mmmin: number;
+  rapido_z_mmmin: number;
   recorrido_x_mm: number;
   recorrido_y_mm: number;
   recorrido_z_mm: number;
   num_herramientas_atc: number | null;
+  diametro_herramienta_max_mm: number | null;
+  largo_herramienta_max_mm: number | null;
+  peso_herramienta_max_kg: number | null;
   refrigeracion: string | null;
   descripcion: string | null;
 }

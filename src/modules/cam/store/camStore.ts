@@ -1,6 +1,7 @@
 // src/modules/cam/store/camStore.ts
 import { create } from "zustand";
 import type { MeshData } from "../services/camService";
+import type { Maquina } from "../../../services/maquinasService";
 
 // DESPUÉS
 export type CamStep =
@@ -41,8 +42,44 @@ export interface DatumConfig {
   z: number;
 }
 
+export type TipoSujecion =
+  | "prensa"
+  | "bridas"
+  | "mesa_magnetica"
+  | "copa_torno"
+  | null;
+
+export interface SujecionConfig {
+  tipo: TipoSujecion;
+  // Prensa
+  ancho_mordaza_mm?: number;
+  apertura_mm?: number;
+  altura_mordaza_mm?: number;
+  // Común (elevar pieza con paralelas)
+  altura_paralelas_mm: number;
+  // Bridas
+  cantidad_bridas?: number;
+  posicion_automatica?: boolean;
+  posiciones_bridas?: Array<{ x: number; y: number }>;
+  // Copa de torno
+  diametro_copa_mm?: number;
+  tipo_garras?: 3 | 4;
+  // Mesa magnética
+  es_material_ferromagnetico?: boolean;
+  // Altura total del montaje: sujeción + paralelas + pieza (validación Z)
+  altura_total_montaje_mm: number | null;
+  // Envoltura 3D en coords de pieza (para colisiones y CAM)
+  envolvente: {
+    x_min: number; x_max: number;
+    y_min: number; y_max: number;
+    z_min: number; z_max: number;
+  } | null;
+}
+
 export interface MontajeConfig {
-  tipo_sujecion: "prensa" | "mordaza" | "plato" | "bridas" | null;
+  tipo_sujecion: TipoSujecion;
+  sujecion_config: SujecionConfig | null;
+  id_maquina: number | null;
   face_id_apoyo: number | null;
   face_normal_apoyo: number[] | null;
   wcs: "G54" | "G55" | "G56" | "G57";
@@ -81,6 +118,7 @@ interface CamState {
   material: MaterialSeleccionado | null;
 
   // Paso 5 — Máquina/Stock/Datum
+  maquina: Maquina | null;
   stockConfig: StockConfig;
   datumConfig: DatumConfig;
   ordenSetups: string;
@@ -96,6 +134,7 @@ interface CamState {
   setOperaciones: (ops: Operacion[]) => void;
   toggleOperacion: (id: string) => void;
   setMaterial: (material: MaterialSeleccionado) => void;
+  setMaquina: (maquina: Maquina) => void;
   setStockConfig: (config: StockConfig) => void;
   setDatumConfig: (config: DatumConfig) => void;
   setOrdenSetups: (orden: string) => void;
@@ -114,6 +153,8 @@ const STOCK_INICIAL: StockConfig = {
 
 const MONTAJE_INICIAL: MontajeConfig = {
   tipo_sujecion: null,
+  sujecion_config: null,
+  id_maquina: null,
   face_id_apoyo: null,
   face_normal_apoyo: null,
   wcs: "G54",
@@ -134,6 +175,7 @@ export const useCamStore = create<CamState>((set) => ({
   meshLoading: false,
   meshError: null,
   material: null,
+  maquina: null,
   stockConfig: STOCK_INICIAL,
   datumConfig: DATUM_INICIAL,
   montajeConfig: MONTAJE_INICIAL,
@@ -158,6 +200,7 @@ export const useCamStore = create<CamState>((set) => ({
       montajeConfig: { ...state.montajeConfig, ...config },
     })),
   setMaterial: (material) => set({ material }),
+  setMaquina: (maquina) => set({ maquina }),
   setStockConfig: (stockConfig) => set({ stockConfig }),
   setDatumConfig: (datumConfig) => set({ datumConfig }),
   setOrdenSetups: (ordenSetups) => set({ ordenSetups }),
@@ -178,6 +221,7 @@ export const useCamStore = create<CamState>((set) => ({
       meshLoading: false,
       meshError: null,
       material: null,
+      maquina: null,
       stockConfig: STOCK_INICIAL,
       datumConfig: DATUM_INICIAL,
       montajeConfig: MONTAJE_INICIAL,

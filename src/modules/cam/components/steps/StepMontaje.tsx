@@ -1,18 +1,37 @@
 // src/modules/cam/components/steps/StepMontaje.tsx
+import { useEffect, useState } from "react";
+import { ChevronRight, ChevronLeft, Settings2 } from "lucide-react";
 import { useCamStore } from "../../store/camStore";
 import { CamViewer3D } from "../CamViewer3D";
-import { ChevronRight, ChevronLeft } from "lucide-react";
-
-const TIPOS_SUJECION = [
-  { key: "prensa", label: "Prensa" },
-  { key: "mordaza", label: "Mordaza" },
-  { key: "plato", label: "Plato" },
-  { key: "bridas", label: "Bridas" },
-] as const;
+import { ModalSujecion } from "../sujecion/ModalSujecion";
+import { getMaquinas } from "../../../../services/maquinasService";
+import type { Maquina } from "../../../../services/maquinasService";
+import type { SujecionConfig } from "../../store/camStore";
 
 const WCS_OPCIONES = ["G54", "G55", "G56", "G57"] as const;
 
-const UMBRAL = 0.9;
+const LABEL_TIPO: Record<string, string> = {
+  prensa: "Prensa de banco",
+  bridas: "Bridas + tornillos",
+  mesa_magnetica: "Mesa magnética",
+  copa_torno: "Copa de torno",
+};
+
+function resumirSujecion(cfg: SujecionConfig): string {
+  if (cfg.tipo === "prensa") {
+    return `Mordaza ${cfg.ancho_mordaza_mm}mm · Apertura ${cfg.apertura_mm}mm · H.mordaza ${cfg.altura_mordaza_mm}mm${cfg.altura_paralelas_mm ? ` · Paralelas ${cfg.altura_paralelas_mm}mm` : ""}`;
+  }
+  if (cfg.tipo === "bridas") {
+    return `${cfg.cantidad_bridas} bridas${cfg.posicion_automatica ? " · Posición automática" : " · Posición manual"}${cfg.altura_paralelas_mm ? ` · Paralelas ${cfg.altura_paralelas_mm}mm` : ""}`;
+  }
+  if (cfg.tipo === "copa_torno") {
+    return `Ø${cfg.diametro_copa_mm}mm · ${cfg.tipo_garras} garras`;
+  }
+  if (cfg.tipo === "mesa_magnetica") {
+    return "Mesa magnética activa";
+  }
+  return "";
+}
 
 export const StepMontaje = () => {
   const setStep = useCamStore((s) => s.setStep);
@@ -21,13 +40,24 @@ export const StepMontaje = () => {
   console.log("caras_planas count:", analisis?.caras_planas?.length);
   const montajeConfig = useCamStore((s) => s.montajeConfig);
   const setMontajeConfig = useCamStore((s) => s.setMontajeConfig);
+  const setMaquinaStore = useCamStore((s) => s.setMaquina);
   const meshData = useCamStore((s) => s.meshData);
-  //console.log("face_normal ejemplo:", meshData?.faces[0]?.face_normal);
+
+  const [maquinaActiva, setMaquinaActiva] = useState<Maquina | null>(null);
+  const [modalAbierto, setModalAbierto] = useState(false);
+
+  useEffect(() => {
+    getMaquinas().then((lista) => {
+      const maq = lista[0] ?? null;
+      if (maq) {
+        setMaquinaActiva(maq);
+        setMaquinaStore(maq);
+      }
+    });
+  }, []);
 
   const dimensiones = analisis?.dimensiones ?? { x: 0, y: 0, z: 0 };
 
-  // Clasificar caras planas por orientación usando face_normal
-  // POR ESTO:
   const carasPlanas = analisis?.caras_planas ?? [];
   const carasParaSelector = [...carasPlanas]
     .sort((a: any, b: any) => b.area_mm2 - a.area_mm2)
@@ -42,7 +72,15 @@ export const StepMontaje = () => {
       };
     });
 
-  const puedeAvanzar = montajeConfig.tipo_sujecion !== null;
+  const puedeAvanzar = montajeConfig.sujecion_config !== null;
+
+  const handleConfirmarSujecion = (config: SujecionConfig) => {
+    setMontajeConfig({
+      tipo_sujecion: config.tipo,
+      sujecion_config: config,
+      id_maquina: maquinaActiva?.id_maquina ?? null,
+    });
+  };
 
   return (
     <div className="space-y-6">
@@ -62,7 +100,6 @@ export const StepMontaje = () => {
         <div className="h-[520px] rounded-xl overflow-hidden border border-border">
           <CamViewer3D
             dimensiones={dimensiones}
-            // POR ESTO:
             onFaceClick={(faceId) => {
               const caraPlana = carasPlanas.find(
                 (c: any) => c.face_index === faceId,
@@ -82,26 +119,51 @@ export const StepMontaje = () => {
 
         {/* ── Configuración ── */}
         <div className="space-y-5 max-h-[520px] overflow-y-auto">
-          {/* Tipo de sujeción */}
+          {/* Sujeción */}
           <div>
             <p className="text-sm font-medium text-text-primary mb-2">
-              Tipo de sujeción
+              Sistema de sujeción
             </p>
-            <div className="grid grid-cols-2 gap-2">
-              {TIPOS_SUJECION.map((tipo) => (
-                <button
-                  key={tipo.key}
-                  onClick={() => setMontajeConfig({ tipo_sujecion: tipo.key })}
-                  className={`rounded-xl border px-4 py-2.5 text-sm font-medium transition ${
-                    montajeConfig.tipo_sujecion === tipo.key
-                      ? "border-accent-blue bg-accent-blue/10 text-accent-blue"
-                      : "border-border bg-bg-primary text-text-muted hover:border-accent-blue/50"
-                  }`}
-                >
-                  {tipo.label}
-                </button>
-              ))}
-            </div>
+            {montajeConfig.sujecion_config ? (
+              <div className="rounded-xl border border-accent-blue/30 bg-accent-blue/5 px-4 py-3">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold text-text-primary">
+                      {LABEL_TIPO[montajeConfig.sujecion_config.tipo ?? ""] ??
+                        montajeConfig.sujecion_config.tipo}
+                    </p>
+                    <p className="mt-0.5 text-xs text-text-muted leading-snug">
+                      {resumirSujecion(montajeConfig.sujecion_config)}
+                    </p>
+                    {montajeConfig.sujecion_config.altura_total_montaje_mm !== null && (
+                      <p className="mt-1 text-xs text-text-muted">
+                        Altura total:{" "}
+                        <span className="font-semibold text-text-primary">
+                          {Math.round(montajeConfig.sujecion_config.altura_total_montaje_mm)}mm
+                        </span>
+                      </p>
+                    )}
+                  </div>
+                  <button
+                    onClick={() => setModalAbierto(true)}
+                    className="shrink-0 rounded-lg border border-border px-2.5 py-1.5 text-xs text-text-muted hover:border-accent-blue/50 hover:text-text-primary transition"
+                  >
+                    Cambiar
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <button
+                onClick={() => setModalAbierto(true)}
+                disabled={!maquinaActiva}
+                className="flex w-full items-center justify-center gap-2 rounded-xl border-2 border-dashed border-border py-4 text-sm font-medium text-text-muted transition hover:border-accent-blue/50 hover:text-accent-blue disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                <Settings2 className="h-4 w-4" />
+                {maquinaActiva
+                  ? "Configurar sujeción"
+                  : "Cargando máquina registrada…"}
+              </button>
+            )}
           </div>
 
           {/* Cara de apoyo */}
@@ -109,7 +171,7 @@ export const StepMontaje = () => {
             <p className="text-sm font-medium text-text-primary mb-2">
               Cara de apoyo{" "}
               <span className="text-xs text-text-muted font-normal">
-                (cara que apoya sobre la mesa o haz clic en la pieza)
+                (o haz clic en la pieza)
               </span>
             </p>
             {carasParaSelector.length === 0 ? (
@@ -132,7 +194,7 @@ export const StepMontaje = () => {
                 }}
                 className="w-full rounded-xl border border-border bg-bg-primary px-3 py-2 text-sm text-text-primary focus:border-accent-blue focus:outline-none"
               >
-                <option value="">Seleccionar cara de apoyo...</option>
+                <option value="">Seleccionar cara de apoyo…</option>
                 {carasParaSelector.map((c) => (
                   <option key={c.face_id} value={c.face_id}>
                     {c.label}
@@ -180,7 +242,7 @@ export const StepMontaje = () => {
             <textarea
               value={montajeConfig.notas}
               onChange={(e) => setMontajeConfig({ notas: e.target.value })}
-              placeholder="Instrucciones especiales de sujeción..."
+              placeholder="Instrucciones especiales de sujeción…"
               rows={3}
               className="w-full rounded-xl border border-border bg-bg-primary px-3 py-2 text-sm text-text-primary placeholder:text-text-muted focus:border-accent-blue focus:outline-none resize-none"
             />
@@ -210,6 +272,16 @@ export const StepMontaje = () => {
           Configurar operaciones <ChevronRight className="h-4 w-4" />
         </button>
       </div>
+
+      {/* Modal de sujeción */}
+      {modalAbierto && maquinaActiva && (
+        <ModalSujecion
+          maquina={maquinaActiva}
+          dimensiones={dimensiones}
+          onConfirm={handleConfirmarSujecion}
+          onClose={() => setModalAbierto(false)}
+        />
+      )}
     </div>
   );
 };
