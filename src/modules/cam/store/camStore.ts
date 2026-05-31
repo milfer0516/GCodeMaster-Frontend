@@ -64,6 +64,7 @@ export interface SujecionConfig {
   // Copa de torno
   diametro_copa_mm?: number;
   tipo_garras?: 3 | 4;
+  profundidad_agarre_mm?: number;
   // Mesa magnética
   es_material_ferromagnetico?: boolean;
   // Altura total del montaje: sujeción + paralelas + pieza (validación Z)
@@ -73,6 +74,7 @@ export interface SujecionConfig {
     x_min: number; x_max: number;
     y_min: number; y_max: number;
     z_min: number; z_max: number;
+    z_apoyo_mm: number;
   } | null;
 }
 

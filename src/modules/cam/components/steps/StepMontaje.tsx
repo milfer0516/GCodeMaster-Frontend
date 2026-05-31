@@ -100,6 +100,8 @@ export const StepMontaje = () => {
         <div className="h-[520px] rounded-xl overflow-hidden border border-border">
           <CamViewer3D
             dimensiones={dimensiones}
+            sujecionConfig={montajeConfig.sujecion_config}
+            piezaBoundingBox={dimensiones}
             onFaceClick={(faceId) => {
               const caraPlana = carasPlanas.find(
                 (c: any) => c.face_index === faceId,

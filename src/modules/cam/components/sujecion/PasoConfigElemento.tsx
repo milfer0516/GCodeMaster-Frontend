@@ -14,17 +14,14 @@ function calcularPosicionesBridas(
   dimY: number,
   holgura: number,
 ): Array<{ x: number; y: number }> {
-  // Bridas en bordes de pieza, separadas por holgura del área mecanizable
   const mitadX = dimX / 2;
   const mitadY = dimY / 2;
-  // Esquinas (centros de brida fuera del perímetro de la pieza)
   const esquinas = [
     { x: mitadX + holgura, y: mitadY + holgura },
     { x: -mitadX - holgura, y: mitadY + holgura },
     { x: -mitadX - holgura, y: -mitadY - holgura },
     { x: mitadX + holgura, y: -mitadY - holgura },
   ];
-  // Centros de lados (para 6 y 8 bridas)
   const centrosLados = [
     { x: 0, y: mitadY + holgura },
     { x: 0, y: -mitadY - holgura },
@@ -51,46 +48,50 @@ export const PasoConfigElemento = ({
 }: Props) => {
   const holguraBridas =
     Math.ceil((maquina.diametro_herramienta_max_mm ?? 80) / 2) + 5;
+  const limiteSeguroZ =
+    maquina.recorrido_z_mm - (maquina.largo_herramienta_max_mm ?? 300);
 
-  // Prensa
+  // ── Prensa ──
   const [anchoPrensa, setAnchoPrensa] = useState(125);
-  const [apertura, setApertura] = useState(
-    Math.ceil(dimensiones.y) + 20,
-  );
+  const [apertura, setApertura] = useState(Math.ceil(dimensiones.y) + 20);
   const [alturaMordaza, setAlturaMordaza] = useState(50);
-  const [alturaParalelas, setAlturaParalelas] = useState(0);
+  const [alturaParalelasPrensa, setAlturaParalelasPrensa] = useState(0);
 
-  // Bridas
+  // ── Bridas ──
   const [cantidadBridas, setCantidadBridas] = useState(4);
   const [posicionAutomatica, setPosicionAutomatica] = useState(true);
+  const [alturaParalelasBridas, setAlturaParalelasBridas] = useState(50);
 
-  // Copa
+  // ── Copa ──
   const [diametroCopa, setDiametroCopa] = useState(
     Math.ceil(Math.max(dimensiones.x, dimensiones.y) + 20),
   );
   const [tipoGarras, setTipoGarras] = useState<3 | 4>(3);
+  const [profundidadAgarre, setProfundidadAgarre] = useState(30);
 
-  // Mesa magnética
+  // ── Mesa magnética ──
   const [esFerromagnetico, setEsFerromagnetico] = useState(true);
 
   const handleConfirm = () => {
     let config: Partial<SujecionConfig> = {};
 
     if (tipo === "prensa") {
-      const alturaTotal = alturaMordaza + alturaParalelas + dimensiones.z;
+      const alturaTotal =
+        alturaMordaza + alturaParalelasPrensa + dimensiones.z;
       config = {
         ancho_mordaza_mm: anchoPrensa,
         apertura_mm: apertura,
         altura_mordaza_mm: alturaMordaza,
-        altura_paralelas_mm: alturaParalelas,
+        altura_paralelas_mm: alturaParalelasPrensa,
         altura_total_montaje_mm: alturaTotal,
         envolvente: {
           x_min: -anchoPrensa / 2,
           x_max: anchoPrensa / 2,
           y_min: -apertura / 2,
           y_max: apertura / 2,
-          z_min: -(alturaMordaza + alturaParalelas),
+          z_min: -(alturaMordaza + alturaParalelasPrensa),
           z_max: dimensiones.z,
+          z_apoyo_mm: alturaMordaza,
         },
       };
     } else if (tipo === "bridas") {
@@ -102,26 +103,28 @@ export const PasoConfigElemento = ({
             holguraBridas,
           )
         : [];
-      const alturaTotal = alturaParalelas + dimensiones.z;
+      const alturaTotal = alturaParalelasBridas + dimensiones.z;
       config = {
         cantidad_bridas: cantidadBridas,
         posicion_automatica: posicionAutomatica,
         posiciones_bridas: posiciones,
-        altura_paralelas_mm: alturaParalelas,
+        altura_paralelas_mm: alturaParalelasBridas,
         altura_total_montaje_mm: alturaTotal,
         envolvente: {
           x_min: -dimensiones.x / 2 - holguraBridas,
           x_max: dimensiones.x / 2 + holguraBridas,
           y_min: -dimensiones.y / 2 - holguraBridas,
           y_max: dimensiones.y / 2 + holguraBridas,
-          z_min: -alturaParalelas,
+          z_min: -alturaParalelasBridas,
           z_max: dimensiones.z,
+          z_apoyo_mm: alturaParalelasBridas,
         },
       };
     } else if (tipo === "copa_torno") {
       config = {
         diametro_copa_mm: diametroCopa,
         tipo_garras: tipoGarras,
+        profundidad_agarre_mm: profundidadAgarre,
         altura_paralelas_mm: 0,
         altura_total_montaje_mm: dimensiones.z,
         envolvente: {
@@ -129,8 +132,9 @@ export const PasoConfigElemento = ({
           x_max: diametroCopa / 2,
           y_min: -diametroCopa / 2,
           y_max: diametroCopa / 2,
-          z_min: -60,
+          z_min: -80,
           z_max: dimensiones.z,
+          z_apoyo_mm: profundidadAgarre,
         },
       };
     } else if (tipo === "mesa_magnetica") {
@@ -145,6 +149,7 @@ export const PasoConfigElemento = ({
           y_max: dimensiones.y / 2,
           z_min: -10,
           z_max: dimensiones.z,
+          z_apoyo_mm: 0,
         },
       };
     }
@@ -162,6 +167,50 @@ export const PasoConfigElemento = ({
         : "border-border bg-bg-primary text-text-muted hover:border-accent-blue/40"
     }`;
 
+  const Toggle = ({
+    value,
+    onChange,
+    label,
+    sublabel,
+  }: {
+    value: boolean;
+    onChange: (v: boolean) => void;
+    label: string;
+    sublabel?: string;
+  }) => (
+    <div className="flex items-center justify-between rounded-lg border border-border bg-bg-primary px-3 py-2.5">
+      <div>
+        <p className="text-sm font-medium text-text-primary">{label}</p>
+        {sublabel && <p className="text-xs text-text-muted">{sublabel}</p>}
+      </div>
+      <button
+        onClick={() => onChange(!value)}
+        className={`relative h-6 w-11 rounded-full transition ${value ? "bg-accent-blue" : "bg-border"}`}
+      >
+        <span
+          className={`absolute top-0.5 left-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform ${
+            value ? "translate-x-5" : "translate-x-0"
+          }`}
+        />
+      </button>
+    </div>
+  );
+
+  const AlturaTotal = ({ total }: { total: number }) => (
+    <div className="rounded-lg border border-border bg-bg-primary px-3 py-2 text-xs text-text-muted">
+      Altura total del montaje:{" "}
+      <span
+        className={`font-semibold ${
+          total > limiteSeguroZ ? "text-yellow-400" : "text-text-primary"
+        }`}
+      >
+        {Math.round(total)}mm
+      </span>
+      {" / "}
+      <span className="text-text-primary">límite {limiteSeguroZ}mm</span>
+    </div>
+  );
+
   return (
     <div className="space-y-4">
       {/* ── PRENSA ── */}
@@ -173,11 +222,7 @@ export const PasoConfigElemento = ({
             </p>
             <div className="flex gap-2">
               {ANCHOS_PRENSA.map((w) => (
-                <button
-                  key={w}
-                  onClick={() => setAnchoPrensa(w)}
-                  className={btnOpcion(anchoPrensa === w)}
-                >
+                <button key={w} onClick={() => setAnchoPrensa(w)} className={btnOpcion(anchoPrensa === w)}>
                   {w}mm
                 </button>
               ))}
@@ -228,24 +273,20 @@ export const PasoConfigElemento = ({
             </label>
             <input
               type="number"
-              value={alturaParalelas}
+              value={alturaParalelasPrensa}
               min={0}
               step={5}
-              onChange={(e) => setAlturaParalelas(Number(e.target.value))}
+              onChange={(e) => setAlturaParalelasPrensa(Number(e.target.value))}
               className={inputCls}
             />
+            <p className="text-xs text-text-muted mt-0.5">
+              z_apoyo G-Code = alt. mordaza ({alturaMordaza}mm)
+            </p>
           </div>
 
-          <div className="rounded-lg border border-border bg-bg-primary px-3 py-2 text-xs text-text-muted">
-            Altura total estimada:{" "}
-            <span className="font-semibold text-text-primary">
-              {alturaMordaza + alturaParalelas + Math.round(dimensiones.z)}mm
-            </span>{" "}
-            · Límite seguro máquina:{" "}
-            <span className="font-semibold text-text-primary">
-              {maquina.recorrido_z_mm - (maquina.largo_herramienta_max_mm ?? 300)}mm
-            </span>
-          </div>
+          <AlturaTotal
+            total={alturaMordaza + alturaParalelasPrensa + dimensiones.z}
+          />
         </>
       )}
 
@@ -258,11 +299,7 @@ export const PasoConfigElemento = ({
             </p>
             <div className="flex gap-2">
               {OPCIONES_BRIDAS.map((n) => (
-                <button
-                  key={n}
-                  onClick={() => setCantidadBridas(n)}
-                  className={btnOpcion(cantidadBridas === n)}
-                >
+                <button key={n} onClick={() => setCantidadBridas(n)} className={btnOpcion(cantidadBridas === n)}>
                   {n}
                 </button>
               ))}
@@ -275,48 +312,25 @@ export const PasoConfigElemento = ({
             </label>
             <input
               type="number"
-              value={alturaParalelas}
+              value={alturaParalelasBridas}
               min={0}
               step={5}
-              onChange={(e) => setAlturaParalelas(Number(e.target.value))}
+              onChange={(e) => setAlturaParalelasBridas(Number(e.target.value))}
               className={inputCls}
             />
+            <p className="text-xs text-text-muted mt-0.5">
+              z_apoyo G-Code = alt. paralelas ({alturaParalelasBridas}mm)
+            </p>
           </div>
 
-          <div className="flex items-center justify-between rounded-lg border border-border bg-bg-primary px-3 py-2.5">
-            <div>
-              <p className="text-sm font-medium text-text-primary">
-                Posición automática
-              </p>
-              <p className="text-xs text-text-muted">
-                Holgura {holguraBridas}mm · Ø
-                {maquina.diametro_herramienta_max_mm ?? 80}mm máx
-              </p>
-            </div>
-            <button
-              onClick={() => setPosicionAutomatica(!posicionAutomatica)}
-              className={`relative h-6 w-11 rounded-full transition ${
-                posicionAutomatica ? "bg-accent-blue" : "bg-border"
-              }`}
-            >
-              <span
-                className={`absolute top-0.5 left-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform ${
-                  posicionAutomatica ? "translate-x-5" : "translate-x-0"
-                }`}
-              />
-            </button>
-          </div>
+          <Toggle
+            value={posicionAutomatica}
+            onChange={setPosicionAutomatica}
+            label="Posición automática"
+            sublabel={`Holgura ${holguraBridas}mm · Ø${maquina.diametro_herramienta_max_mm ?? 80}mm máx`}
+          />
 
-          <div className="rounded-lg border border-border bg-bg-primary px-3 py-2 text-xs text-text-muted">
-            Altura total estimada:{" "}
-            <span className="font-semibold text-text-primary">
-              {alturaParalelas + Math.round(dimensiones.z)}mm
-            </span>{" "}
-            · Límite seguro máquina:{" "}
-            <span className="font-semibold text-text-primary">
-              {maquina.recorrido_z_mm - (maquina.largo_herramienta_max_mm ?? 300)}mm
-            </span>
-          </div>
+          <AlturaTotal total={alturaParalelasBridas + dimensiones.z} />
         </>
       )}
 
@@ -339,53 +353,63 @@ export const PasoConfigElemento = ({
               Ref. pieza: Ø{Math.round(Math.max(dimensiones.x, dimensiones.y))}mm
             </p>
           </div>
+
           <div>
             <p className="text-xs font-medium text-text-primary mb-2">
               Tipo de garras
             </p>
             <div className="flex gap-2">
               {([3, 4] as const).map((g) => (
-                <button
-                  key={g}
-                  onClick={() => setTipoGarras(g)}
-                  className={btnOpcion(tipoGarras === g)}
-                >
+                <button key={g} onClick={() => setTipoGarras(g)} className={btnOpcion(tipoGarras === g)}>
                   {g} garras
                 </button>
               ))}
             </div>
           </div>
+
+          <div>
+            <label className="text-xs font-medium text-text-primary block mb-1">
+              Profundidad de agarre (mm)
+            </label>
+            <input
+              type="number"
+              value={profundidadAgarre}
+              min={10}
+              max={Math.floor(dimensiones.z * 0.6)}
+              step={5}
+              onChange={(e) => setProfundidadAgarre(Number(e.target.value))}
+              className={inputCls}
+            />
+            <p className="text-xs text-text-muted mt-0.5">
+              Longitud de pieza dentro de las garras ·{" "}
+              z_apoyo G-Code = {profundidadAgarre}mm
+            </p>
+          </div>
+
+          <AlturaTotal total={dimensiones.z} />
         </>
       )}
 
       {/* ── MESA MAGNÉTICA ── */}
       {tipo === "mesa_magnetica" && (
         <>
-          <div className="flex items-center justify-between rounded-lg border border-border bg-bg-primary px-3 py-3">
-            <div>
-              <p className="text-sm font-medium text-text-primary">
-                Material ferromagnético
-              </p>
-              <p className="text-xs text-text-muted">Acero / hierro fundido</p>
-            </div>
-            <button
-              onClick={() => setEsFerromagnetico(!esFerromagnetico)}
-              className={`relative h-6 w-11 rounded-full transition ${
-                esFerromagnetico ? "bg-accent-blue" : "bg-border"
-              }`}
-            >
-              <span
-                className={`absolute top-0.5 left-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform ${
-                  esFerromagnetico ? "translate-x-5" : "translate-x-0"
-                }`}
-              />
-            </button>
-          </div>
+          <Toggle
+            value={esFerromagnetico}
+            onChange={setEsFerromagnetico}
+            label="Material ferromagnético"
+            sublabel="Acero / hierro fundido"
+          />
           {!esFerromagnetico && (
             <div className="rounded-lg border border-yellow-500/30 bg-yellow-500/10 px-3 py-2 text-xs text-yellow-500">
               La mesa magnética no asegura materiales no ferromagnéticos.
             </div>
           )}
+          <div className="rounded-lg border border-border bg-bg-primary px-3 py-2 text-xs text-text-muted">
+            z_apoyo G-Code ={" "}
+            <span className="font-semibold text-text-primary">0mm</span>
+            {" "}(pieza directamente sobre mesa)
+          </div>
+          <AlturaTotal total={dimensiones.z} />
         </>
       )}
 
