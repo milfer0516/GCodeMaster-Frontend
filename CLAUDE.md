@@ -61,10 +61,29 @@ services/api.ts ← axios con interceptors JWT refresh
 hooks/usePlanInfo.ts
 components/ui/PlanBanner.tsx
 
-## Problema activo
+## Elementos de sujeción CNC — lista completa
 
-Pieza flotando sobre grilla — fórmula halfHeight incorrecta
-en CamViewer3D.tsx useEffect 3 (posicionamiento inicial del mesh)
+Elementos para VMC (Centro de Mecanizado Vertical):
+
+- Prensa de banco — piezas prismáticas, el más común
+- Bridas + tornillos — piezas grandes directamente en mesa
+- Plato divisor — fresado con ángulos
+- Mesa magnética — piezas planas
+- Copa de torno — también usada en VMC para piezas redondas
+- Paralelas — platinas rectificadas para elevar la pieza de la mesa,
+  evitar dañar la mesa al perforar, vienen en pares de diferentes alturas
+
+Elementos para Torno CNC:
+
+- Mordaza 3 garras — piezas cilíndricas estándar
+- Mordaza 4 garras — piezas irregulares
+- Copa de torno — piezas largas cilíndricas
+- Entre puntos — ejes largos
+- Mandril hidráulico — centros modernos
+- Plato de arrastre — piezas entre puntos
+
+Prioridad MVP (moldes inyección):
+Prensa > Bridas > Paralelas > Mordaza 3 garras > Copa
 
 ## Tipos importantes
 

@@ -289,11 +289,6 @@ export function CamViewer3D({
       -center[1], // centrar en Z (Y de OCC — negado por la rotación)
     );
 
-    console.log("[MESH INIT] bounding_box completo:", JSON.stringify(meshData.bounding_box));
-    console.log("[MESH INIT] bb.min:", bbMin);
-    console.log("[MESH INIT] bb.max:", meshData.bounding_box.max);
-    console.log("[MESH INIT] posición inicial mesh:", mesh.position.toArray());
-
     scene.add(mesh);
     meshRef.current = mesh;
 
@@ -319,9 +314,6 @@ export function CamViewer3D({
     controls.maxDistance = diagonal * 6;
     controls.target.set(0, meshCenterY, 0);
     controls.update();
-    console.log("useEffect 3 ejecutado — meshData:", meshData?.stats);
-    console.log("scene existe:", !!sceneRef.current);
-    console.log("mesh agregado:", !!meshRef.current);
   }, [meshData]);
 
   // ── 4. Actualizar colores cuando cambia selección ───────────────────────
@@ -368,29 +360,17 @@ export function CamViewer3D({
     if (!face || !face.face_normal) return;
 
     const [nx, ny, nz] = face.face_normal;
-    console.log("[NORMAL] face_id seleccionado:", faceIdDestacada);
-    console.log("[NORMAL] face_normal OCC original (nx,ny,nz):", nx, ny, nz);
-
     const normalThree = new THREE.Vector3(nx, nz, -ny).normalize();
-    console.log("[NORMAL] normalThree OCC→Three.js (nx, nz, -ny):", normalThree.toArray());
-
     const targetDown = new THREE.Vector3(0, -1, 0);
-    console.log("[NORMAL] vector objetivo (targetDown):", targetDown.toArray());
 
     // Quaternion destino: normal de cara apunta hacia -Y (mesa)
     const qDelta = new THREE.Quaternion();
     qDelta.setFromUnitVectors(normalThree, targetDown);
-    console.log("[NORMAL] qDelta (xyzw):", qDelta.x, qDelta.y, qDelta.z, qDelta.w);
 
     const baseQ = new THREE.Quaternion().setFromEuler(
       new THREE.Euler(-Math.PI / 2, 0, 0),
     );
     const qTarget = qDelta.multiply(baseQ);
-    console.log("[NORMAL] qTarget (xyzw):", qTarget.x, qTarget.y, qTarget.z, qTarget.w);
-
-    const normalResultante = normalThree.clone().applyQuaternion(qTarget);
-    console.log("[NORMAL] normal resultante en espacio mundo:", normalResultante.toArray());
-    console.log("[NORMAL] ¿apunta hacia -Y?", normalResultante.y.toFixed(4), "(esperado: -1.0000)");
 
     // Calcular posición Y: transformar las 8 esquinas del AABB OCC por qTarget
     // y tomar el mínimo Y resultante → mesh.position.y = -minYTransformado
@@ -410,10 +390,6 @@ export function CamViewer3D({
     const posYTarget = -minYTransformado;
     const posYStart = meshRef.current.position.y;
 
-    console.log("[POSICION] bb.min:", bb.min, "bb.max:", bb.max);
-    console.log("[POSICION] minYTransformado:", minYTransformado);
-    console.log("[POSICION] posYTarget calculado:", posYTarget);
-    console.log("[POSICION] posYStart:", posYStart);
 
     // Animación slerp — 600ms
     const DURACION_MS = 600;
@@ -430,10 +406,6 @@ export function CamViewer3D({
       meshRef.current.position.y = posYStart + (posYTarget - posYStart) * ease;
       if (t < 1) {
         animId = requestAnimationFrame(animar);
-      } else {
-        console.log("[POSICION] posición final mesh:", meshRef.current.position.toArray());
-        const bbFinal = new THREE.Box3().setFromObject(meshRef.current);
-        console.log("[POSICION] BB final mundo → min Y:", bbFinal.min.y.toFixed(4), "(esperado: 0.0000)");
       }
     };
 

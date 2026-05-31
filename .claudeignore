@@ -1,0 +1,22 @@
+# Bloquear dependencias y compilaciones
+node_modules/
+dist/
+build/
+.vite/
+__pycache__/
+*.pyc
+.venv/
+venv/
+env/
+
+# Bloquear archivos de diseño pesados que Claude no puede procesar por CMD
+*.step
+*.stp
+*.iges
+*.igs
+*.gcode
+*.nc
+
+# Bloquear assets estáticos del frontend
+src/assets/
+public/
