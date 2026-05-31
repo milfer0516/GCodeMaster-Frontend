@@ -7,7 +7,6 @@ import { tessellateStep } from "../services/camService";
 import type { MeshData, FaceMetadata } from "../services/camService";
 import type { Operacion } from "../store/camStore";
 import { Loader2, AlertCircle } from "lucide-react";
-import { buildSujecionGroup } from "./sujecion/SujecionOverlay3D";
 import type { SujecionConfig } from "../store/camStore";
 
 // ── Props — mismas que el visor anterior para no romper StepOperaciones ──
@@ -422,49 +421,6 @@ export function CamViewer3D({
 
     return () => cancelAnimationFrame(animId);
   }, [faceIdDestacada, meshData, sujecionConfig]);
-
-  // ── 4c. Overlay de sujeción — geometría esquemática ────────────────────
-  useEffect(() => {
-    const scene = sceneRef.current;
-    if (!scene) return;
-
-    // Eliminar overlay anterior y liberar GPU
-    const prev = scene.getObjectByName("sujecion_overlay");
-    if (prev) {
-      prev.traverse((obj) => {
-        if (obj instanceof THREE.Mesh) {
-          obj.geometry.dispose();
-          const m = obj.material;
-          if (Array.isArray(m)) m.forEach((mat) => mat.dispose());
-          else m.dispose();
-        }
-      });
-      scene.remove(prev);
-    }
-
-    if (!sujecionConfig || !piezaBoundingBox) return;
-
-    const group = buildSujecionGroup(
-      sujecionConfig,
-      piezaBoundingBox,
-      maquina
-        ? { x: maquina.recorrido_x_mm, y: maquina.recorrido_y_mm }
-        : null,
-    );
-    scene.add(group);
-
-    return () => {
-      group.traverse((obj) => {
-        if (obj instanceof THREE.Mesh) {
-          obj.geometry.dispose();
-          const m = obj.material;
-          if (Array.isArray(m)) m.forEach((mat) => mat.dispose());
-          else m.dispose();
-        }
-      });
-      if (scene) scene.remove(group);
-    };
-  }, [sujecionConfig, piezaBoundingBox]);
 
   // ── 5. Picking por cara — hover y click ────────────────────────────────
   useEffect(() => {

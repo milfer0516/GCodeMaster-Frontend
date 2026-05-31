@@ -8,7 +8,12 @@ import { getMaquinas } from "../../../../services/maquinasService";
 import type { Maquina } from "../../../../services/maquinasService";
 import type { SujecionConfig } from "../../store/camStore";
 
-const WCS_OPCIONES = ["G54", "G55", "G56", "G57"] as const;
+const WCS_ITEMS = [
+  { code: "G54" as const, descripcion: "Origen pieza 1 (más común)" },
+  { code: "G55" as const, descripcion: "Origen pieza 2 — múltiples piezas" },
+  { code: "G56" as const, descripcion: "Origen pieza 3" },
+  { code: "G57" as const, descripcion: "Origen pieza 4" },
+];
 
 const LABEL_TIPO: Record<string, string> = {
   prensa: "Prensa de banco",
@@ -16,6 +21,20 @@ const LABEL_TIPO: Record<string, string> = {
   mesa_magnetica: "Mesa magnética",
   copa_torno: "Copa de torno",
 };
+
+function badgeSujecion(cfg: SujecionConfig): string {
+  const tipo = LABEL_TIPO[cfg.tipo ?? ""] ?? (cfg.tipo ?? "");
+  const zApoyo = cfg.envolvente?.z_apoyo_mm ?? 0;
+  if (cfg.tipo === "prensa")
+    return `${tipo} — Ø${cfg.ancho_mordaza_mm}mm — z_apoyo: ${zApoyo}mm`;
+  if (cfg.tipo === "bridas")
+    return `${tipo} — ${cfg.cantidad_bridas} bridas — z_apoyo: ${zApoyo}mm`;
+  if (cfg.tipo === "copa_torno")
+    return `${tipo} — Ø${cfg.diametro_copa_mm}mm — z_apoyo: ${zApoyo}mm`;
+  if (cfg.tipo === "mesa_magnetica")
+    return `${tipo} — z_apoyo: ${zApoyo}mm`;
+  return tipo;
+}
 
 function resumirSujecion(cfg: SujecionConfig): string {
   if (cfg.tipo === "prensa") {
@@ -145,6 +164,9 @@ export const StepMontaje = () => {
                         </span>
                       </p>
                     )}
+                    <p className="mt-1.5 font-mono text-[11px] leading-none text-accent-blue/80">
+                      {badgeSujecion(montajeConfig.sujecion_config)}
+                    </p>
                   </div>
                   <button
                     onClick={() => setModalAbierto(true)}
@@ -220,18 +242,24 @@ export const StepMontaje = () => {
               Sistema de coordenadas (WCS)
             </p>
             <div className="flex gap-2">
-              {WCS_OPCIONES.map((wcs) => (
-                <button
-                  key={wcs}
-                  onClick={() => setMontajeConfig({ wcs })}
-                  className={`rounded-xl border px-4 py-2 text-sm font-medium transition ${
-                    montajeConfig.wcs === wcs
-                      ? "border-accent-blue bg-accent-blue/10 text-accent-blue"
-                      : "border-border bg-bg-primary text-text-muted hover:border-accent-blue/50"
-                  }`}
-                >
-                  {wcs}
-                </button>
+              {WCS_ITEMS.map(({ code, descripcion }) => (
+                <div key={code} className="relative group">
+                  <button
+                    onClick={() => setMontajeConfig({ wcs: code })}
+                    className={`rounded-xl border px-4 py-2 text-sm font-medium transition ${
+                      montajeConfig.wcs === code
+                        ? "border-accent-blue bg-accent-blue/10 text-accent-blue"
+                        : "border-border bg-bg-primary text-text-muted hover:border-accent-blue/50"
+                    }`}
+                  >
+                    {code}
+                  </button>
+                  <div className="pointer-events-none absolute bottom-full left-1/2 z-20 mb-2 hidden -translate-x-1/2 group-hover:block">
+                    <div className="rounded-lg border border-border bg-bg-card px-2.5 py-1.5 text-xs text-text-primary shadow-lg whitespace-nowrap">
+                      {code}: {descripcion}
+                    </div>
+                  </div>
+                </div>
               ))}
             </div>
           </div>

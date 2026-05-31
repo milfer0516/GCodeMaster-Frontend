@@ -45,12 +45,20 @@ export const StepOperaciones = () => {
   const {
     analisis,
     operaciones,
+    setOperaciones,
     toggleOperacion,
     ordenSetups,
     setOrdenSetups,
     setStep,
     idJob,
+    montajeConfig,
   } = useCamStore();
+
+  const seleccionarTodas = () =>
+    setOperaciones(operaciones.map((op) => ({ ...op, seleccionada: true })));
+
+  const deseleccionarTodas = () =>
+    setOperaciones(operaciones.map((op) => ({ ...op, seleccionada: false })));
 
   const [archivoAbierto, setArchivoAbierto] = useState(false);
 
@@ -193,6 +201,8 @@ export const StepOperaciones = () => {
               operacionesBackend={operacionesBackend}
               seleccionadas={seleccionadas}
               onToggle={toggleOperacion}
+              faceIdDestacada={montajeConfig.face_id_apoyo}
+              sujecionConfig={null}
             />
           </div>
 
@@ -204,9 +214,25 @@ export const StepOperaciones = () => {
 
         {/* ── Lista operaciones ── */}
         <div className="flex flex-col gap-3">
+          {/* Acciones rápidas */}
+          <div className="flex gap-2">
+            <button
+              onClick={seleccionarTodas}
+              className="rounded-lg border border-border px-3 py-1.5 text-xs text-text-muted transition hover:border-accent-blue/50 hover:text-text-primary"
+            >
+              Seleccionar todas
+            </button>
+            <button
+              onClick={deseleccionarTodas}
+              className="rounded-lg border border-border px-3 py-1.5 text-xs text-text-muted transition hover:border-red-500/30 hover:text-red-400"
+            >
+              Deseleccionar todas
+            </button>
+          </div>
+
           <div
             className="flex-1 space-y-4 overflow-y-auto pr-1"
-            style={{ maxHeight: "460px" }}
+            style={{ maxHeight: "420px" }}
           >
             {opsSetup1.length > 0 && (
               <div className="space-y-2">
