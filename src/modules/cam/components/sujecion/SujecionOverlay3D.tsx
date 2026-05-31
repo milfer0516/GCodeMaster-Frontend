@@ -208,18 +208,30 @@ export function buildSujecionGroup(
   group.name = "sujecion_overlay";
 
   switch (cfg.tipo) {
-    case "prensa":
-      group.add(buildPrensa(cfg, pieza));
+    case "prensa": {
+      const g = buildPrensa(cfg, pieza);
+      g.position.y = 0;
+      group.add(g);
       break;
-    case "bridas":
-      group.add(buildBridas(cfg, pieza));
+    }
+    case "bridas": {
+      const g = buildBridas(cfg, pieza);
+      g.position.y = 0;
+      group.add(g);
       break;
-    case "mesa_magnetica":
-      group.add(buildMesaMagnetica(pieza, maq));
+    }
+    case "mesa_magnetica": {
+      const g = buildMesaMagnetica(pieza, maq);
+      g.position.y = 0;
+      group.add(g);
       break;
-    case "copa_torno":
-      group.add(buildCopaTorno(cfg, pieza));
+    }
+    case "copa_torno": {
+      const g = buildCopaTorno(cfg, pieza);
+      g.position.y = 0;
+      group.add(g);
       break;
+    }
   }
 
   return group;

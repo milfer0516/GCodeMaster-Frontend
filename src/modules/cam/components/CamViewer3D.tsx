@@ -395,7 +395,8 @@ export function CamViewer3D({
     ].map(([x, y, z]) => new THREE.Vector3(x, y, z).applyQuaternion(qTarget));
 
     const minYTransformado = Math.min(...corners.map((v) => v.y));
-    const posYTarget = -minYTransformado;
+    const zApoyo = sujecionConfig?.envolvente?.z_apoyo_mm ?? 0;
+    const posYTarget = -minYTransformado + zApoyo;
     const posYStart = meshRef.current.position.y;
 
 
@@ -420,7 +421,7 @@ export function CamViewer3D({
     animId = requestAnimationFrame(animar);
 
     return () => cancelAnimationFrame(animId);
-  }, [faceIdDestacada, meshData]);
+  }, [faceIdDestacada, meshData, sujecionConfig]);
 
   // ── 4c. Overlay de sujeción — geometría esquemática ────────────────────
   useEffect(() => {
