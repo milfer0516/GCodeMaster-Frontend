@@ -21,6 +21,11 @@ export const StepCargarStep = () => {
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
+      const ext = file.name.toLowerCase();
+      if (!ext.endsWith('.step') && !ext.endsWith('.stp')) {
+        setError('Solo archivos .step o .stp');
+        return;
+      }
       setArchivo(file);
       setError("");
     }
@@ -141,7 +146,7 @@ export const StepCargarStep = () => {
       <input
         ref={fileInputRef}
         type="file"
-        accept=".step,.stp,.STEP,.STP,application/step"
+        accept="*"
         onChange={handleFileChange}
         className="hidden"
       />

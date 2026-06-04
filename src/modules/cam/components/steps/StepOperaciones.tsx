@@ -168,9 +168,9 @@ export const StepOperaciones = () => {
       </div>
 
       {/* Layout dos columnas */}
-      <div className="grid gap-4 lg:grid-cols-[1fr_360px]">
+      <div className="flex flex-col lg:flex-row gap-4 lg:gap-6">
         {/* ── Viewer 3D ── */}
-        <div className="rounded-xl border border-border bg-bg-primary overflow-hidden">
+        <div className="w-full lg:w-2/3 rounded-xl border border-border bg-bg-primary overflow-hidden">
           <div className="flex flex-wrap items-center gap-2 md:gap-3 border-b border-border px-3 md:px-4 py-2">
             <p className="text-[9px] md:text-[10px] uppercase tracking-widest text-text-muted">
               Leyenda:
@@ -213,7 +213,7 @@ export const StepOperaciones = () => {
         </div>
 
         {/* ── Lista operaciones ── */}
-        <div className="flex flex-col gap-3">
+        <div className="w-full lg:w-1/3 flex flex-col gap-3">
           {/* Acciones rápidas */}
           <div className="flex flex-col sm:flex-row gap-2">
             <button

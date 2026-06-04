@@ -114,9 +114,9 @@ export const StepMontaje = () => {
         </p>
       </div>
 
-      <div className="grid grid-cols-1 gap-4 md:gap-6 lg:grid-cols-[2fr_1fr]">
+      <div className="flex flex-col lg:flex-row gap-4 lg:gap-6">
         {/* ── Visor 3D ── */}
-        <div className="h-[300px] md:h-[520px] rounded-xl overflow-hidden border border-border">
+        <div className="w-full lg:w-2/3 h-[300px] lg:h-[500px] rounded-xl overflow-hidden border border-border">
           <CamViewer3D
             dimensiones={dimensiones}
             sujecionConfig={montajeConfig.sujecion_config}
@@ -139,7 +139,7 @@ export const StepMontaje = () => {
         </div>
 
         {/* ── Configuración ── */}
-        <div className="space-y-4 md:space-y-5 max-h-[520px] overflow-y-auto">
+        <div className="w-full lg:w-1/3 space-y-4 md:space-y-5 max-h-[520px] overflow-y-auto">
           {/* Sujeción */}
           <div>
             <p className="text-sm font-medium text-text-primary mb-2">
