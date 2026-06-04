@@ -26,19 +26,19 @@ export function CamWizardPage() {
   const pasoActual = PASOS.findIndex((p) => p.key === step);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 md:space-y-6">
       {/* ── Header ── */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-bold text-text-primary">CAM Wizard</h1>
-          <p className="mt-0.5 text-sm text-text-muted">
+          <h1 className="text-lg md:text-xl font-bold text-text-primary">CAM Wizard</h1>
+          <p className="mt-0.5 text-xs md:text-sm text-text-muted">
             Genera G-Code a partir de tu archivo STEP
           </p>
         </div>
         {step !== "cargar" && step !== "resultado" && (
           <button
             onClick={reset}
-            className="text-xs text-text-muted hover:text-accent-red transition"
+            className="text-xs text-text-muted hover:text-accent-red transition min-h-[44px] px-2"
           >
             ✕ Cancelar
           </button>
@@ -51,7 +51,7 @@ export function CamWizardPage() {
           <div key={p.key} className="flex items-center gap-1">
             <div className="flex flex-col items-center">
               <div
-                className={`flex h-7 w-7 items-center justify-center rounded-full text-xs font-bold transition-colors ${
+                className={`flex h-7 w-7 md:h-8 md:w-8 items-center justify-center rounded-full text-xs font-bold transition-colors ${
                   i < pasoActual
                     ? "bg-green-500 text-white"
                     : i === pasoActual
@@ -62,7 +62,7 @@ export function CamWizardPage() {
                 {i < pasoActual ? "✓" : i + 1}
               </div>
               <span
-                className={`mt-1 whitespace-nowrap text-[10px] ${
+                className={`mt-1 whitespace-nowrap text-[9px] md:text-[10px] ${
                   i === pasoActual ? "text-accent-blue" : "text-text-muted"
                 }`}
               >
@@ -71,7 +71,7 @@ export function CamWizardPage() {
             </div>
             {i < PASOS.length - 1 && (
               <div
-                className={`mb-4 h-px w-6 flex-1 ${
+                className={`mb-4 h-px w-4 md:w-6 flex-1 ${
                   i < pasoActual ? "bg-green-500" : "bg-border"
                 }`}
               />
@@ -81,7 +81,7 @@ export function CamWizardPage() {
       </div>
 
       {/* ── Contenido del paso ── */}
-      <div className="rounded-2xl border border-border bg-bg-surface p-6">
+      <div className="rounded-xl md:rounded-2xl border border-border bg-bg-surface p-4 md:p-6">
         {step === "cargar" && <StepCargarStep />}
         {step === "analisis" && <StepAnalisis />}
         {step === "montaje" && <StepMontaje />}

@@ -114,9 +114,9 @@ export const StepMontaje = () => {
         </p>
       </div>
 
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-[2fr_1fr]">
+      <div className="grid grid-cols-1 gap-4 md:gap-6 lg:grid-cols-[2fr_1fr]">
         {/* ── Visor 3D ── */}
-        <div className="h-[520px] rounded-xl overflow-hidden border border-border">
+        <div className="h-[300px] md:h-[520px] rounded-xl overflow-hidden border border-border">
           <CamViewer3D
             dimensiones={dimensiones}
             sujecionConfig={montajeConfig.sujecion_config}
@@ -139,7 +139,7 @@ export const StepMontaje = () => {
         </div>
 
         {/* ── Configuración ── */}
-        <div className="space-y-5 max-h-[520px] overflow-y-auto">
+        <div className="space-y-4 md:space-y-5 max-h-[520px] overflow-y-auto">
           {/* Sujeción */}
           <div>
             <p className="text-sm font-medium text-text-primary mb-2">
@@ -241,12 +241,12 @@ export const StepMontaje = () => {
             <p className="text-sm font-medium text-text-primary mb-2">
               Sistema de coordenadas (WCS)
             </p>
-            <div className="flex gap-2">
+            <div className="grid grid-cols-2 md:flex gap-2">
               {WCS_ITEMS.map(({ code, descripcion }) => (
                 <div key={code} className="relative group">
                   <button
                     onClick={() => setMontajeConfig({ wcs: code })}
-                    className={`rounded-xl border px-4 py-2 text-sm font-medium transition ${
+                    className={`w-full md:w-auto rounded-xl border px-4 py-3 md:py-2 min-h-[44px] text-sm font-medium transition ${
                       montajeConfig.wcs === code
                         ? "border-accent-blue bg-accent-blue/10 text-accent-blue"
                         : "border-border bg-bg-primary text-text-muted hover:border-accent-blue/50"
@@ -284,9 +284,9 @@ export const StepMontaje = () => {
       <div className="flex justify-between">
         <button
           onClick={() => setStep("analisis")}
-          className="flex items-center gap-2 rounded-xl border border-border px-5 py-2.5 text-sm font-medium text-text-muted transition hover:border-accent-blue/50 hover:text-text-primary"
+          className="flex items-center gap-2 rounded-xl border border-border px-4 md:px-5 py-3 md:py-2.5 min-h-[44px] text-sm font-medium text-text-muted transition hover:border-accent-blue/50 hover:text-text-primary"
         >
-          <ChevronLeft className="h-4 w-4" /> Análisis
+          <ChevronLeft className="h-4 w-4" /> <span className="hidden sm:inline">Análisis</span>
         </button>
         <button
           onClick={() => {
@@ -297,9 +297,11 @@ export const StepMontaje = () => {
             setStep("operaciones");
           }}
           disabled={!puedeAvanzar}
-          className="flex items-center gap-2 rounded-xl bg-accent-blue px-6 py-2.5 text-sm font-semibold text-white transition hover:bg-accent-blue/90 active:scale-[0.98] disabled:opacity-40 disabled:cursor-not-allowed"
+          className="flex items-center gap-2 rounded-xl bg-accent-blue px-4 md:px-6 py-3 md:py-2.5 min-h-[44px] text-sm font-semibold text-white transition hover:bg-accent-blue/90 active:scale-[0.98] disabled:opacity-40 disabled:cursor-not-allowed"
         >
-          Configurar operaciones <ChevronRight className="h-4 w-4" />
+          <span className="hidden sm:inline">Configurar operaciones</span>
+          <span className="sm:hidden">Siguiente</span>
+          <ChevronRight className="h-4 w-4" />
         </button>
       </div>
 

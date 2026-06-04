@@ -542,7 +542,7 @@ export function CamViewer3D({
     <div
       ref={mountRef}
       className="w-full h-full rounded-xl overflow-hidden"
-      style={{ minHeight: "380px", cursor: "grab", background: "#0d1117" }}
+      style={{ minHeight: "300px", cursor: "grab", background: "#0d1117" }}
     />
   );
 }

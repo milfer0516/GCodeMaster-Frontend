@@ -105,7 +105,7 @@ export const StepOperaciones = () => {
     <button
       key={op.id}
       onClick={() => toggleOperacion(op.id)}
-      className={`w-full rounded-xl border p-3 text-left transition active:scale-[0.99] ${
+      className={`w-full rounded-xl border p-3 min-h-[44px] text-left transition active:scale-[0.99] ${
         op.seleccionada
           ? "border-accent-blue/30 bg-accent-blue/5"
           : "border-border bg-bg-primary hover:border-accent-blue/20"
@@ -128,7 +128,7 @@ export const StepOperaciones = () => {
           )}
         </div>
         <div
-          className={`flex-shrink-0 h-5 w-5 rounded border-2 transition mt-0.5 ${
+          className={`flex-shrink-0 h-6 w-6 md:h-5 md:w-5 rounded border-2 transition mt-0.5 ${
             op.seleccionada
               ? "border-accent-blue bg-accent-blue"
               : "border-border"
@@ -171,8 +171,8 @@ export const StepOperaciones = () => {
       <div className="grid gap-4 lg:grid-cols-[1fr_360px]">
         {/* ── Viewer 3D ── */}
         <div className="rounded-xl border border-border bg-bg-primary overflow-hidden">
-          <div className="flex flex-wrap items-center gap-3 border-b border-border px-4 py-2">
-            <p className="text-[10px] uppercase tracking-widest text-text-muted">
+          <div className="flex flex-wrap items-center gap-2 md:gap-3 border-b border-border px-3 md:px-4 py-2">
+            <p className="text-[9px] md:text-[10px] uppercase tracking-widest text-text-muted">
               Leyenda:
             </p>
             {[
@@ -184,7 +184,7 @@ export const StepOperaciones = () => {
             ].map(({ color, label }) => (
               <span
                 key={label}
-                className="flex items-center gap-1 text-[10px] text-text-muted"
+                className="flex items-center gap-1 text-[9px] md:text-[10px] text-text-muted"
               >
                 <span
                   className={`inline-block h-2 w-2 rounded-full ${color}`}
@@ -194,7 +194,7 @@ export const StepOperaciones = () => {
             ))}
           </div>
 
-          <div style={{ height: "400px" }}>
+          <div className="h-[300px] md:h-[400px]">
             <CamViewer3D
               dimensiones={dimensiones}
               operaciones={operaciones}
@@ -206,7 +206,7 @@ export const StepOperaciones = () => {
             />
           </div>
 
-          <p className="border-t border-border px-4 py-2 text-[10px] text-text-muted">
+          <p className="border-t border-border px-3 md:px-4 py-2 text-[9px] md:text-[10px] text-text-muted">
             🖱 Arrastra para rotar · Scroll para zoom · Clic en operación para
             seleccionar
           </p>
@@ -215,16 +215,16 @@ export const StepOperaciones = () => {
         {/* ── Lista operaciones ── */}
         <div className="flex flex-col gap-3">
           {/* Acciones rápidas */}
-          <div className="flex gap-2">
+          <div className="flex flex-col sm:flex-row gap-2">
             <button
               onClick={seleccionarTodas}
-              className="rounded-lg border border-border px-3 py-1.5 text-xs text-text-muted transition hover:border-accent-blue/50 hover:text-text-primary"
+              className="rounded-lg border border-border px-3 py-2.5 md:py-1.5 min-h-[44px] md:min-h-0 text-xs text-text-muted transition hover:border-accent-blue/50 hover:text-text-primary"
             >
               Seleccionar todas
             </button>
             <button
               onClick={deseleccionarTodas}
-              className="rounded-lg border border-border px-3 py-1.5 text-xs text-text-muted transition hover:border-red-500/30 hover:text-red-400"
+              className="rounded-lg border border-border px-3 py-2.5 md:py-1.5 min-h-[44px] md:min-h-0 text-xs text-text-muted transition hover:border-red-500/30 hover:text-red-400"
             >
               Deseleccionar todas
             </button>
@@ -308,7 +308,7 @@ export const StepOperaciones = () => {
             <button
               onClick={() => setStep("material")}
               disabled={!haySeleccionadas}
-              className="flex w-full items-center justify-center gap-2 rounded-xl bg-accent-blue px-6 py-2.5 text-sm font-semibold text-white transition hover:bg-accent-blue/90 disabled:opacity-50 disabled:cursor-not-allowed active:scale-[0.98]"
+              className="flex w-full items-center justify-center gap-2 rounded-xl bg-accent-blue px-6 py-3 md:py-2.5 min-h-[44px] text-sm font-semibold text-white transition hover:bg-accent-blue/90 disabled:opacity-50 disabled:cursor-not-allowed active:scale-[0.98]"
             >
               Siguiente <ChevronRight className="h-4 w-4" />
             </button>

@@ -86,8 +86,8 @@ export const StepCargarStep = () => {
         onDragOver={(e) => e.preventDefault()}
         onClick={() => !archivo && fileInputRef.current?.click()}
         className={`
-          flex flex-col items-center justify-center rounded-2xl border-2 border-dashed
-          p-10 transition cursor-pointer
+          flex flex-col items-center justify-center rounded-xl md:rounded-2xl border-2 border-dashed
+          p-6 md:p-10 transition cursor-pointer min-h-[200px] md:min-h-0
           ${
             archivo
               ? "border-accent-green bg-green-500/5 cursor-default"
@@ -97,8 +97,8 @@ export const StepCargarStep = () => {
       >
         {archivo ? (
           <>
-            <FileCheck className="h-12 w-12 text-green-400 mb-3" />
-            <p className="font-semibold text-text-primary">{archivo.name}</p>
+            <FileCheck className="h-10 md:h-12 w-10 md:w-12 text-green-400 mb-3" />
+            <p className="font-semibold text-text-primary text-sm md:text-base text-center px-2">{archivo.name}</p>
             <p className="mt-1 text-xs text-text-muted">
               {(archivo.size / 1024).toFixed(1)} KB
             </p>
@@ -107,23 +107,33 @@ export const StepCargarStep = () => {
                 e.stopPropagation();
                 fileInputRef.current?.click();
               }}
-              className="mt-3 text-xs text-text-muted hover:text-accent-blue transition underline"
+              className="mt-3 px-4 py-2 min-h-[44px] text-sm text-text-muted hover:text-accent-blue transition underline"
             >
               Cambiar archivo
             </button>
           </>
         ) : (
           <>
-            <UploadCloud className="h-12 w-12 text-text-muted mb-3" />
-            <p className="font-medium text-text-primary">
-              Arrastra tu archivo aquí
+            <UploadCloud className="h-10 md:h-12 w-10 md:w-12 text-text-muted mb-3" />
+            <p className="font-medium text-text-primary text-sm md:text-base">
+              <span className="hidden md:inline">Arrastra tu archivo aquí</span>
+              <span className="md:hidden">Seleccionar archivo STEP</span>
             </p>
-            <p className="mt-1 text-sm text-text-muted">
+            <p className="mt-1 text-sm text-text-muted hidden md:block">
               o haz clic para seleccionar
             </p>
             <p className="mt-2 text-xs text-text-muted">
               Formatos: .STEP, .STP
             </p>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                fileInputRef.current?.click();
+              }}
+              className="mt-4 md:hidden px-6 py-3 min-h-[60px] bg-accent-blue text-white rounded-xl font-medium text-base"
+            >
+              Seleccionar archivo STEP
+            </button>
           </>
         )}
       </div>
@@ -131,7 +141,7 @@ export const StepCargarStep = () => {
       <input
         ref={fileInputRef}
         type="file"
-        accept=".step,.stp"
+        accept=".step,.stp,.STEP,.STP,application/step"
         onChange={handleFileChange}
         className="hidden"
       />
@@ -149,7 +159,7 @@ export const StepCargarStep = () => {
         <button
           onClick={handleUpload}
           disabled={!archivo || cargando}
-          className="flex items-center gap-2 rounded-xl bg-accent-blue px-6 py-2.5 text-sm font-semibold text-white transition hover:bg-accent-blue/90 disabled:opacity-50 disabled:cursor-not-allowed active:scale-[0.98]"
+          className="flex w-full md:w-auto items-center justify-center gap-2 rounded-xl bg-accent-blue px-6 py-3 md:py-2.5 min-h-[60px] md:min-h-[44px] text-base md:text-sm font-semibold text-white transition hover:bg-accent-blue/90 disabled:opacity-50 disabled:cursor-not-allowed active:scale-[0.98]"
         >
           {cargando ? (
             <>
