@@ -15,7 +15,6 @@ export function Header() {
 
   const [theme, setTheme] = useState<"dark" | "light">("dark");
 
-  // Sincroniza tema con localStorage al montar
   useEffect(() => {
     const saved = window.localStorage.getItem("gcodemaster-theme") as
       | "dark"
@@ -26,7 +25,6 @@ export function Header() {
     document.documentElement.dataset.theme = initial;
   }, []);
 
-  // Aplica tema al cambiar
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
     document.documentElement.classList.toggle("dark", theme === "dark");
@@ -38,7 +36,6 @@ export function Header() {
     [theme],
   );
 
-  // DESPUÉS — colores adaptivos dark/light
   const planColores: Record<string, string> = {
     demo: "bg-yellow-500/10 text-yellow-500 border-yellow-500/30 dark:text-yellow-400 dark:border-yellow-500/20",
     basic:
@@ -51,7 +48,6 @@ export function Header() {
     try {
       await logoutService();
     } catch {
-      // Si falla el endpoint igual hacemos logout local
     } finally {
       logoutStore();
       toast.success("Sesión cerrada.");
@@ -60,32 +56,32 @@ export function Header() {
   };
 
   return (
-    <header className="w-full border-b border-border bg-bg-surface">
-      <div className="mx-auto flex w-full max-w-7xl items-center justify-between px-4 py-3 sm:px-6 lg:px-8">
-        {/* ── LADO IZQUIERDO ── */}
-        <div className="flex items-center gap-3">
+    <header className="w-full border-b border-border bg-bg-surface h-14 md:h-16 flex-shrink-0">
+      <div className="flex h-full items-center justify-between px-3 md:px-6 max-w-full overflow-hidden">
+        {/* Logo + Empresa */}
+        <div className="flex items-center gap-2 md:gap-3 min-w-0">
           <img
             src={logoImage}
-            alt="Logo GcodeMaster"
-            className="h-14 w-auto object-contain rounded-lg fill-black dark:fill-white"
+            alt="Logo"
+            className="h-8 md:h-10 w-auto object-contain rounded flex-shrink-0"
           />
           {empresa && (
-            <div className="flex items-center gap-3">
-              <span className="text-border">|</span>
-              <p className="whitespace-nowrap text-sm font-medium text-text-primary">
+            <>
+              <span className="hidden md:inline text-border">|</span>
+              <p className="hidden md:block text-sm font-medium text-text-primary truncate">
                 {empresa.nombre_empresa}
               </p>
-            </div>
+            </>
           )}
         </div>
 
-        {/* ── LADO DERECHO ── */}
-        <div className="flex flex-shrink-0 items-center gap-3">
-          {/* Toggle tema */}
+        {/* Controles */}
+        <div className="flex items-center gap-2 md:gap-3 flex-shrink-0">
+          {/* Tema */}
           <button
             type="button"
             onClick={() => setTheme((c) => (c === "dark" ? "light" : "dark"))}
-            className="inline-flex items-center gap-2 rounded-lg border border-border bg-bg-primary px-3 py-1.5 text-sm text-text-primary shadow-sm transition hover:border-accent-blue hover:text-accent-blue dark:shadow-none"
+            className="p-2 md:px-3 md:py-1.5 rounded-lg border border-border bg-bg-primary text-text-primary hover:border-accent-blue hover:text-accent-blue transition"
             aria-label={themeLabel}
           >
             {theme === "dark" ? (
@@ -93,20 +89,19 @@ export function Header() {
             ) : (
               <MoonStar className="h-4 w-4" />
             )}
-            <span className="hidden sm:inline">{themeLabel}</span>
           </button>
 
-          {/* Badge plan */}
+          {/* Plan - oculto en móvil */}
           <span
-            className={`rounded-full border px-2.5 py-0.5 text-xs font-medium capitalize ${planColores[plan_activo] ?? planColores.demo}`}
+            className={`hidden md:inline-flex rounded-full border px-2.5 py-0.5 text-xs font-medium capitalize ${planColores[plan_activo] ?? planColores.demo}`}
           >
             {plan_activo}
           </span>
 
-          {/* Usuario */}
+          {/* Usuario - solo icono en móvil */}
           <div className="flex items-center gap-2 text-sm text-text-muted">
-            <User className="h-4 w-4" />
-            <span className="whitespace-nowrap">
+            <User className="h-4 w-4 flex-shrink-0" />
+            <span className="hidden md:inline whitespace-nowrap">
               {user?.nombre_completo ?? "Usuario"}
             </span>
           </div>
@@ -114,10 +109,10 @@ export function Header() {
           {/* Logout */}
           <button
             onClick={handleLogout}
-            className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-sm text-text-muted transition hover:border-accent-red hover:text-accent-red"
+            className="flex items-center gap-1.5 rounded-lg border border-border px-2 md:px-3 py-1.5 text-sm text-text-muted hover:border-accent-red hover:text-accent-red transition"
           >
-            <LogOut className="h-4 w-4" />
-            <span>Salir</span>
+            <LogOut className="h-4 w-4 flex-shrink-0" />
+            <span className="hidden md:inline">Salir</span>
           </button>
         </div>
       </div>

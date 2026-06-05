@@ -1,6 +1,5 @@
-// src/components/layout/Sidebar.tsx
 import { useState } from "react";
-import { NavLink, useNavigate } from "react-router-dom";
+import { NavLink } from "react-router-dom";
 import {
   LayoutDashboard,
   FolderOpen,
@@ -11,22 +10,18 @@ import {
   ChevronLeft,
   ChevronRight,
   Cpu,
+  X,
 } from "lucide-react";
-//import { LayoutDashboard, FolderOpen, MonitorPlay, Wrench, History, Settings, Cpu } from "lucide-react";
-
-// ── ITEMS DE NAVEGACIÓN ───────────────────────────────────────────────────
 
 const NAV_ITEMS = [
   { to: "/dashboard", icon: LayoutDashboard, label: "Inicio" },
   { to: "/proyectos", icon: FolderOpen, label: "Proyectos" },
   { to: "/cam", icon: MonitorPlay, label: "CAM Wizard" },
-  { to: "/maquinas", icon: Cpu, label: "Máquinas" }, // ← NUEVO
+  { to: "/maquinas", icon: Cpu, label: "Máquinas" },
   { to: "/herramientas", icon: Wrench, label: "Herramientas" },
   { to: "/jobs", icon: History, label: "Historial" },
   { to: "/cuenta", icon: Settings, label: "Configuración" },
 ];
-
-// ── COMPONENTE ────────────────────────────────────────────────────────────
 
 interface SidebarProps {
   isOpen?: boolean;
@@ -37,7 +32,7 @@ export function Sidebar({ isOpen = false, onClose }: SidebarProps) {
   const [expandido, setExpandido] = useState(false);
 
   const handleNavClick = () => {
-    if (window.innerWidth < 768 && onClose) {
+    if (onClose) {
       onClose();
     }
   };
@@ -45,18 +40,28 @@ export function Sidebar({ isOpen = false, onClose }: SidebarProps) {
   return (
     <aside
       className={`
-        relative flex flex-col
-        border-r border-border bg-bg-surface
-        transition-all duration-300 ease-in-out
-        ${expandido ? "w-52" : "w-16"}
+        flex flex-col bg-bg-surface border-r border-border
         fixed md:static top-0 left-0 h-full z-40
+        transition-transform duration-300 ease-in-out
         ${isOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}
+        ${expandido ? 'w-64' : 'w-16'}
       `}
     >
-      {/* ── LOGO / MARCA ── */}
-      <div className="flex h-16 items-center justify-center border-b border-border px-3">
+      {/* Header móvil */}
+      <div className="md:hidden flex items-center justify-between h-14 px-4 border-b border-border">
+        <span className="text-sm font-bold">
+          <span className="text-text-primary">GCode</span>
+          <span className="text-accent-blue">Master</span>
+        </span>
+        <button onClick={onClose} className="p-2">
+          <X className="h-5 w-5 text-text-muted" />
+        </button>
+      </div>
+
+      {/* Logo desktop */}
+      <div className="hidden md:flex h-16 items-center justify-center border-b border-border px-3">
         {expandido ? (
-          <span className="whitespace-nowrap text-sm font-bold tracking-tight">
+          <span className="text-sm font-bold tracking-tight">
             <span className="text-text-primary">GCode</span>
             <span className="text-accent-blue">Master</span>
           </span>
@@ -65,24 +70,24 @@ export function Sidebar({ isOpen = false, onClose }: SidebarProps) {
         )}
       </div>
 
-      {/* ── NAV ITEMS ── */}
-      <nav className="flex flex-1 flex-col gap-1 px-2 py-4">
+      {/* Nav items */}
+      <nav className="flex-1 flex flex-col gap-1 px-2 py-4 overflow-y-auto">
         {NAV_ITEMS.map(({ to, icon: Icon, label }) => (
           <NavLink
             key={to}
             to={to}
             onClick={handleNavClick}
             className={({ isActive }) => `
-              group flex items-center gap-3 rounded-xl px-3 py-2.5
-              text-sm font-medium transition-all duration-150
-              ${expandido ? "" : "justify-center"}
+              flex items-center gap-3 rounded-xl px-3 py-2.5
+              text-sm font-medium transition-all
+              ${expandido ? '' : 'justify-center'}
               ${
                 isActive
-                  ? "bg-accent-blue/15 text-accent-blue"
-                  : "text-text-muted hover:bg-bg-elevated hover:text-text-primary"
+                  ? 'bg-accent-blue/15 text-accent-blue'
+                  : 'text-text-muted hover:bg-bg-elevated hover:text-text-primary'
               }
             `}
-            title={!expandido ? label : undefined}
+            title={label}
           >
             <Icon className="h-5 w-5 flex-shrink-0" />
             {expandido && <span className="whitespace-nowrap">{label}</span>}
@@ -90,7 +95,7 @@ export function Sidebar({ isOpen = false, onClose }: SidebarProps) {
         ))}
       </nav>
 
-      {/* ── BOTÓN COLAPSAR / EXPANDIR - solo desktop ── */}
+      {/* Botón expandir - solo desktop */}
       <button
         onClick={() => setExpandido((v) => !v)}
         className="
@@ -99,7 +104,7 @@ export function Sidebar({ isOpen = false, onClose }: SidebarProps) {
           h-6 w-6 items-center justify-center
           rounded-full border border-border bg-bg-surface
           text-text-muted shadow-sm
-          transition hover:border-accent-blue hover:text-accent-blue
+          hover:border-accent-blue hover:text-accent-blue transition
           z-10
         "
         aria-label={expandido ? "Colapsar menú" : "Expandir menú"}
