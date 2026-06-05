@@ -48,15 +48,8 @@ export function Sidebar({ isOpen = false, onClose }: SidebarProps) {
       `}
     >
       {/* Logo - solo desktop */}
-      <div className="hidden md:flex h-16 items-center justify-center border-b border-border px-3">
-        {expandido ? (
-          <span className="text-sm font-bold tracking-tight">
-            <span className="text-text-primary">GCode</span>
-            <span className="text-accent-blue">Master</span>
-          </span>
-        ) : (
-          <Cpu className="h-6 w-6 text-accent-blue" />
-        )}
+      <div className="hidden md:flex h-16 items-center justify-center border-b border-border">
+        <Cpu className="h-6 w-6 text-accent-blue" />
       </div>
 
       {/* Botón cerrar móvil - dentro del sidebar */}
