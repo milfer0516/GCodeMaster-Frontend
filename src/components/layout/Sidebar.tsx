@@ -49,9 +49,8 @@ export function Sidebar({ isOpen = false, onClose }: SidebarProps) {
     >
       {/* Header móvil */}
       <div className="md:hidden flex items-center justify-between h-14 px-4 border-b border-border">
-        <span className="text-sm font-bold">
-          <span className="text-text-primary">GCode</span>
-          <span className="text-accent-blue">Master</span>
+        <span className="text-sm font-bold text-text-primary">
+          GCodeMaster
         </span>
         <button onClick={onClose} className="p-2">
           <X className="h-5 w-5 text-text-muted" />
