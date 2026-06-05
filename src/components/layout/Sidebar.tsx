@@ -47,17 +47,7 @@ export function Sidebar({ isOpen = false, onClose }: SidebarProps) {
         ${expandido ? 'w-64' : 'w-16'}
       `}
     >
-      {/* Header móvil */}
-      <div className="md:hidden flex items-center justify-between h-14 px-4 border-b border-border">
-        <span className="text-sm font-bold text-text-primary">
-          GCodeMaster
-        </span>
-        <button onClick={onClose} className="p-2">
-          <X className="h-5 w-5 text-text-muted" />
-        </button>
-      </div>
-
-      {/* Logo desktop */}
+      {/* Logo - solo desktop */}
       <div className="hidden md:flex h-16 items-center justify-center border-b border-border px-3">
         {expandido ? (
           <span className="text-sm font-bold tracking-tight">
@@ -67,6 +57,14 @@ export function Sidebar({ isOpen = false, onClose }: SidebarProps) {
         ) : (
           <Cpu className="h-6 w-6 text-accent-blue" />
         )}
+      </div>
+
+      {/* Botón cerrar móvil - dentro del sidebar */}
+      <div className="md:hidden flex items-center justify-between h-14 px-4 border-b border-border">
+        <span className="text-sm font-bold text-text-primary">Menú</span>
+        <button onClick={onClose} className="p-2 hover:bg-bg-elevated rounded transition">
+          <X className="h-5 w-5 text-text-muted" />
+        </button>
       </div>
 
       {/* Nav items */}
