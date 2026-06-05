@@ -28,8 +28,19 @@ const NAV_ITEMS = [
 
 // ── COMPONENTE ────────────────────────────────────────────────────────────
 
-export function Sidebar() {
+interface SidebarProps {
+  isOpen?: boolean;
+  onClose?: () => void;
+}
+
+export function Sidebar({ isOpen = false, onClose }: SidebarProps) {
   const [expandido, setExpandido] = useState(false);
+
+  const handleNavClick = () => {
+    if (window.innerWidth < 768 && onClose) {
+      onClose();
+    }
+  };
 
   return (
     <aside
@@ -38,6 +49,8 @@ export function Sidebar() {
         border-r border-border bg-bg-surface
         transition-all duration-300 ease-in-out
         ${expandido ? "w-52" : "w-16"}
+        fixed md:static top-0 left-0 h-full z-40
+        ${isOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}
       `}
     >
       {/* ── LOGO / MARCA ── */}
@@ -58,6 +71,7 @@ export function Sidebar() {
           <NavLink
             key={to}
             to={to}
+            onClick={handleNavClick}
             className={({ isActive }) => `
               group flex items-center gap-3 rounded-xl px-3 py-2.5
               text-sm font-medium transition-all duration-150
@@ -76,12 +90,13 @@ export function Sidebar() {
         ))}
       </nav>
 
-      {/* ── BOTÓN COLAPSAR / EXPANDIR ── */}
+      {/* ── BOTÓN COLAPSAR / EXPANDIR - solo desktop ── */}
       <button
         onClick={() => setExpandido((v) => !v)}
         className="
+          hidden md:flex
           absolute -right-3 top-20
-          flex h-6 w-6 items-center justify-center
+          h-6 w-6 items-center justify-center
           rounded-full border border-border bg-bg-surface
           text-text-muted shadow-sm
           transition hover:border-accent-blue hover:text-accent-blue
