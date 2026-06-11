@@ -53,12 +53,14 @@ export function Sidebar({ isOpen = false, onClose }: SidebarProps) {
       </div>
 
       {/* Botón cerrar móvil - dentro del sidebar */}
-      <div className="md:hidden flex items-center justify-between h-14 px-4 border-b border-border">
-        <span className="text-sm font-bold text-text-primary">Menú</span>
-        <button onClick={onClose} className="p-2 hover:bg-bg-elevated rounded transition">
-          <X className="h-5 w-5 text-text-muted" />
-        </button>
-      </div>
+      {isOpen && (
+        <div className="md:hidden flex items-center justify-between h-14 px-4 border-b border-border">
+          <span className="text-sm font-bold text-text-primary">Menú</span>
+          <button onClick={onClose} className="p-2 hover:bg-bg-elevated rounded transition">
+            <X className="h-5 w-5 text-text-muted" />
+          </button>
+        </div>
+      )}
 
       {/* Nav items */}
       <nav className="flex-1 flex flex-col gap-1 px-2 py-4 overflow-y-auto">
