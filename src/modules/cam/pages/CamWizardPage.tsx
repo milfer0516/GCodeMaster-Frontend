@@ -22,6 +22,7 @@ const PASOS = [
 
 export function CamWizardPage() {
   const step = useCamStore((s) => s.step);
+  const setStep = useCamStore((s) => s.setStep);
   const reset = useCamStore((s) => s.reset);
   const pasoActual = PASOS.findIndex((p) => p.key === step);
 
@@ -51,9 +52,14 @@ export function CamWizardPage() {
           <div key={p.key} className="flex items-center gap-1">
             <div className="flex flex-col items-center">
               <div
+                onClick={() => {
+                  if (i < pasoActual) {
+                    setStep(p.key as any);
+                  }
+                }}
                 className={`flex h-7 w-7 md:h-8 md:w-8 items-center justify-center rounded-full text-xs font-bold transition-colors ${
                   i < pasoActual
-                    ? "bg-green-500 text-white"
+                    ? "bg-green-500 text-white cursor-pointer hover:bg-green-600"
                     : i === pasoActual
                       ? "bg-accent-blue text-white"
                       : "border border-border bg-bg-surface text-text-muted"

@@ -4,11 +4,11 @@ import {
   Ruler,
   Layers,
   Drill,
-  ChevronRight,
   CircleDot,
   Box,
   Wrench,
 } from "lucide-react";
+import { WizardNavButtons } from "./WizardNavButtons";
 
 // ── HELPERS ───────────────────────────────────────────────────────────────
 
@@ -47,8 +47,6 @@ function tipoIcono(tipo: string) {
 export const StepAnalisis = () => {
   const analisis = useCamStore((s) => s.analisis);
   const nombreArchivo = useCamStore((s) => s.nombreArchivo);
-  const setStep = useCamStore((s) => s.setStep);
-  const operaciones = useCamStore((s) => s.operaciones); // ← agrega esta
 
   if (!analisis) return null;
 
@@ -163,15 +161,12 @@ export const StepAnalisis = () => {
           ))}
       </div>
 
-      {/* Botón siguiente */}
-      <div className="flex justify-end">
-        <button
-          onClick={() => setStep("montaje")}
-          className="flex items-center gap-2 rounded-xl bg-accent-blue px-6 py-2.5 text-sm font-semibold text-white transition hover:bg-accent-blue/90 active:scale-[0.98]"
-        >
-          Configurar montaje <ChevronRight className="h-4 w-4" />
-        </button>
-      </div>
+      {/* Navegación */}
+      <WizardNavButtons
+        prevStep="cargar"
+        nextStep="montaje"
+        nextLabel="Configurar montaje"
+      />
     </div>
   );
 };

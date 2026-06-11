@@ -1,9 +1,10 @@
 // src/modules/cam/components/steps/StepMontaje.tsx
 import { useEffect, useState } from "react";
-import { ChevronRight, ChevronLeft, Settings2 } from "lucide-react";
+import { Settings2 } from "lucide-react";
 import { useCamStore } from "../../store/camStore";
 import { CamViewer3D } from "../CamViewer3D";
 import { ModalSujecion } from "../sujecion/ModalSujecion";
+import { WizardNavButtons } from "./WizardNavButtons";
 import { getMaquinas } from "../../../../services/maquinasService";
 import type { Maquina } from "../../../../services/maquinasService";
 import type { SujecionConfig } from "../../store/camStore";
@@ -281,29 +282,18 @@ export const StepMontaje = () => {
       </div>
 
       {/* Navegación */}
-      <div className="flex justify-between">
-        <button
-          onClick={() => setStep("analisis")}
-          className="flex items-center gap-2 rounded-xl border border-border px-4 md:px-5 py-3 md:py-2.5 min-h-[44px] text-sm font-medium text-text-muted transition hover:border-accent-blue/50 hover:text-text-primary"
-        >
-          <ChevronLeft className="h-4 w-4" /> <span className="hidden sm:inline">Análisis</span>
-        </button>
-        <button
-          onClick={() => {
-            console.log(
-              "montajeConfig al confirmar:",
-              JSON.stringify(montajeConfig, null, 2),
-            );
-            setStep("operaciones");
-          }}
-          disabled={!puedeAvanzar}
-          className="flex items-center gap-2 rounded-xl bg-accent-blue px-4 md:px-6 py-3 md:py-2.5 min-h-[44px] text-sm font-semibold text-white transition hover:bg-accent-blue/90 active:scale-[0.98] disabled:opacity-40 disabled:cursor-not-allowed"
-        >
-          <span className="hidden sm:inline">Configurar operaciones</span>
-          <span className="sm:hidden">Siguiente</span>
-          <ChevronRight className="h-4 w-4" />
-        </button>
-      </div>
+      <WizardNavButtons
+        prevStep="analisis"
+        nextStep="operaciones"
+        nextLabel="Configurar operaciones"
+        canAdvance={puedeAvanzar}
+        onNext={() => {
+          console.log(
+            "montajeConfig al confirmar:",
+            JSON.stringify(montajeConfig, null, 2),
+          );
+        }}
+      />
 
       {/* Modal de sujeción */}
       {modalAbierto && maquinaActiva && (

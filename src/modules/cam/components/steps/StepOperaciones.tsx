@@ -2,8 +2,8 @@
 import { useEffect, useState } from "react";
 import { useCamStore } from "../../store/camStore";
 import { CamViewer3D } from "../CamViewer3D";
+import { WizardNavButtons } from "./WizardNavButtons";
 import {
-  ChevronRight,
   Layers,
   Drill,
   Box,
@@ -305,13 +305,11 @@ export const StepOperaciones = () => {
           </div>
 
           <div className="border-t border-border pt-2">
-            <button
-              onClick={() => setStep("material")}
-              disabled={!haySeleccionadas}
-              className="flex w-full items-center justify-center gap-2 rounded-xl bg-accent-blue px-6 py-3 md:py-2.5 min-h-[44px] text-sm font-semibold text-white transition hover:bg-accent-blue/90 disabled:opacity-50 disabled:cursor-not-allowed active:scale-[0.98]"
-            >
-              Siguiente <ChevronRight className="h-4 w-4" />
-            </button>
+            <WizardNavButtons
+              prevStep="montaje"
+              nextStep="material"
+              canAdvance={haySeleccionadas}
+            />
           </div>
         </div>
       </div>
