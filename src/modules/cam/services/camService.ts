@@ -120,3 +120,11 @@ export async function getMaterialesPorGrupo(
   const { data } = await api.get(`/materiales/grupo/${grupoIso}`);
   return data;
 }
+
+// ── Asignar material al job ───────────────────────────────────────────────
+export async function asignarMaterialJob(idJob: number, idMaterial: number) {
+  const { data } = await api.put(`/cam/job/${idJob}/material`, {
+    id_material: idMaterial,
+  });
+  return data;
+}
