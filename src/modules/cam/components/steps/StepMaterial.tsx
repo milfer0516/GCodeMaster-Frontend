@@ -66,7 +66,7 @@ export const StepMaterial = () => {
     try {
       setSaving(true);
       await asignarMaterialJob(idJob, material.id_material);
-      setStep("maquina");
+      setStep("stock");
     } catch (err) {
       console.error("Error asignando material:", err);
       setError("No se pudo asignar el material al trabajo");
@@ -103,7 +103,7 @@ export const StepMaterial = () => {
         </div>
         <WizardNavButtons
           prevStep="operaciones"
-          nextStep="maquina"
+          nextStep="stock"
           canAdvance={false}
         />
       </div>
@@ -218,7 +218,7 @@ export const StepMaterial = () => {
       {/* Navegación */}
       <WizardNavButtons
         prevStep="operaciones"
-        nextStep="maquina"
+        nextStep="stock"
         canAdvance={!!material && !saving}
         onNext={handleNext}
       />

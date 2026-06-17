@@ -10,7 +10,7 @@ export type CamStep =
   | "montaje"
   | "operaciones"
   | "material"
-  | "maquina"
+  | "stock"
   | "resumen"
   | "resultado";
 
@@ -31,9 +31,23 @@ export interface MaterialSeleccionado {
 }
 
 export interface StockConfig {
-  tipo: string;
-  z_superior_mm: number;
-  z_inferior_mm: number;
+  tipo: "rectangular" | "cilindrico";
+  modo: "dimensiones" | "sobrematerial";
+
+  // Stock rectangular (placa/bloque)
+  ancho_mm: number;      // X
+  largo_mm: number;      // Y
+  alto_mm: number;       // Z
+
+  // Stock cilíndrico (disco/eje)
+  diametro_mm: number;
+  longitud_mm: number;
+
+  // Sobre-material (cuando modo = "sobrematerial")
+  sobre_radial_mm: number;   // para cilindro
+  sobre_axial_mm: number;    // para cilindro
+  sobre_xy_mm: number;       // para rectangular
+  sobre_z_mm: number;        // para rectangular
 }
 
 export interface DatumConfig {
@@ -148,9 +162,23 @@ interface CamState {
 }
 
 const STOCK_INICIAL: StockConfig = {
-  tipo: "por_cara",
-  z_superior_mm: 1.0,
-  z_inferior_mm: 1.0,
+  tipo: "rectangular",
+  modo: "sobrematerial",
+
+  // Rectangular
+  ancho_mm: 100,
+  largo_mm: 100,
+  alto_mm: 25,
+
+  // Cilíndrico
+  diametro_mm: 100,
+  longitud_mm: 50,
+
+  // Sobre-material
+  sobre_radial_mm: 2,
+  sobre_axial_mm: 3,
+  sobre_xy_mm: 2,
+  sobre_z_mm: 2,
 };
 
 const MONTAJE_INICIAL: MontajeConfig = {

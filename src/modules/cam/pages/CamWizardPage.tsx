@@ -4,7 +4,7 @@ import { StepCargarStep } from "../components/steps/StepCargarStep";
 import { StepAnalisis } from "../components/steps/StepAnalisis";
 import { StepOperaciones } from "../components/steps/StepOperaciones";
 import { StepMaterial } from "../components/steps/StepMaterial";
-import { StepMaquina } from "../components/steps/StepMaquina";
+import { StepStock } from "../components/steps/StepStock";
 import { StepResumen } from "../components/steps/StepResumen";
 import { StepResultado } from "../components/steps/StepResultado";
 import { StepMontaje } from "../components/steps/StepMontaje";
@@ -15,7 +15,7 @@ const PASOS = [
   { key: "montaje", label: "Montaje" },
   { key: "operaciones", label: "Operaciones" },
   { key: "material", label: "Material" },
-  { key: "maquina", label: "Máquina" },
+  { key: "stock", label: "Stock" },
   { key: "resumen", label: "Resumen" },
   { key: "resultado", label: "G-Code" },
 ];
@@ -93,7 +93,7 @@ export function CamWizardPage() {
         {step === "montaje" && <StepMontaje />}
         {step === "operaciones" && <StepOperaciones />}
         {step === "material" && <StepMaterial />}
-        {step === "maquina" && <StepMaquina />}
+        {step === "stock" && <StepStock />}
         {step === "resumen" && <StepResumen />}
         {step === "resultado" && <StepResultado />}
       </div>

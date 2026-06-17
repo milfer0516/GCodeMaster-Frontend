@@ -7,7 +7,7 @@ import { tessellateStep } from "../services/camService";
 import type { MeshData, FaceMetadata } from "../services/camService";
 import type { Operacion } from "../store/camStore";
 import { Loader2, AlertCircle } from "lucide-react";
-import type { SujecionConfig } from "../store/camStore";
+import type { SujecionConfig, StockConfig } from "../store/camStore";
 
 // ── Props — mismas que el visor anterior para no romper StepOperaciones ──
 // DESPUÉS
@@ -21,6 +21,7 @@ interface Props {
   onFaceClick?: (faceId: number) => void;
   sujecionConfig?: SujecionConfig | null;
   piezaBoundingBox?: { x: number; y: number; z: number };
+  stockConfig?: StockConfig | null;
 }
 // ── Colores ────────────────────────────────────────────────────────────────
 const COLOR_BASE = new THREE.Color(0x4a90d9); // azul acero — cara sin feature
@@ -109,6 +110,7 @@ export function CamViewer3D({
   onFaceClick,
   sujecionConfig = null,
   piezaBoundingBox,
+  stockConfig = null,
 }: Props) {
   const mountRef = useRef<HTMLDivElement>(null);
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
@@ -118,6 +120,7 @@ export function CamViewer3D({
   const hoveredRef = useRef<number | null>(null); // face_id en hover
   const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
   const controlsRef = useRef<OrbitControls | null>(null);
+  const stockMeshRef = useRef<THREE.Group | null>(null);
 
   const {
     archivo,
@@ -514,6 +517,150 @@ export function CamViewer3D({
       renderer.domElement.removeEventListener("click", handleClick);
     };
   }, [meshData, operaciones, seleccionadas, onToggle, onFaceClick]);
+
+  // ── 6. Dibujar stock (wireframe + translúcido) ──────────────────────────
+  useEffect(() => {
+    if (!sceneRef.current || !meshData) return;
+    const scene = sceneRef.current;
+
+    // Limpiar stock anterior
+    if (stockMeshRef.current) {
+      scene.remove(stockMeshRef.current);
+      stockMeshRef.current.traverse((obj) => {
+        if (obj instanceof THREE.Mesh) {
+          obj.geometry.dispose();
+          if (Array.isArray(obj.material)) {
+            obj.material.forEach((m) => m.dispose());
+          } else {
+            obj.material.dispose();
+          }
+        }
+      });
+      stockMeshRef.current = null;
+    }
+
+    if (!stockConfig) return;
+
+    const bb = meshData.bounding_box;
+    const bbMin = bb.min;
+    const bbMax = bb.max;
+    const center = bb.center;
+
+    // Calcular dimensiones del stock en coordenadas OCC
+    let stockWidth = 0;   // X en OCC
+    let stockDepth = 0;   // Y en OCC
+    let stockHeight = 0;  // Z en OCC
+    let stockDiameter = 0;
+    let stockLength = 0;
+
+    const piezaWidth = bbMax[0] - bbMin[0];
+    const piezaDepth = bbMax[1] - bbMin[1];
+    const piezaHeight = bbMax[2] - bbMin[2];
+
+    if (stockConfig.tipo === "rectangular") {
+      if (stockConfig.modo === "dimensiones") {
+        stockWidth = stockConfig.ancho_mm;
+        stockDepth = stockConfig.largo_mm;
+        stockHeight = stockConfig.alto_mm;
+      } else {
+        stockWidth = piezaWidth + 2 * stockConfig.sobre_xy_mm;
+        stockDepth = piezaDepth + 2 * stockConfig.sobre_xy_mm;
+        stockHeight = piezaHeight + 2 * stockConfig.sobre_z_mm;
+      }
+    } else {
+      // Cilíndrico
+      if (stockConfig.modo === "dimensiones") {
+        stockDiameter = stockConfig.diametro_mm;
+        stockLength = stockConfig.longitud_mm;
+      } else {
+        const piezaDiamRadial = Math.max(piezaWidth, piezaDepth);
+        stockDiameter = piezaDiamRadial + 2 * stockConfig.sobre_radial_mm;
+        stockLength = piezaHeight + 2 * stockConfig.sobre_axial_mm;
+      }
+    }
+
+    const stockGroup = new THREE.Group();
+
+    if (stockConfig.tipo === "rectangular") {
+      // Caja translúcida
+      const boxGeometry = new THREE.BoxGeometry(
+        stockWidth,
+        stockDepth,
+        stockHeight,
+      );
+      const boxMaterial = new THREE.MeshBasicMaterial({
+        color: 0x88ccff,
+        transparent: true,
+        opacity: 0.15,
+        side: THREE.DoubleSide,
+      });
+      const boxMesh = new THREE.Mesh(boxGeometry, boxMaterial);
+
+      // Wireframe
+      const edges = new THREE.EdgesGeometry(boxGeometry);
+      const lineMaterial = new THREE.LineBasicMaterial({
+        color: 0x4499dd,
+        linewidth: 2,
+      });
+      const wireframe = new THREE.LineSegments(edges, lineMaterial);
+
+      stockGroup.add(boxMesh);
+      stockGroup.add(wireframe);
+
+      // Rotar igual que la pieza: -90° en X (OCC Z → Three.js Y)
+      stockGroup.rotation.x = -Math.PI / 2;
+
+      // Posicionar: centrado en XY, base en z=0 OCC
+      // Después de rotar -90° en X: [x, z, -y] en Three.js
+      stockGroup.position.set(
+        -center[0],
+        -bbMin[2] + stockHeight / 2,
+        -center[1],
+      );
+    } else {
+      // Cilindro translúcido
+      // OCC: eje del disco es Z (altura)
+      // Three.js CylinderGeometry: eje por defecto es Y
+      // Tras rotar -90° en X, el eje Y de Three.js apunta hacia Z de OCC
+      const cylinderGeometry = new THREE.CylinderGeometry(
+        stockDiameter / 2,
+        stockDiameter / 2,
+        stockLength,
+        32,
+      );
+      const cylinderMaterial = new THREE.MeshBasicMaterial({
+        color: 0x88ccff,
+        transparent: true,
+        opacity: 0.15,
+        side: THREE.DoubleSide,
+      });
+      const cylinderMesh = new THREE.Mesh(cylinderGeometry, cylinderMaterial);
+
+      // Wireframe
+      const edges = new THREE.EdgesGeometry(cylinderGeometry);
+      const lineMaterial = new THREE.LineBasicMaterial({
+        color: 0x4499dd,
+        linewidth: 2,
+      });
+      const wireframe = new THREE.LineSegments(edges, lineMaterial);
+
+      stockGroup.add(cylinderMesh);
+      stockGroup.add(wireframe);
+
+      // Rotar para que el eje del cilindro apunte a Z de OCC (Y de Three.js tras rotación base)
+      stockGroup.rotation.x = -Math.PI / 2;
+
+      // Posicionar: centrado, base en z=0 OCC
+      stockGroup.position.set(
+        -center[0],
+        -bbMin[2] + stockLength / 2,
+        -center[1],
+      );
+    }
+
+    scene.add(stockGroup);
+    stockMeshRef.current = stockGroup;
+  }, [stockConfig, meshData]);
 
   // ── Render ─────────────────────────────────────────────────────────────
   if (meshLoading) {
