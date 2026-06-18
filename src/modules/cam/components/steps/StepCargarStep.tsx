@@ -18,12 +18,26 @@ export const StepCargarStep = () => {
   const [cargando, setCargando] = useState(false);
   const [error, setError] = useState("");
 
+  // Validación compartida de archivo: extensión y tamaño
+  const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5 MB
+
+  const validateFile = (file: File): string | null => {
+    const name = file.name.toLowerCase();
+    if (!name.endsWith(".step") && !name.endsWith(".stp")) {
+      return "Solo se permiten archivos .step o .stp";
+    }
+    if (file.size > MAX_FILE_SIZE) {
+      return "El archivo supera el tamaño máximo de 5 MB";
+    }
+    return null;
+  };
+
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      const ext = file.name.toLowerCase();
-      if (!ext.endsWith('.step') && !ext.endsWith('.stp')) {
-        setError('Solo archivos .step o .stp');
+      const validationError = validateFile(file);
+      if (validationError) {
+        setError(validationError);
         return;
       }
       setArchivo(file);
@@ -34,12 +48,14 @@ export const StepCargarStep = () => {
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
     const file = e.dataTransfer.files?.[0];
-    if (file && (file.name.endsWith(".step") || file.name.endsWith(".stp"))) {
-      setArchivo(file);
-      setError("");
-    } else {
-      setError("Solo se aceptan archivos .STEP o .STP");
+    if (!file) return;
+    const validationError = validateFile(file);
+    if (validationError) {
+      setError(validationError);
+      return;
     }
+    setArchivo(file);
+    setError("");
   };
 
   const handleUpload = async () => {
