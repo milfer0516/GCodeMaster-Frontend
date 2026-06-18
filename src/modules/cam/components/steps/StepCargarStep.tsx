@@ -62,14 +62,9 @@ export const StepCargarStep = () => {
     if (!archivo) return;
     setCargando(true);
     setError("");
-    // En StepCargarStep.tsx, antes de setAnalisis
-    /* const result = await analyzeStep(archivo);
-    console.log("RESULT COMPLETO:", JSON.stringify(result, null, 2)); // ← agrega
-    setAnalisis(result.id_job, result.analisis); */
 
     try {
       const result = await analyzeStep(archivo);
-      /* #console.log("RESULT COMPLETO:", JSON.stringify(result, null, 2)); */
       setMeshData(null as any);
       setMeshError(null);
       setAnalisis(result.id_job, result.analisis);
@@ -86,6 +81,17 @@ export const StepCargarStep = () => {
             : String(err.response.data.detail)
           : "Error al analizar el archivo. Verifica que sea un STEP válido.",
       );
+    } finally {
+      setCargando(false);
+    }
+  };
+
+  // Resetear estado para volver a cargar otro archivo
+  const handleRetry = () => {
+    setError("");
+    setArchivo(null);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
     }
   };
 
@@ -167,11 +173,19 @@ export const StepCargarStep = () => {
         className="hidden"
       />
 
-      {/* Error */}
+      {/* Error con opción de reintentar */}
       {error && (
-        <div className="flex items-start gap-2 rounded-xl border border-red-500/20 bg-red-500/5 px-4 py-3 text-sm text-red-400">
-          <AlertCircle className="h-4 w-4 mt-0.5 flex-shrink-0" />
-          {error}
+        <div className="rounded-xl border-2 border-red-500 bg-red-500/10 px-4 md:px-6 py-4 space-y-3">
+          <div className="flex items-start gap-2 text-sm text-red-400">
+            <AlertCircle className="h-5 w-5 mt-0.5 flex-shrink-0" />
+            <p className="flex-1">{error}</p>
+          </div>
+          <button
+            onClick={handleRetry}
+            className="w-full md:w-auto px-4 py-2.5 min-h-[44px] rounded-lg bg-red-500/20 hover:bg-red-500/30 text-red-300 font-medium text-sm transition active:scale-[0.98]"
+          >
+            Cargar otro archivo
+          </button>
         </div>
       )}
 
