@@ -207,8 +207,8 @@ export const StepOperaciones = () => {
           </div>
 
           <p className="border-t border-border px-3 md:px-4 py-2 text-[9px] md:text-[10px] text-text-muted">
-            🖱 Arrastra para rotar · Scroll para zoom · Clic en operación para
-            seleccionar
+            🖱 Arrastra para rotar · Scroll para zoom · Doble clic en una cara
+            para seleccionar la operación. Un clic muestra su dimensión.
           </p>
         </div>
 

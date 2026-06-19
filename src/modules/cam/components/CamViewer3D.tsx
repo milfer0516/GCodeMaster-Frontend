@@ -47,6 +47,39 @@ function colorPorTipo(tipo: string): THREE.Color {
   }
 }
 
+// ── Texto de dimensión por cara según su tipo de superficie ────────────────
+function formatFaceDimension(face: FaceMetadata): string {
+  const f = face.feature;
+  // Redondeo a 1 decimal solo para la visualización
+  const r1 = (n: number) => Math.round(n * 10) / 10;
+
+  switch (face.surface_type) {
+    case "cylinder": {
+      if (f?.diametro_mm == null) return "Cilindro";
+      let txt = `Ø${r1(f.diametro_mm)} mm`;
+      if (f.profundidad_mm != null) txt += ` · prof ${r1(f.profundidad_mm)} mm`;
+      return txt;
+    }
+    case "plane": {
+      if (f?.dim_largo_mm != null && f?.dim_ancho_mm != null)
+        return `${r1(f.dim_largo_mm)} × ${r1(f.dim_ancho_mm)} mm`;
+      if (f?.area_mm2 != null) return `${r1(f.area_mm2)} mm²`;
+      return "Plano";
+    }
+    case "cone": {
+      if (f?.diametro_mm != null && f?.angulo_grados != null)
+        return `Ø${r1(f.diametro_mm)} mm · ${r1(f.angulo_grados)}°`;
+      return "Chaflán";
+    }
+    case "torus": {
+      if (f?.radio_menor_mm != null) return `R ${r1(f.radio_menor_mm)} mm`;
+      return "Filete";
+    }
+    default:
+      return face.surface_type || "Cara";
+  }
+}
+
 // ── Construir BufferGeometry desde MeshData ────────────────────────────────
 function buildBufferGeometry(meshData: MeshData): THREE.BufferGeometry {
   const geo = new THREE.BufferGeometry();
@@ -122,6 +155,9 @@ export function CamViewer3D({
   const controlsRef = useRef<OrbitControls | null>(null);
   const stockMeshRef = useRef<THREE.Group | null>(null);
 
+  // Cara seleccionada con click simple para mostrar su dimensión en el panel
+  const [faceInfo, setFaceInfo] = useState<FaceMetadata | null>(null);
+
   const {
     archivo,
     idJob,
@@ -134,6 +170,11 @@ export function CamViewer3D({
   } = useCamStore();
 
   const maquina = useCamStore((s) => s.maquina);
+
+  // Limpiar la cara de info cuando cambia la geometría cargada
+  useEffect(() => {
+    setFaceInfo(null);
+  }, [meshData]);
 
   // ── 1. Cargar mesh OCC la primera vez que se monta ──────────────────────
   useEffect(() => {
@@ -496,10 +537,20 @@ export function CamViewer3D({
       }
     };
 
-    // Click
+    // Click simple — SOLO muestra la dimensión de la cara, no selecciona.
     const handleClick = (e: MouseEvent) => {
       const faceId = getHitFaceId(e);
-      //console.log("CLICK faceId:", faceId);
+      if (faceId === null) {
+        setFaceInfo(null); // click al vacío → ocultar panel
+        return;
+      }
+      const face = meshData?.faces.find((f) => f.face_id === faceId) ?? null;
+      setFaceInfo(face);
+    };
+
+    // Doble click — selecciona/deselecciona la operación (lógica previa del click).
+    const handleDoubleClick = (e: MouseEvent) => {
+      const faceId = getHitFaceId(e);
       if (faceId === null) return;
       if (onFaceClick) {
         onFaceClick(faceId);
@@ -511,10 +562,12 @@ export function CamViewer3D({
 
     renderer.domElement.addEventListener("mousemove", handleMouseMove);
     renderer.domElement.addEventListener("click", handleClick);
+    renderer.domElement.addEventListener("dblclick", handleDoubleClick);
 
     return () => {
       renderer.domElement.removeEventListener("mousemove", handleMouseMove);
       renderer.domElement.removeEventListener("click", handleClick);
+      renderer.domElement.removeEventListener("dblclick", handleDoubleClick);
     };
   }, [meshData, operaciones, seleccionadas, onToggle, onFaceClick]);
 
@@ -686,10 +739,23 @@ export function CamViewer3D({
   }
 
   return (
-    <div
-      ref={mountRef}
-      className="w-full h-full rounded-xl overflow-hidden"
-      style={{ minHeight: "300px", cursor: "grab", background: "#0d1117" }}
-    />
+    <div className="relative w-full h-full" style={{ minHeight: "300px" }}>
+      <div
+        ref={mountRef}
+        className="w-full h-full rounded-xl overflow-hidden"
+        style={{ minHeight: "300px", cursor: "grab", background: "#0d1117" }}
+      />
+
+      {/* Panel de dimensión — esquina inferior izquierda.
+          pointer-events:none para no estorbar la rotación con OrbitControls. */}
+      {faceInfo && (
+        <div
+          className="absolute bottom-2 left-2 rounded-lg bg-black/70 px-3 py-1.5 text-sm font-medium text-white shadow-lg backdrop-blur-sm"
+          style={{ pointerEvents: "none" }}
+        >
+          {formatFaceDimension(faceInfo)}
+        </div>
+      )}
+    </div>
   );
 }

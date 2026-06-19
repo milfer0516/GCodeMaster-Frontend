@@ -19,6 +19,14 @@ export interface FeatureInfo {
   op_id: string | null;
   op_tipo: string | null;
   tipo: string | null;
+  // Campos de dimensión que ahora envía el backend (todos opcionales)
+  diametro_mm?: number;
+  profundidad_mm?: number;
+  dim_largo_mm?: number;
+  dim_ancho_mm?: number;
+  area_mm2?: number;
+  angulo_grados?: number;
+  radio_menor_mm?: number;
 }
 
 export interface FaceMetadata {

@@ -196,7 +196,7 @@ export const StepMontaje = () => {
             <p className="text-sm font-medium text-text-primary mb-2">
               Cara de apoyo{" "}
               <span className="text-xs text-text-muted font-normal">
-                (o haz clic en la pieza)
+                (doble clic en la cara; un clic muestra su dimensión)
               </span>
             </p>
             {carasParaSelector.length === 0 ? (
