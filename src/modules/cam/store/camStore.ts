@@ -144,7 +144,7 @@ interface CamState {
 
   // Acciones
   setStep: (step: CamStep) => void;
-  setArchivo: (archivo: File) => void;
+  setArchivo: (archivo: File | null) => void;
   setAnalisis: (idJob: number, analisis: Record<string, any>) => void;
   setMontajeConfig: (config: Partial<MontajeConfig>) => void;
   setOperaciones: (ops: Operacion[]) => void;
@@ -213,7 +213,7 @@ export const useCamStore = create<CamState>((set) => ({
   gcodeSetups: [],
 
   setStep: (step) => set({ step }),
-  setArchivo: (archivo) => set({ archivo, nombreArchivo: archivo.name }),
+  setArchivo: (archivo) => set({ archivo, nombreArchivo: archivo?.name ?? "" }),
   setAnalisis: (idJob, analisis) => {
     const ops = convertirOperaciones(analisis);
     set({ idJob, analisis, operaciones: ops, meshData: null, meshError: null });

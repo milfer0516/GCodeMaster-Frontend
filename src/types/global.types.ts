@@ -21,7 +21,7 @@ export interface Empresa {
   telefono?: string | null;
   responsable_tecnico: string | null;
   plan_activo: EmpresaPlan;
-  fecha_registro?: string;
+  fecha_registro?: string | null;
   fecha_vencimiento: string | null;
   activo?: boolean;
   setup_completo: boolean;
