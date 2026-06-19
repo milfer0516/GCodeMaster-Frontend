@@ -170,6 +170,7 @@ export function CamViewer3D({
   } = useCamStore();
 
   const maquina = useCamStore((s) => s.maquina);
+  const analisis = useCamStore((s) => s.analisis); // TEMP: solo para log de diagnóstico de normales
 
   // Limpiar la cara de info cuando cambia la geometría cargada
   useEffect(() => {
@@ -411,6 +412,20 @@ export function CamViewer3D({
     if (!face || !face.face_normal) return;
 
     const [nx, ny, nz] = face.face_normal;
+
+    // ── TEMP DIAGNÓSTICO: comparar normal del teselado vs. análisis ──────────
+    const caraAnalisis = (analisis?.caras_planas ?? []).find(
+      (c: any) => c.face_index === faceIdDestacada,
+    );
+    console.log("🔎 [DIAG normal cara apoyo]", {
+      faceId: faceIdDestacada,
+      face_normal_teselado: face.face_normal,
+      normal_caras_planas: caraAnalisis?.normal ?? null,
+      apunta_arriba: caraAnalisis?.apunta_arriba ?? null,
+      apunta_abajo: caraAnalisis?.apunta_abajo ?? null,
+    });
+    // ─────────────────────────────────────────────────────────────────────────
+
     const normalThree = new THREE.Vector3(nx, nz, -ny).normalize();
     const targetDown = new THREE.Vector3(0, -1, 0);
 
