@@ -170,7 +170,7 @@ export function CamViewer3D({
   } = useCamStore();
 
   const maquina = useCamStore((s) => s.maquina);
-  const analisis = useCamStore((s) => s.analisis); // TEMP: solo para log de diagnóstico de normales
+  const analisis = useCamStore((s) => s.analisis); // normales confiables (caras_planas) para la rotación de apoyo
 
   // Limpiar la cara de info cuando cambia la geometría cargada
   useEffect(() => {
@@ -411,20 +411,15 @@ export function CamViewer3D({
     const face = meshData.faces.find((f) => f.face_id === faceIdDestacada);
     if (!face || !face.face_normal) return;
 
-    const [nx, ny, nz] = face.face_normal;
-
-    // ── TEMP DIAGNÓSTICO: comparar normal del teselado vs. análisis ──────────
+    // La normal del teselado (face.face_normal) puede venir con el signo
+    // invertido respecto al análisis. caras_planas es la fuente confiable:
+    // usamos esa y caemos de vuelta al teselado solo si la cara no aparece
+    // en el análisis. (Resto de la lógica de rotación sin cambios.)
     const caraAnalisis = (analisis?.caras_planas ?? []).find(
       (c: any) => c.face_index === faceIdDestacada,
     );
-    console.log("🔎 [DIAG normal cara apoyo]", {
-      faceId: faceIdDestacada,
-      face_normal_teselado: face.face_normal,
-      normal_caras_planas: caraAnalisis?.normal ?? null,
-      apunta_arriba: caraAnalisis?.apunta_arriba ?? null,
-      apunta_abajo: caraAnalisis?.apunta_abajo ?? null,
-    });
-    // ─────────────────────────────────────────────────────────────────────────
+    const normalApoyo = caraAnalisis?.normal ?? face.face_normal;
+    const [nx, ny, nz] = normalApoyo;
 
     const normalThree = new THREE.Vector3(nx, nz, -ny).normalize();
     const targetDown = new THREE.Vector3(0, -1, 0);
@@ -479,7 +474,7 @@ export function CamViewer3D({
     animId = requestAnimationFrame(animar);
 
     return () => cancelAnimationFrame(animId);
-  }, [faceIdDestacada, meshData, sujecionConfig]);
+  }, [faceIdDestacada, meshData, sujecionConfig, analisis]);
 
   // ── 5. Picking por cara — hover y click ────────────────────────────────
   useEffect(() => {
