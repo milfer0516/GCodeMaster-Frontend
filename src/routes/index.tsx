@@ -33,18 +33,26 @@ function RootRoute() {
   const onboardingCompleto = useAuthStore((state) => state.onboarding_completo);
   const mfaPendiente = useAuthStore((state) => state.mfa_pendiente);
 
+  console.log("[RootRoute] accessToken:", !!accessToken);
+  console.log("[RootRoute] mfaPendiente:", mfaPendiente);
+  console.log("[RootRoute] onboardingCompleto:", onboardingCompleto);
+
   if (!accessToken) {
+    console.log("[RootRoute] Sin token, mostrando LandingPage");
     return <LandingPage />;
   }
 
   if (mfaPendiente) {
+    console.log("[RootRoute] MFA pendiente, redirigiendo a /mfa");
     return <Navigate to="/mfa" replace />;
   }
 
   if (onboardingCompleto) {
+    console.log("[RootRoute] Onboarding completo, redirigiendo a /dashboard");
     return <Navigate to="/dashboard" replace />;
   }
 
+  console.log("[RootRoute] Redirigiendo a /onboarding");
   return <Navigate to="/onboarding" replace />;
 }
 

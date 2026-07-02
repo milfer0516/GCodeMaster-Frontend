@@ -40,7 +40,9 @@ async function refreshAccessToken(): Promise<string | null> {
   const { refresh_token, setTokens, logout } = useAuthStore.getState();
 
   if (!refresh_token) {
+    console.log("[refreshAccessToken] No hay refresh_token, ejecutando logout");
     logout();
+    console.log("[refreshAccessToken] Redirigiendo a /login");
     window.location.assign("/login");
     return null;
   }
@@ -51,13 +53,16 @@ async function refreshAccessToken(): Promise<string | null> {
         refresh_token,
       })
       .then((response) => {
+        console.log("[refreshAccessToken] Refresh exitoso");
         const newAccessToken = response.data.access_token;
         const newRefreshToken = response.data.refresh_token ?? refresh_token;
         setTokens(newAccessToken, newRefreshToken);
         return newAccessToken;
       })
       .catch(() => {
+        console.log("[refreshAccessToken] Refresh falló, ejecutando logout");
         logout();
+        console.log("[refreshAccessToken] Redirigiendo a /login");
         window.location.assign("/login");
         return null;
       })
@@ -77,6 +82,10 @@ api.interceptors.response.use(
     // Excluir logout: cualquier URL que contenga "logout" (sin importar prefijo/baseURL)
     const isLogoutRequest = originalRequest?.url?.includes("logout");
 
+    console.log("[API Interceptor] Error 401 detectado");
+    console.log("[API Interceptor] URL:", originalRequest?.url);
+    console.log("[API Interceptor] isLogoutRequest:", isLogoutRequest);
+
     if (
       !originalRequest ||
       error.response?.status !== 401 ||
@@ -87,16 +96,20 @@ api.interceptors.response.use(
       originalRequest.url?.includes("/auth/refresh") ||
       isLogoutRequest
     ) {
+      console.log("[API Interceptor] Request excluido, rechazando error");
       return Promise.reject(error);
     }
 
+    console.log("[API Interceptor] Intentando refresh token...");
     originalRequest._retry = true;
 
     const newToken = await refreshAccessToken();
     if (!newToken) {
+      console.log("[API Interceptor] Refresh falló, rechazando error");
       return Promise.reject(error);
     }
 
+    console.log("[API Interceptor] Refresh exitoso, reintentando request");
     originalRequest.headers = AxiosHeaders.from(originalRequest.headers);
     originalRequest.headers.set("Authorization", `Bearer ${newToken}`);
 
