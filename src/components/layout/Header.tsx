@@ -45,27 +45,19 @@ export function Header() {
   };
 
   const handleLogout = async () => {
-    console.log("[Header] 1. Inicio handleLogout");
-
     // Limpiar estado local primero
     logoutStore();
-    console.log("[Header] 2. Estado local limpiado con logoutStore()");
 
     // Intentar notificar al backend (sin esperar ni fallar si hay error)
     try {
-      console.log("[Header] 3. Llamando logoutService()...");
       await logoutService();
-      console.log("[Header] 4. logoutService() exitoso");
-    } catch (error) {
-      console.log("[Header] 4. logoutService() falló:", error);
+    } catch {
       // Ignorar errores del backend - ya limpiamos el estado local
     }
 
     // Redirigir a la landing page
-    console.log("[Header] 5. Ejecutando navigate('/')");
     toast.success("Sesión cerrada.");
     navigate("/");
-    console.log("[Header] 6. navigate('/') ejecutado");
   };
 
   return (
