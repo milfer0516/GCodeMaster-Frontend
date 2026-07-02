@@ -51,7 +51,7 @@ export function Header() {
     } finally {
       logoutStore();
       toast.success("Sesión cerrada.");
-      navigate("/login");
+      navigate("/");
     }
   };
 

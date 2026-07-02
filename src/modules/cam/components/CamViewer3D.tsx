@@ -407,6 +407,7 @@ export function CamViewer3D({
   // ── 4b. Rotar mesh con animación suave según cara de apoyo ─────────────
   useEffect(() => {
     if (!meshRef.current || !meshData || faceIdDestacada === null) return;
+    if (!controlsRef.current) return;
 
     const face = meshData.faces.find((f) => f.face_id === faceIdDestacada);
     if (!face || !face.face_normal) return;
@@ -447,11 +448,37 @@ export function CamViewer3D({
       [bb.max[0], bb.max[1], bb.max[2]],
     ].map(([x, y, z]) => new THREE.Vector3(x, y, z).applyQuaternion(qTarget));
 
+    // Calcular nuevo centro X/Y/Z del bounding box transformado
     const minYTransformado = Math.min(...corners.map((v) => v.y));
-    const zApoyo = sujecionConfig?.envolvente?.z_apoyo_mm ?? 0;
-    const posYTarget = -minYTransformado + zApoyo;
-    const posYStart = meshRef.current.position.y;
+    const maxYTransformado = Math.max(...corners.map((v) => v.y));
+    const minXTransformado = Math.min(...corners.map((v) => v.x));
+    const maxXTransformado = Math.max(...corners.map((v) => v.x));
+    const minZTransformado = Math.min(...corners.map((v) => v.z));
+    const maxZTransformado = Math.max(...corners.map((v) => v.z));
 
+    const centerXTransformado = (minXTransformado + maxXTransformado) / 2;
+    const centerYTransformado = (minYTransformado + maxYTransformado) / 2;
+    const centerZTransformado = (minZTransformado + maxZTransformado) / 2;
+
+    const zApoyo = sujecionConfig?.envolvente?.z_apoyo_mm ?? 0;
+
+    // Posiciones target del mesh: centrar en X/Z y apoyar en Y
+    const posYTarget = -minYTransformado + zApoyo;
+    const posXTarget = -centerXTransformado;
+    const posZTarget = -centerZTransformado;
+
+    // Posiciones iniciales
+    const posYStart = meshRef.current.position.y;
+    const posXStart = meshRef.current.position.x;
+    const posZStart = meshRef.current.position.z;
+
+    // Target de la cámara: apuntar al centro visual de la pieza en el mundo
+    // X=0, Z=0 por construcción (ya que centramos con -centerXTransformado/-centerZTransformado)
+    // Y = posición base del mesh + offset al centro del bbox
+    const controls = controlsRef.current;
+    const targetStart = controls.target.clone();
+    const centerYMundo = posYTarget + centerYTransformado;
+    const targetEnd = new THREE.Vector3(0, centerYMundo, 0);
 
     // Animación slerp — 600ms
     const DURACION_MS = 600;
@@ -460,12 +487,21 @@ export function CamViewer3D({
     let animId: number;
 
     const animar = (ahora: number) => {
-      if (!meshRef.current) return;
+      if (!meshRef.current || !controlsRef.current) return;
       const t = Math.min((ahora - inicio) / DURACION_MS, 1);
       const ease = t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t;
+
+      // Interpolar rotación
       meshRef.current.quaternion.slerpQuaternions(qStart, qTarget, ease);
-      // Ajustar Y simultáneamente con la rotación
+
+      // Interpolar posición X/Y/Z simultáneamente con la rotación
+      meshRef.current.position.x = posXStart + (posXTarget - posXStart) * ease;
       meshRef.current.position.y = posYStart + (posYTarget - posYStart) * ease;
+      meshRef.current.position.z = posZStart + (posZTarget - posZStart) * ease;
+
+      // Interpolar target de la cámara para que siga al centro visual del mesh
+      controlsRef.current.target.lerpVectors(targetStart, targetEnd, ease);
+
       if (t < 1) {
         animId = requestAnimationFrame(animar);
       }
