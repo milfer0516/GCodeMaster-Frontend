@@ -480,8 +480,8 @@ export function CamViewer3D({
     const centerYMundo = posYTarget + centerYTransformado;
     const targetEnd = new THREE.Vector3(0, centerYMundo, 0);
 
-    // Animación slerp — 600ms
-    const DURACION_MS = 600;
+    // Animación slerp — 1200ms
+    const DURACION_MS = 1200;
     const qStart = meshRef.current.quaternion.clone();
     const inicio = performance.now();
     let animId: number;

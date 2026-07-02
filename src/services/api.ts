@@ -81,7 +81,8 @@ api.interceptors.response.use(
       originalRequest.url?.includes("/auth/login") ||
       originalRequest.url?.includes("/auth/register") ||
       originalRequest.url?.includes("/auth/verify-mfa") ||
-      originalRequest.url?.includes("/auth/refresh")
+      originalRequest.url?.includes("/auth/refresh") ||
+      originalRequest.url?.includes("/auth/logout")
     ) {
       return Promise.reject(error);
     }
