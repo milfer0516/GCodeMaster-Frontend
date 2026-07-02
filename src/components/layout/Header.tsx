@@ -45,14 +45,19 @@ export function Header() {
   };
 
   const handleLogout = async () => {
+    // Limpiar estado local primero
+    logoutStore();
+
+    // Intentar notificar al backend (sin esperar ni fallar si hay error)
     try {
       await logoutService();
     } catch {
-    } finally {
-      logoutStore();
-      toast.success("Sesión cerrada.");
-      navigate("/");
+      // Ignorar errores del backend - ya limpiamos el estado local
     }
+
+    // Redirigir a la landing page
+    toast.success("Sesión cerrada.");
+    navigate("/");
   };
 
   return (

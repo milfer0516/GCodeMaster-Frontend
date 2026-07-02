@@ -74,6 +74,9 @@ api.interceptors.response.use(
   async (error: AxiosError) => {
     const originalRequest = error.config as RetryConfig | undefined;
 
+    // Excluir logout: cualquier URL que contenga "logout" (sin importar prefijo/baseURL)
+    const isLogoutRequest = originalRequest?.url?.includes("logout");
+
     if (
       !originalRequest ||
       error.response?.status !== 401 ||
@@ -82,7 +85,7 @@ api.interceptors.response.use(
       originalRequest.url?.includes("/auth/register") ||
       originalRequest.url?.includes("/auth/verify-mfa") ||
       originalRequest.url?.includes("/auth/refresh") ||
-      originalRequest.url?.includes("/auth/logout")
+      isLogoutRequest
     ) {
       return Promise.reject(error);
     }
