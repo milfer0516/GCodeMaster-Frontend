@@ -111,7 +111,15 @@ function buildMaterials(
   return faces.map((face) => {
     // Buscar si esta cara tiene una operación asociada via feature.op_id
     const opId = face.feature?.op_id as string | undefined;
-    const op = opId ? operaciones.find((o) => o.id === opId) : undefined;
+    let op = opId ? operaciones.find((o) => o.id === opId) : undefined;
+
+    // Fallback: buscar por face_indices si no se encontró por op_id
+    if (!op) {
+      op = operaciones.find((o) =>
+        o.face_indices && o.face_indices.includes(face.face_id)
+      );
+    }
+
     const isSeleccionada = op ? seleccionadas.includes(op.id) : false;
 
     const color = isSeleccionada
@@ -377,7 +385,15 @@ export function CamViewer3D({
       if (!mat) return;
 
       const opId = face.feature?.op_id as string | undefined;
-      const op = opId ? operaciones.find((o) => o.id === opId) : undefined;
+      let op = opId ? operaciones.find((o) => o.id === opId) : undefined;
+
+      // Fallback: buscar por face_indices si no se encontró por op_id
+      if (!op) {
+        op = operaciones.find((o) =>
+          o.face_indices && o.face_indices.includes(face.face_id)
+        );
+      }
+
       const isSeleccionada = op ? seleccionadas.includes(op.id) : false;
 
       // No sobreescribir si está en hover

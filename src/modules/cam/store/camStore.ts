@@ -21,6 +21,7 @@ export interface Operacion {
   setup: number;
   seleccionada: boolean;
   herramienta_sugerida?: string;
+  face_indices?: number[];
 }
 
 export interface MaterialSeleccionado {
@@ -274,6 +275,7 @@ const convertirOperaciones = (analisis: Record<string, any>): Operacion[] => {
       : op.diametro_mm
         ? `Ø${op.diametro_mm}mm`
         : undefined,
+    face_indices: op.face_indices,
   }));
 
   console.log(

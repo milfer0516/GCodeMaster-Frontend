@@ -101,7 +101,7 @@ export const StepOperaciones = () => {
         op_id: op.id,
         tipo: op.tipo,
         descripcion: op.descripcion,
-        face_indices: (op as any).face_indices,
+        face_indices: op.face_indices,
       })),
     );
     console.log(
@@ -127,7 +127,7 @@ export const StepOperaciones = () => {
           op_id: op.id,
           tipo: op.tipo,
           descripcion: op.descripcion,
-          face_indices: (op as any).face_indices,
+          face_indices: op.face_indices,
         });
         toggleOperacion(op.id);
       }}
