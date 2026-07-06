@@ -95,6 +95,7 @@ export async function generateGcode(payload: {
   materialKey: string;
   stockConfig: object;
   datumConfig: object;
+  montajeConfig: object;
   ordenSetups?: string;
   machineKey?: string;
 }) {
@@ -106,6 +107,7 @@ export async function generateGcode(payload: {
   form.append("material_key", payload.materialKey);
   form.append("stock_json", JSON.stringify(payload.stockConfig));
   form.append("datum_json", JSON.stringify(payload.datumConfig));
+  form.append("montaje_json", JSON.stringify(payload.montajeConfig));
   form.append("orden_setups", payload.ordenSetups ?? "superior_primero");
   if (payload.machineKey) form.append("machine_key", payload.machineKey);
 
