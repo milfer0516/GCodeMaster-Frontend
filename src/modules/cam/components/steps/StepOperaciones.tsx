@@ -93,6 +93,23 @@ export const StepOperaciones = () => {
     ...(analisis?.lados?.lado_b?.operaciones ?? []),
   ];
 
+  // TEMP DEBUG - remove later
+  useEffect(() => {
+    console.log(
+      "🔍 DEBUG: [StepOperaciones] operaciones detectadas (typed)",
+      operaciones.map((op) => ({
+        op_id: op.id,
+        tipo: op.tipo,
+        descripcion: op.descripcion,
+        face_indices: (op as any).face_indices,
+      })),
+    );
+    console.log(
+      "🔍 DEBUG: [StepOperaciones] operacionesBackend RAW (lado_a + lado_b)",
+      operacionesBackend,
+    );
+  }, [operaciones]);
+
   const opsSetup1 = operaciones.filter((op) => op.setup === 1);
   const opsSetup2 = operaciones.filter((op) => op.setup === 2);
   const tieneAmbos = opsSetup1.length > 0 && opsSetup2.length > 0;
@@ -104,7 +121,16 @@ export const StepOperaciones = () => {
   const renderOp = (op: (typeof operaciones)[0]) => (
     <button
       key={op.id}
-      onClick={() => toggleOperacion(op.id)}
+      onClick={() => {
+        // TEMP DEBUG - remove later
+        console.log("🔍 DEBUG: [StepOperaciones] toggle desde lista (checkbox)", {
+          op_id: op.id,
+          tipo: op.tipo,
+          descripcion: op.descripcion,
+          face_indices: (op as any).face_indices,
+        });
+        toggleOperacion(op.id);
+      }}
       className={`w-full rounded-xl border p-3 min-h-[44px] text-left transition active:scale-[0.99] ${
         op.seleccionada
           ? "border-accent-blue/30 bg-accent-blue/5"

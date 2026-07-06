@@ -591,6 +591,12 @@ export function CamViewer3D({
         return;
       }
       const face = meshData?.faces.find((f) => f.face_id === faceId) ?? null;
+      // TEMP DEBUG - remove later
+      console.log("🔍 DEBUG: [CamViewer3D] click simple en cara", {
+        face_id: faceId,
+        surface_type: face?.surface_type,
+        feature: face?.feature,
+      });
       setFaceInfo(face);
     };
 
@@ -599,11 +605,25 @@ export function CamViewer3D({
       const faceId = getHitFaceId(e);
       if (faceId === null) return;
       if (onFaceClick) {
+        // TEMP DEBUG - remove later
+        console.log("🔍 DEBUG: [CamViewer3D] doble clic en cara (onFaceClick)", {
+          face_id: faceId,
+        });
         onFaceClick(faceId);
         return;
       }
       const opId = faceToOpId.get(faceId);
-      if (opId) onToggle(opId);
+      if (opId) {
+        const opToggled = operaciones.find((o) => o.id === opId);
+        // TEMP DEBUG - remove later
+        console.log("🔍 DEBUG: [CamViewer3D] doble clic → toggle operación", {
+          op_id: opToggled?.id,
+          tipo: opToggled?.tipo,
+          descripcion: opToggled?.descripcion,
+          face_indices: (opToggled as any)?.face_indices,
+        });
+        onToggle(opId);
+      }
     };
 
     renderer.domElement.addEventListener("mousemove", handleMouseMove);
