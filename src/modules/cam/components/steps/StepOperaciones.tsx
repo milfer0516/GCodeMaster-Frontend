@@ -202,7 +202,7 @@ export const StepOperaciones = () => {
               seleccionadas={seleccionadas}
               onToggle={toggleOperacion}
               faceIdDestacada={montajeConfig.face_id_apoyo}
-              sujecionConfig={null}
+              sujecionConfig={montajeConfig.sujecion_config}
             />
           </div>
 
