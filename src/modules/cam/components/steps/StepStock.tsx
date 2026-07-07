@@ -309,7 +309,7 @@ export const StepStock = () => {
       {/* Navegación */}
       <WizardNavButtons
         prevStep="material"
-        nextStep="resumen"
+        nextStep="operaciones"
         canAdvance={true}
       />
     </div>

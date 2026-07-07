@@ -8,10 +8,11 @@ export type CamStep =
   | "cargar"
   | "analisis"
   | "montaje"
-  | "operaciones"
   | "material"
   | "stock"
+  | "operaciones"
   | "resumen"
+  | "simulacion"
   | "resultado";
 
 export interface Operacion {

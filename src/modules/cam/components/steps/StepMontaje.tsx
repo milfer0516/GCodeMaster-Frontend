@@ -284,8 +284,8 @@ export const StepMontaje = () => {
       {/* Navegación */}
       <WizardNavButtons
         prevStep="analisis"
-        nextStep="operaciones"
-        nextLabel="Configurar operaciones"
+        nextStep="material"
+        nextLabel="Seleccionar material"
         canAdvance={puedeAvanzar}
         onNext={() => {
           console.log(

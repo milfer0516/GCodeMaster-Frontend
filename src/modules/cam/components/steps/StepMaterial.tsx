@@ -102,7 +102,7 @@ export const StepMaterial = () => {
           </button>
         </div>
         <WizardNavButtons
-          prevStep="operaciones"
+          prevStep="montaje"
           nextStep="stock"
           canAdvance={false}
         />
