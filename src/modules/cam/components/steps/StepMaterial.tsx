@@ -233,6 +233,11 @@ export const StepMaterial = () => {
     {} as Record<string, MaterialGlobal[]>,
   );
 
+  // Encontrar el material completo del catálogo para mostrar Vc en SelectedMaterialBar
+  const materialCompleto = material
+    ? materiales.find((m) => m.id_material === material.id_material)
+    : null;
+
   const handleSelectMaterial = (mat: MaterialGlobal) => {
     setMaterial({
       id_material: mat.id_material,
@@ -308,7 +313,7 @@ export const StepMaterial = () => {
       </div>
 
       {/* Selected Material Bar */}
-      <SelectedMaterialBar material={material} />
+      <SelectedMaterialBar material={materialCompleto} />
 
       {/* Catálogo por categorías */}
       <div className="space-y-6 max-h-[500px] overflow-y-auto pr-2">
