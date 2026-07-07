@@ -7,7 +7,189 @@ import {
   asignarMaterialJob,
   type MaterialGlobal,
 } from "../../services/camService";
-import { Loader2, Package } from "lucide-react";
+import { Loader2 } from "lucide-react";
+
+// ISO 513 color coding per material group
+type IsoGroup = "P" | "M" | "K" | "N" | "S" | "H";
+
+const ISO_GROUP_STYLES: Record<
+  IsoGroup,
+  { bg: string; text: string; label: string; ring: string }
+> = {
+  P: { bg: "bg-blue-600", text: "text-white", label: "Aceros", ring: "ring-blue-600/40" },
+  M: { bg: "bg-yellow-500", text: "text-neutral-900", label: "Inoxidables", ring: "ring-yellow-500/40" },
+  K: { bg: "bg-red-600", text: "text-white", label: "Fundición", ring: "ring-red-600/40" },
+  N: { bg: "bg-green-600", text: "text-white", label: "No ferrosos", ring: "ring-green-600/40" },
+  S: { bg: "bg-orange-700", text: "text-white", label: "Superaleaciones", ring: "ring-orange-700/40" },
+  H: { bg: "bg-zinc-500", text: "text-white", label: "Templados", ring: "ring-zinc-500/40" },
+};
+
+const ISO_GROUP_ORDER: IsoGroup[] = ["P", "M", "K", "N", "S", "H"];
+
+function parseIsoGroup(grupo_iso: string): IsoGroup | null {
+  const normalized = grupo_iso.trim().toUpperCase();
+  if (ISO_GROUP_ORDER.includes(normalized as IsoGroup)) {
+    return normalized as IsoGroup;
+  }
+  return null;
+}
+
+// Subcomponents
+function IsoLegend() {
+  return (
+    <div className="flex flex-wrap items-center gap-3 rounded-lg border border-border bg-bg-surface px-3.5 py-2.5">
+      <span className="mr-0.5 text-[11px] font-bold uppercase tracking-wider text-text-muted">
+        ISO 513
+      </span>
+      {ISO_GROUP_ORDER.map((g) => (
+        <div key={g} className="flex items-center gap-1.5">
+          <span className={`h-3.5 w-3.5 rounded ${ISO_GROUP_STYLES[g].bg}`} />
+          <span className="text-xs font-semibold text-text-primary">{g}</span>
+          <span className="text-[11px] text-text-muted">{ISO_GROUP_STYLES[g].label}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function SelectedMaterialBar({ material }: { material: MaterialGlobal | null }) {
+  const isoGroup = material ? parseIsoGroup(material.grupo_iso) : null;
+  const style = isoGroup ? ISO_GROUP_STYLES[isoGroup] : null;
+
+  return (
+    <div className="mb-6 flex items-center gap-3.5 rounded-xl border border-violet-500/30 bg-violet-500/[0.08] px-4 py-3.5">
+      <div
+        className={`flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-md ${
+          style ? style.bg : "bg-bg-elevated"
+        }`}
+      >
+        <span className={`font-mono text-base font-extrabold ${style ? style.text : "text-text-muted"}`}>
+          {isoGroup || "—"}
+        </span>
+      </div>
+      <div className="min-w-0">
+        <div className="text-[11px] font-semibold uppercase tracking-wide text-text-muted">
+          Material seleccionado
+        </div>
+        <div className="mt-0.5 text-lg font-bold text-text-primary">
+          {material ? material.nombre : "Ninguno"}
+        </div>
+      </div>
+      <div className="ml-auto flex-shrink-0 text-right">
+        <div className="text-[11px] font-semibold uppercase tracking-wide text-text-muted">Vc</div>
+        <div className="mt-0.5 font-mono text-[15px] font-bold text-text-primary">
+          {material ? `${material.vc_min}–${material.vc_max}` : "—"} m/min
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function MaterialCard({
+  material,
+  selected,
+  onSelect,
+}: {
+  material: MaterialGlobal;
+  selected: boolean;
+  onSelect: (mat: MaterialGlobal) => void;
+}) {
+  const isoGroup = parseIsoGroup(material.grupo_iso);
+  const style = isoGroup ? ISO_GROUP_STYLES[isoGroup] : null;
+
+  return (
+    <button
+      type="button"
+      onClick={() => onSelect(material)}
+      aria-pressed={selected}
+      className={`group relative flex flex-1 basis-[240px] flex-col overflow-hidden rounded-xl border text-left transition-colors
+        ${
+          selected
+            ? "border-violet-500 bg-violet-950/40 ring-2 ring-violet-500/25"
+            : "border-border bg-bg-surface hover:border-border/60 hover:bg-bg-elevated"
+        }`}
+    >
+      <div className={`h-[5px] w-full flex-shrink-0 ${style ? style.bg : "bg-bg-elevated"}`} />
+
+      <div className="flex flex-1 flex-col gap-2.5 p-4">
+        <div className="flex items-start justify-between gap-2">
+          <div className="min-w-0">
+            <div className="text-[10.5px] font-semibold uppercase tracking-wide text-text-muted">
+              {material.categoria}
+            </div>
+            <div
+              className={`mt-0.5 text-[17px] font-bold leading-tight ${
+                selected ? "text-violet-300" : "text-text-primary"
+              }`}
+            >
+              {material.nombre}
+            </div>
+          </div>
+          {selected && (
+            <div className="flex h-[22px] w-[22px] flex-shrink-0 items-center justify-center rounded-full bg-violet-500 ring-[3px] ring-violet-500/20">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none">
+                <path
+                  d="M20 6L9 17l-5-5"
+                  stroke="white"
+                  strokeWidth="3.5"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
+            </div>
+          )}
+        </div>
+
+        <div className="mt-auto flex items-center gap-2">
+          {isoGroup && (
+            <span
+              className={`flex h-[22px] w-[26px] flex-shrink-0 items-center justify-center rounded-md font-mono text-[13px] font-extrabold ${style!.bg} ${style!.text}`}
+            >
+              {isoGroup}
+            </span>
+          )}
+          <span className="font-mono text-[13px] font-semibold text-text-muted">
+            Vc {material.vc_min}–{material.vc_max}
+          </span>
+          <span className="font-mono text-[11px] text-text-muted/60">m/min</span>
+        </div>
+      </div>
+    </button>
+  );
+}
+
+function CategorySection({
+  category,
+  materials,
+  selectedId,
+  onSelect,
+}: {
+  category: string;
+  materials: MaterialGlobal[];
+  selectedId: number | null;
+  onSelect: (mat: MaterialGlobal) => void;
+}) {
+  return (
+    <div className="mb-7">
+      <div className="mb-3 flex items-baseline gap-2.5 border-b border-border pb-2">
+        <h2 className="text-sm font-bold uppercase tracking-wide text-text-secondary">
+          {category}
+        </h2>
+        <span className="text-xs text-text-muted">{materials.length} materiales</span>
+      </div>
+      <div className="flex flex-wrap gap-3">
+        {materials.map((m) => (
+          <MaterialCard
+            key={m.id_material}
+            material={m}
+            selected={m.id_material === selectedId}
+            onSelect={onSelect}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
 
 export const StepMaterial = () => {
   // Selectores individuales para evitar re-renders (patrón StepMontaje)
@@ -111,113 +293,41 @@ export const StepMaterial = () => {
   }
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div>
-        <h2 className="text-base md:text-lg font-bold text-text-primary">
-          Selecciona el Material
-        </h2>
-        <p className="mt-1 text-xs md:text-sm text-text-muted">
-          Elige el material de la pieza para calcular velocidades de corte
-        </p>
+    <div className="space-y-5">
+      {/* Header with ISO Legend */}
+      <div className="flex flex-wrap items-start justify-between gap-4 md:gap-6">
+        <div>
+          <h2 className="text-base md:text-lg font-bold text-text-primary">
+            Selecciona el Material
+          </h2>
+          <p className="mt-1 text-xs md:text-sm text-text-muted">
+            Catálogo agrupado por categoría · código de color ISO 513 por grupo de material
+          </p>
+        </div>
+        <IsoLegend />
       </div>
 
-      {/* Material seleccionado */}
-      {material && (
-        <div className="rounded-xl border border-accent-blue/30 bg-accent-blue/10 p-3 md:p-4">
-          <div className="flex items-center gap-2">
-            <Package className="h-4 w-4 md:h-5 md:w-5 text-accent-blue" />
-            <div>
-              <p className="text-xs md:text-sm font-medium text-text-primary">
-                Material seleccionado:
-              </p>
-              <p className="text-sm md:text-base font-bold text-accent-blue">
-                {material.nombre}
-              </p>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Selected Material Bar */}
+      <SelectedMaterialBar material={material} />
 
       {/* Catálogo por categorías */}
       <div className="space-y-6 max-h-[500px] overflow-y-auto pr-2">
         {Object.entries(materialesPorCategoria)
           .sort(([a], [b]) => a.localeCompare(b))
           .map(([categoria, mats]) => (
-            <div key={categoria}>
-              {/* Título de categoría */}
-              <h3 className="mb-3 text-sm md:text-base font-semibold text-text-secondary border-b border-border pb-2">
-                {categoria}
-              </h3>
-
-              {/* Grid de materiales */}
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                {mats.map((mat) => {
-                  const isSelected =
-                    material?.id_material === mat.id_material;
-
-                  return (
-                    <button
-                      key={mat.id_material}
-                      onClick={() => handleSelectMaterial(mat)}
-                      className={`group relative rounded-xl border-2 p-4 text-left transition min-h-[80px] ${
-                        isSelected
-                          ? "border-accent-blue bg-accent-blue/10"
-                          : "border-border bg-bg-elevated hover:border-accent-blue/50 hover:bg-bg-surface"
-                      }`}
-                    >
-                      {/* Checkmark si está seleccionado */}
-                      {isSelected && (
-                        <div className="absolute top-2 right-2 flex h-5 w-5 items-center justify-center rounded-full bg-accent-blue text-white">
-                          <svg
-                            className="h-3 w-3"
-                            fill="none"
-                            viewBox="0 0 24 24"
-                            stroke="currentColor"
-                          >
-                            <path
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                              strokeWidth={3}
-                              d="M5 13l4 4L19 7"
-                            />
-                          </svg>
-                        </div>
-                      )}
-
-                      {/* Nombre del material */}
-                      <p
-                        className={`text-sm md:text-base font-semibold mb-2 pr-6 ${
-                          isSelected
-                            ? "text-accent-blue"
-                            : "text-text-primary group-hover:text-accent-blue"
-                        }`}
-                      >
-                        {mat.nombre}
-                      </p>
-
-                      {/* Badge grupo ISO */}
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="inline-block rounded-md bg-bg-surface border border-border px-2 py-0.5 text-[10px] md:text-xs font-medium text-text-muted">
-                          {mat.grupo_iso}
-                        </span>
-
-                        {/* Velocidad de corte */}
-                        <span className="text-[10px] md:text-xs text-text-muted">
-                          Vc: {mat.vc_min}–{mat.vc_max} m/min
-                        </span>
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
+            <CategorySection
+              key={categoria}
+              category={categoria}
+              materials={mats}
+              selectedId={material?.id_material || null}
+              onSelect={handleSelectMaterial}
+            />
           ))}
       </div>
 
       {/* Navegación */}
       <WizardNavButtons
-        prevStep="operaciones"
+        prevStep="montaje"
         nextStep="stock"
         canAdvance={!!material && !saving}
         onNext={handleNext}
