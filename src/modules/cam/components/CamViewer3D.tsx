@@ -515,6 +515,12 @@ export function CamViewer3D({
       meshRef.current.position.y = posYStart + (posYTarget - posYStart) * ease;
       meshRef.current.position.z = posZStart + (posZTarget - posZStart) * ease;
 
+      // Sincronizar stock con mesh (si existe)
+      if (stockMeshRef.current) {
+        stockMeshRef.current.quaternion.copy(meshRef.current.quaternion);
+        stockMeshRef.current.position.copy(meshRef.current.position);
+      }
+
       // Interpolar target de la cámara para que siga al centro visual del mesh
       controlsRef.current.target.lerpVectors(targetStart, targetEnd, ease);
 
@@ -742,7 +748,7 @@ export function CamViewer3D({
       stockGroup.add(boxMesh);
       stockGroup.add(wireframe);
 
-      // Rotar igual que la pieza: -90° en X (OCC Z → Three.js Y)
+      // Aplicar la misma rotación base que el mesh (OCC Z → Three.js Y)
       stockGroup.rotation.x = -Math.PI / 2;
 
       // Posicionar: centrado en XY, base en z=0 OCC
@@ -795,6 +801,13 @@ export function CamViewer3D({
 
     scene.add(stockGroup);
     stockMeshRef.current = stockGroup;
+
+    // Sincronizar inmediatamente con la rotación/posición actual del mesh
+    // (importante cuando navegamos a este paso y el mesh ya está rotado)
+    if (meshRef.current) {
+      stockGroup.quaternion.copy(meshRef.current.quaternion);
+      stockGroup.position.copy(meshRef.current.position);
+    }
   }, [stockConfig, meshData]);
 
   // ── Render ─────────────────────────────────────────────────────────────

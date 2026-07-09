@@ -12,6 +12,7 @@ export const StepStock = () => {
   const stockConfig = useCamStore((s) => s.stockConfig);
   const setStockConfig = useCamStore((s) => s.setStockConfig);
   const setStep = useCamStore((s) => s.setStep);
+  const montajeConfig = useCamStore((s) => s.montajeConfig);
 
   const [initialized, setInitialized] = useState(false);
 
@@ -141,6 +142,8 @@ export const StepStock = () => {
               z: meshData.bounding_box.max[2] - meshData.bounding_box.min[2],
             }}
             stockConfig={stockConfig}
+            faceIdDestacada={montajeConfig.face_id_apoyo}
+            sujecionConfig={montajeConfig.sujecion_config}
           />
         </div>
 
