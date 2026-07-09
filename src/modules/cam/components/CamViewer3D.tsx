@@ -685,9 +685,11 @@ export function CamViewer3D({
     const bb = meshData.bounding_box;
     const bbMin = bb.min;
     const bbMax = bb.max;
-    const center = bb.center;
 
-    // Calcular dimensiones del stock en coordenadas OCC
+    // Calcular dimensiones del stock en coordenadas OCC (pre-rotation)
+    // IMPORTANTE: Estas dimensiones son en el espacio OCC ORIGINAL, antes de
+    // cualquier rotación. El stock se rotará junto con el mesh, por lo que
+    // necesita las mismas dimensiones base que el mesh en OCC.
     let stockWidth = 0;   // X en OCC
     let stockDepth = 0;   // Y en OCC
     let stockHeight = 0;  // Z en OCC
@@ -724,11 +726,31 @@ export function CamViewer3D({
 
     if (stockConfig.tipo === "rectangular") {
       // Caja translúcida
+      // IMPORTANTE: Las dimensiones son en coordenadas Three.js (post-rotation),
+      // pero las mapeamos a OCC (pre-rotation) para que después de rotar
+      // con el mismo quaternion que el mesh, queden correctas.
+      //
+      // Stock dimensions from StepStock son:
+      // - ancho_mm: Three.js X (width)
+      // - largo_mm: Three.js Z (depth) — en OCC sería Y antes de -90° X rotation
+      // - alto_mm: Three.js Y (height) — en OCC sería Z antes de -90° X rotation
+      //
+      // Mapeo inverso para BoxGeometry (que luego se rotará -90° X):
+      // OCC X = Three.js X = ancho_mm
+      // OCC Y = Three.js Z = largo_mm
+      // OCC Z = Three.js Y = alto_mm
       const boxGeometry = new THREE.BoxGeometry(
-        stockWidth,
-        stockDepth,
-        stockHeight,
+        stockWidth,  // ancho_mm → OCC X
+        stockDepth,  // largo_mm → OCC Y
+        stockHeight, // alto_mm → OCC Z
       );
+
+      // Offset the geometry so its base (Z=0 in OCC) aligns with the mesh's base
+      // The mesh was positioned with -bbMin[2] to put its base at Y=0
+      // The box is naturally centered at [0,0,0], extending ±stockHeight/2 in Z
+      // To align bases: shift the box up by stockHeight/2 in OCC Z
+      boxGeometry.translate(0, 0, stockHeight / 2);
+
       const boxMaterial = new THREE.MeshBasicMaterial({
         color: 0x88ccff,
         transparent: true,
@@ -748,27 +770,22 @@ export function CamViewer3D({
       stockGroup.add(boxMesh);
       stockGroup.add(wireframe);
 
-      // Aplicar la misma rotación base que el mesh (OCC Z → Three.js Y)
-      stockGroup.rotation.x = -Math.PI / 2;
-
-      // Posicionar: centrado en XY, base en z=0 OCC
-      // Después de rotar -90° en X: [x, z, -y] en Three.js
-      stockGroup.position.set(
-        -center[0],
-        -bbMin[2] + stockHeight / 2,
-        -center[1],
-      );
+      // La rotación y posición se copiarán del mesh (línea ~809)
     } else {
       // Cilindro translúcido
-      // OCC: eje del disco es Z (altura)
-      // Three.js CylinderGeometry: eje por defecto es Y
-      // Tras rotar -90° en X, el eje Y de Three.js apunta hacia Z de OCC
+      // CylinderGeometry: eje por defecto es Y, centered at origin
+      // Offset so base is at Y=0 instead of centered
       const cylinderGeometry = new THREE.CylinderGeometry(
         stockDiameter / 2,
         stockDiameter / 2,
         stockLength,
         32,
       );
+
+      // Offset the geometry so its base aligns with the mesh's base
+      // Shift the cylinder up by stockLength/2 in Y
+      cylinderGeometry.translate(0, stockLength / 2, 0);
+
       const cylinderMaterial = new THREE.MeshBasicMaterial({
         color: 0x88ccff,
         transparent: true,
@@ -788,15 +805,7 @@ export function CamViewer3D({
       stockGroup.add(cylinderMesh);
       stockGroup.add(wireframe);
 
-      // Rotar para que el eje del cilindro apunte a Z de OCC (Y de Three.js tras rotación base)
-      stockGroup.rotation.x = -Math.PI / 2;
-
-      // Posicionar: centrado, base en z=0 OCC
-      stockGroup.position.set(
-        -center[0],
-        -bbMin[2] + stockLength / 2,
-        -center[1],
-      );
+      // La rotación y posición se copiarán del mesh (línea ~809)
     }
 
     scene.add(stockGroup);
