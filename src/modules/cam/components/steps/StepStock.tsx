@@ -5,6 +5,7 @@ import { CamViewer3D } from "../CamViewer3D";
 import { WizardNavButtons } from "./WizardNavButtons";
 import { Package, Box, Cylinder } from "lucide-react";
 import type { StockConfig } from "../../store/camStore";
+import { computeRotatedBoundingBox } from "../../utils/rotatedBoundingBox";
 
 export const StepStock = () => {
   const analisis = useCamStore((s) => s.analisis);
@@ -16,18 +17,34 @@ export const StepStock = () => {
 
   const [initialized, setInitialized] = useState(false);
 
-  // Inicializar stock por defecto basado en tipo_pieza y bounding box
+  // Inicializar stock por defecto basado en tipo_pieza y bounding box ROTADO
+  // CRÍTICO: debe usar el bounding box POST-ROTACIÓN (después de aplicar la cara
+  // de apoyo seleccionada en StepMontaje), no el bounding box original del STEP.
   useEffect(() => {
     if (initialized || !analisis || !meshData) return;
 
     const tipoPieza = analisis.tipo_pieza || "placa";
-    const bb = meshData.bounding_box;
-    const bbMin = bb.min;
-    const bbMax = bb.max;
 
-    const piezaWidth = bbMax[0] - bbMin[0];
-    const piezaDepth = bbMax[1] - bbMin[1];
-    const piezaHeight = bbMax[2] - bbMin[2];
+    // Obtener dimensiones POST-ROTACIÓN desde montajeConfig.face_normal_apoyo
+    const faceNormal = montajeConfig.face_normal_apoyo;
+    const rotatedBB = computeRotatedBoundingBox(meshData, faceNormal);
+
+    // rotatedBB está en coordenadas Three.js (X=ancho, Y=altura, Z=profundidad)
+    // Mapear a las dimensiones de stock:
+    // - Ancho (X): Three.js X (width)
+    // - Largo (Y): Three.js Z (depth)  ← OJO: Three.js Z es la profundidad "horizontal"
+    // - Alto (Z): Three.js Y (height)  ← Three.js Y es la altura "vertical"
+    const piezaWidth = rotatedBB.width;   // Ancho en X
+    const piezaDepth = rotatedBB.depth;   // Largo en Y (en realidad Three.js Z)
+    const piezaHeight = rotatedBB.height; // Alto en Z (en realidad Three.js Y)
+
+    console.log('🔍 [StepStock] Dimensiones POST-ROTACIÓN:', {
+      faceNormal,
+      rotatedBB,
+      piezaWidth,
+      piezaDepth,
+      piezaHeight,
+    });
 
     const tipoStock = tipoPieza === "disco" ? "cilindrico" : "rectangular";
 
@@ -41,12 +58,12 @@ export const StepStock = () => {
       tipo: tipoStock,
       modo: "sobrematerial",
 
-      // Rectangular
+      // Rectangular (usando dimensiones POST-ROTACIÓN)
       ancho_mm: Math.round(piezaWidth + 2 * sobreXY),
       largo_mm: Math.round(piezaDepth + 2 * sobreXY),
       alto_mm: Math.round(piezaHeight + 2 * sobreZ),
 
-      // Cilíndrico
+      // Cilíndrico (usando dimensiones POST-ROTACIÓN)
       diametro_mm: Math.round(Math.max(piezaWidth, piezaDepth) + 2 * sobreRadial),
       longitud_mm: Math.round(piezaHeight + 2 * sobreAxial),
 
@@ -59,7 +76,7 @@ export const StepStock = () => {
 
     setStockConfig(newConfig);
     setInitialized(true);
-  }, [analisis, meshData, initialized, setStockConfig]);
+  }, [analisis, meshData, initialized, setStockConfig, montajeConfig.face_normal_apoyo]);
 
   const handleTipoChange = (tipo: "rectangular" | "cilindrico") => {
     setStockConfig({ ...stockConfig, tipo });
@@ -73,17 +90,86 @@ export const StepStock = () => {
     setStockConfig({ ...stockConfig, [field]: value });
   };
 
+  // Validar que las dimensiones del stock sean >= dimensiones reales de la pieza POST-ROTACIÓN
+  const validateStockDimensions = (): { valid: boolean; warnings: string[] } => {
+    if (!meshData || !stockConfig) return { valid: true, warnings: [] };
+
+    const faceNormal = montajeConfig.face_normal_apoyo;
+    const rotatedBB = computeRotatedBoundingBox(meshData, faceNormal);
+
+    const warnings: string[] = [];
+
+    if (stockConfig.tipo === "rectangular") {
+      // Obtener dimensiones efectivas del stock
+      let stockWidth, stockDepth, stockHeight;
+      if (stockConfig.modo === "dimensiones") {
+        stockWidth = stockConfig.ancho_mm;
+        stockDepth = stockConfig.largo_mm;
+        stockHeight = stockConfig.alto_mm;
+      } else {
+        stockWidth = rotatedBB.width + 2 * stockConfig.sobre_xy_mm;
+        stockDepth = rotatedBB.depth + 2 * stockConfig.sobre_xy_mm;
+        stockHeight = rotatedBB.height + 2 * stockConfig.sobre_z_mm;
+      }
+
+      // Validar cada eje
+      if (stockWidth < rotatedBB.width) {
+        warnings.push(
+          `Ancho (${Math.round(stockWidth)}mm) es menor que la pieza (${Math.round(rotatedBB.width)}mm)`
+        );
+      }
+      if (stockDepth < rotatedBB.depth) {
+        warnings.push(
+          `Largo (${Math.round(stockDepth)}mm) es menor que la pieza (${Math.round(rotatedBB.depth)}mm)`
+        );
+      }
+      if (stockHeight < rotatedBB.height) {
+        warnings.push(
+          `Alto (${Math.round(stockHeight)}mm) es menor que la pieza (${Math.round(rotatedBB.height)}mm)`
+        );
+      }
+    } else {
+      // Cilíndrico
+      let stockDiameter, stockLength;
+      if (stockConfig.modo === "dimensiones") {
+        stockDiameter = stockConfig.diametro_mm;
+        stockLength = stockConfig.longitud_mm;
+      } else {
+        const piezaDiamRadial = Math.max(rotatedBB.width, rotatedBB.depth);
+        stockDiameter = piezaDiamRadial + 2 * stockConfig.sobre_radial_mm;
+        stockLength = rotatedBB.height + 2 * stockConfig.sobre_axial_mm;
+      }
+
+      const piezaDiamRadial = Math.max(rotatedBB.width, rotatedBB.depth);
+      if (stockDiameter < piezaDiamRadial) {
+        warnings.push(
+          `Diámetro (${Math.round(stockDiameter)}mm) es menor que la pieza (${Math.round(piezaDiamRadial)}mm)`
+        );
+      }
+      if (stockLength < rotatedBB.height) {
+        warnings.push(
+          `Longitud (${Math.round(stockLength)}mm) es menor que la pieza (${Math.round(rotatedBB.height)}mm)`
+        );
+      }
+    }
+
+    return { valid: warnings.length === 0, warnings };
+  };
+
+  const validation = validateStockDimensions();
+
   // Calcular dimensiones reales del stock para mostrar resumen
+  // CRÍTICO: debe usar el bounding box POST-ROTACIÓN igual que la inicialización
   const getStockDimensions = (): string => {
     if (!meshData || !stockConfig) return "";
 
-    const bb = meshData.bounding_box;
-    const bbMin = bb.min;
-    const bbMax = bb.max;
+    // Usar dimensiones POST-ROTACIÓN
+    const faceNormal = montajeConfig.face_normal_apoyo;
+    const rotatedBB = computeRotatedBoundingBox(meshData, faceNormal);
 
-    const piezaWidth = bbMax[0] - bbMin[0];
-    const piezaDepth = bbMax[1] - bbMin[1];
-    const piezaHeight = bbMax[2] - bbMin[2];
+    const piezaWidth = rotatedBB.width;
+    const piezaDepth = rotatedBB.depth;
+    const piezaHeight = rotatedBB.height;
 
     if (stockConfig.tipo === "rectangular") {
       let w, l, h;
@@ -306,6 +392,24 @@ export const StepStock = () => {
               </div>
             </div>
           </div>
+
+          {/* Validación: advertir si el stock es menor que la pieza */}
+          {!validation.valid && (
+            <div className="rounded-xl border border-red-500/50 bg-red-500/10 p-3 md:p-4">
+              <p className="text-xs md:text-sm font-semibold text-red-400 mb-1">
+                ⚠️ Stock insuficiente
+              </p>
+              <ul className="text-xs text-red-300 space-y-0.5">
+                {validation.warnings.map((warning, idx) => (
+                  <li key={idx}>• {warning}</li>
+                ))}
+              </ul>
+              <p className="text-[10px] md:text-xs text-red-300/80 mt-2">
+                El stock debe ser mayor o igual que las dimensiones de la pieza
+                en su orientación actual (después de la rotación de montaje).
+              </p>
+            </div>
+          )}
         </div>
       </div>
 
