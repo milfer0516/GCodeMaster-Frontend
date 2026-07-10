@@ -62,6 +62,7 @@ export const StepMontaje = () => {
   const setMontajeConfig = useCamStore((s) => s.setMontajeConfig);
   const setMaquinaStore = useCamStore((s) => s.setMaquina);
   const meshData = useCamStore((s) => s.meshData);
+  const confirmMontaje = useCamStore((s) => s.confirmMontaje);
 
   const [maquinaActiva, setMaquinaActiva] = useState<Maquina | null>(null);
   const [modalAbierto, setModalAbierto] = useState(false);
@@ -288,6 +289,10 @@ export const StepMontaje = () => {
         nextLabel="Seleccionar material"
         canAdvance={puedeAvanzar}
         onNext={() => {
+          // Confirmación explícita del montaje: aquí se construye el Setup
+          // persistente (fuente de verdad en frame OCC/máquina) que consumirán
+          // el visor y, en fases siguientes, Stock/operaciones/G-code.
+          confirmMontaje();
           console.log(
             "montajeConfig al confirmar:",
             JSON.stringify(montajeConfig, null, 2),

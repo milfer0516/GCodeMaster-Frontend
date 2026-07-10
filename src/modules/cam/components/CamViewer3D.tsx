@@ -80,6 +80,29 @@ function formatFaceDimension(face: FaceMetadata): string {
   }
 }
 
+// ── Conversión frame OCC/máquina → display Three.js ─────────────────────────
+// El Setup del dominio almacena la rotación en el frame OCC (Z arriba, mesa en
+// Z=0). El visor la lleva a coordenadas Three.js aplicando la base -90°X
+// (OCC Z → Three.js Y). Ésta es la ÚNICA conversión de frame de la app: NO
+// debe existir en computeSetup ni en los datos del Setup — es un detalle de
+// implementación de esta librería de render y vive solo aquí.
+const VIEWER_BASE_Q = new THREE.Quaternion().setFromEuler(
+  new THREE.Euler(-Math.PI / 2, 0, 0),
+);
+
+function occToDisplay(
+  rotationOCC: [number, number, number, number],
+): THREE.Quaternion {
+  const qOCC = new THREE.Quaternion(
+    rotationOCC[0],
+    rotationOCC[1],
+    rotationOCC[2],
+    rotationOCC[3],
+  );
+  // display = baseQ · rotationOCC  (reproduce exactamente el qTarget histórico)
+  return VIEWER_BASE_Q.clone().multiply(qOCC);
+}
+
 // ── Construir BufferGeometry desde MeshData ────────────────────────────────
 function buildBufferGeometry(meshData: MeshData): THREE.BufferGeometry {
   const geo = new THREE.BufferGeometry();
@@ -179,6 +202,7 @@ export function CamViewer3D({
 
   const maquina = useCamStore((s) => s.maquina);
   const analisis = useCamStore((s) => s.analisis); // normales confiables (caras_planas) para la rotación de apoyo
+  const setup = useCamStore((s) => s.setup); // montaje confirmado (verdad en frame OCC)
 
   // Limpiar la cara de info cuando cambia la geometría cargada
   useEffect(() => {
@@ -425,63 +449,92 @@ export function CamViewer3D({
     if (!meshRef.current || !meshData || faceIdDestacada === null) return;
     if (!controlsRef.current) return;
 
-    const face = meshData.faces.find((f) => f.face_id === faceIdDestacada);
-    if (!face || !face.face_normal) return;
+    let qTarget: THREE.Quaternion;
+    let posXTarget: number;
+    let posYTarget: number;
+    let posZTarget: number;
+    let centerYMundo: number;
 
-    // La normal del teselado (face.face_normal) puede venir con el signo
-    // invertido respecto al análisis. caras_planas es la fuente confiable:
-    // usamos esa y caemos de vuelta al teselado solo si la cara no aparece
-    // en el análisis. (Resto de la lógica de rotación sin cambios.)
-    const caraAnalisis = (analisis?.caras_planas ?? []).find(
-      (c: any) => c.face_index === faceIdDestacada,
-    );
-    const normalApoyo = caraAnalisis?.normal ?? face.face_normal;
-    const [nx, ny, nz] = normalApoyo;
+    // Si existe un montaje confirmado para ESTA cara, el destino se lee del
+    // Setup (verdad de dominio en frame OCC) y se convierte a display solo con
+    // occToDisplay / VIEWER_BASE_Q. Si no (cara elegida pero sin confirmar), se
+    // recomputa en vivo desde la normal para que la interacción previa funcione.
+    const setupAplicable =
+      !!setup?.confirmed && setup.supportFace.faceId === faceIdDestacada;
 
-    const normalThree = new THREE.Vector3(nx, nz, -ny).normalize();
-    const targetDown = new THREE.Vector3(0, -1, 0);
+    if (setupAplicable && setup) {
+      // ── Camino Setup (dominio → display) ──
+      qTarget = occToDisplay(setup.rotationOCC);
+      const posV = new THREE.Vector3(
+        setup.position[0],
+        setup.position[1],
+        setup.position[2],
+      ).applyQuaternion(VIEWER_BASE_Q);
+      posXTarget = posV.x;
+      posYTarget = posV.y;
+      posZTarget = posV.z;
+      // El centro vertical en el mundo display equivale al centro Z máquina
+      // (base en z_apoyo, altura = rotatedBBox.height).
+      centerYMundo = setup.zApoyoMm + setup.rotatedBBox.height / 2;
+    } else {
+      // ── Camino en vivo (cara seleccionada, montaje aún sin confirmar) ──
+      const face = meshData.faces.find((f) => f.face_id === faceIdDestacada);
+      if (!face || !face.face_normal) return;
 
-    // Quaternion destino: normal de cara apunta hacia -Y (mesa)
-    const qDelta = new THREE.Quaternion();
-    qDelta.setFromUnitVectors(normalThree, targetDown);
+      // La normal del teselado (face.face_normal) puede venir con el signo
+      // invertido respecto al análisis. caras_planas es la fuente confiable:
+      // usamos esa y caemos de vuelta al teselado solo si la cara no aparece
+      // en el análisis.
+      const caraAnalisis = (analisis?.caras_planas ?? []).find(
+        (c: any) => c.face_index === faceIdDestacada,
+      );
+      const normalApoyo = caraAnalisis?.normal ?? face.face_normal;
+      const [nx, ny, nz] = normalApoyo;
 
-    const baseQ = new THREE.Quaternion().setFromEuler(
-      new THREE.Euler(-Math.PI / 2, 0, 0),
-    );
-    const qTarget = qDelta.multiply(baseQ);
+      const normalThree = new THREE.Vector3(nx, nz, -ny).normalize();
+      const targetDown = new THREE.Vector3(0, -1, 0);
 
-    // Calcular posición Y: transformar las 8 esquinas del AABB OCC por qTarget
-    // y tomar el mínimo Y resultante → mesh.position.y = -minYTransformado
-    const bb = meshData.bounding_box;
-    const corners: THREE.Vector3[] = [
-      [bb.min[0], bb.min[1], bb.min[2]],
-      [bb.max[0], bb.min[1], bb.min[2]],
-      [bb.min[0], bb.max[1], bb.min[2]],
-      [bb.max[0], bb.max[1], bb.min[2]],
-      [bb.min[0], bb.min[1], bb.max[2]],
-      [bb.max[0], bb.min[1], bb.max[2]],
-      [bb.min[0], bb.max[1], bb.max[2]],
-      [bb.max[0], bb.max[1], bb.max[2]],
-    ].map(([x, y, z]) => new THREE.Vector3(x, y, z).applyQuaternion(qTarget));
+      // Quaternion destino: normal de cara apunta hacia -Y (mesa)
+      const qDelta = new THREE.Quaternion();
+      qDelta.setFromUnitVectors(normalThree, targetDown);
 
-    // Calcular nuevo centro X/Y/Z del bounding box transformado
-    const minYTransformado = Math.min(...corners.map((v) => v.y));
-    const maxYTransformado = Math.max(...corners.map((v) => v.y));
-    const minXTransformado = Math.min(...corners.map((v) => v.x));
-    const maxXTransformado = Math.max(...corners.map((v) => v.x));
-    const minZTransformado = Math.min(...corners.map((v) => v.z));
-    const maxZTransformado = Math.max(...corners.map((v) => v.z));
+      // display = qDelta · baseQ (misma conversión de frame que occToDisplay)
+      const qLive = qDelta.multiply(VIEWER_BASE_Q.clone());
 
-    const centerXTransformado = (minXTransformado + maxXTransformado) / 2;
-    const centerYTransformado = (minYTransformado + maxYTransformado) / 2;
-    const centerZTransformado = (minZTransformado + maxZTransformado) / 2;
+      // Calcular posición: transformar las 8 esquinas del AABB OCC por qLive
+      const bb = meshData.bounding_box;
+      const corners: THREE.Vector3[] = [
+        [bb.min[0], bb.min[1], bb.min[2]],
+        [bb.max[0], bb.min[1], bb.min[2]],
+        [bb.min[0], bb.max[1], bb.min[2]],
+        [bb.max[0], bb.max[1], bb.min[2]],
+        [bb.min[0], bb.min[1], bb.max[2]],
+        [bb.max[0], bb.min[1], bb.max[2]],
+        [bb.min[0], bb.max[1], bb.max[2]],
+        [bb.max[0], bb.max[1], bb.max[2]],
+      ].map(([x, y, z]) => new THREE.Vector3(x, y, z).applyQuaternion(qLive));
 
-    const zApoyo = sujecionConfig?.envolvente?.z_apoyo_mm ?? 0;
+      // Calcular nuevo centro X/Y/Z del bounding box transformado
+      const minYTransformado = Math.min(...corners.map((v) => v.y));
+      const maxYTransformado = Math.max(...corners.map((v) => v.y));
+      const minXTransformado = Math.min(...corners.map((v) => v.x));
+      const maxXTransformado = Math.max(...corners.map((v) => v.x));
+      const minZTransformado = Math.min(...corners.map((v) => v.z));
+      const maxZTransformado = Math.max(...corners.map((v) => v.z));
 
-    // Posiciones target del mesh: centrar en X/Z y apoyar en Y
-    const posYTarget = -minYTransformado + zApoyo;
-    const posXTarget = -centerXTransformado;
-    const posZTarget = -centerZTransformado;
+      const centerXTransformado = (minXTransformado + maxXTransformado) / 2;
+      const centerYTransformado = (minYTransformado + maxYTransformado) / 2;
+      const centerZTransformado = (minZTransformado + maxZTransformado) / 2;
+
+      const zApoyo = sujecionConfig?.envolvente?.z_apoyo_mm ?? 0;
+
+      // Posiciones target del mesh: centrar en X/Z y apoyar en Y
+      qTarget = qLive;
+      posYTarget = -minYTransformado + zApoyo;
+      posXTarget = -centerXTransformado;
+      posZTarget = -centerZTransformado;
+      centerYMundo = posYTarget + centerYTransformado;
+    }
 
     // Posiciones iniciales
     const posYStart = meshRef.current.position.y;
@@ -489,11 +542,9 @@ export function CamViewer3D({
     const posZStart = meshRef.current.position.z;
 
     // Target de la cámara: apuntar al centro visual de la pieza en el mundo
-    // X=0, Z=0 por construcción (ya que centramos con -centerXTransformado/-centerZTransformado)
-    // Y = posición base del mesh + offset al centro del bbox
+    // (X=0, Z=0 por construcción: la pieza queda centrada en el origen XZ)
     const controls = controlsRef.current;
     const targetStart = controls.target.clone();
-    const centerYMundo = posYTarget + centerYTransformado;
     const targetEnd = new THREE.Vector3(0, centerYMundo, 0);
 
     // Animación slerp — 1200ms
@@ -532,7 +583,7 @@ export function CamViewer3D({
     animId = requestAnimationFrame(animar);
 
     return () => cancelAnimationFrame(animId);
-  }, [faceIdDestacada, meshData, sujecionConfig, analisis]);
+  }, [faceIdDestacada, meshData, sujecionConfig, analisis, setup]);
 
   // ── 5. Picking por cara — hover y click ────────────────────────────────
   useEffect(() => {

@@ -2,6 +2,9 @@
 import { create } from "zustand";
 import type { MeshData } from "../services/camService";
 import type { Maquina } from "../../../services/maquinasService";
+import { computeSetup, type Setup } from "../utils/computeSetup";
+
+export type { Setup };
 
 // DESPUÉS
 export type CamStep =
@@ -124,6 +127,10 @@ interface CamState {
 
   montajeConfig: MontajeConfig;
 
+  // Setup persistente (montaje confirmado) — fuente de verdad en frame OCC/máquina.
+  // Se crea en confirmMontaje() y se invalida al cambiar cara/sujeción/mesh.
+  setup: Setup | null;
+
   // Paso 3 — Operaciones
   operaciones: Operacion[];
 
@@ -149,6 +156,8 @@ interface CamState {
   setArchivo: (archivo: File | null) => void;
   setAnalisis: (idJob: number, analisis: Record<string, any>) => void;
   setMontajeConfig: (config: Partial<MontajeConfig>) => void;
+  confirmMontaje: () => void;
+  invalidateSetup: () => void;
   setOperaciones: (ops: Operacion[]) => void;
   toggleOperacion: (id: string) => void;
   setMaterial: (material: MaterialSeleccionado) => void;
@@ -211,6 +220,7 @@ export const useCamStore = create<CamState>((set) => ({
   stockConfig: STOCK_INICIAL,
   datumConfig: DATUM_INICIAL,
   montajeConfig: MONTAJE_INICIAL,
+  setup: null,
   ordenSetups: "superior_primero",
   gcodeSetups: [],
 
@@ -218,7 +228,14 @@ export const useCamStore = create<CamState>((set) => ({
   setArchivo: (archivo) => set({ archivo, nombreArchivo: archivo?.name ?? "" }),
   setAnalisis: (idJob, analisis) => {
     const ops = convertirOperaciones(analisis);
-    set({ idJob, analisis, operaciones: ops, meshData: null, meshError: null });
+    set({
+      idJob,
+      analisis,
+      operaciones: ops,
+      meshData: null,
+      meshError: null,
+      setup: null,
+    });
   },
   setOperaciones: (operaciones) => set({ operaciones }),
   toggleOperacion: (id) =>
@@ -228,9 +245,42 @@ export const useCamStore = create<CamState>((set) => ({
       ),
     })),
   setMontajeConfig: (config) =>
-    set((state) => ({
-      montajeConfig: { ...state.montajeConfig, ...config },
-    })),
+    set((state) => {
+      // Cambiar la cara de apoyo o la sujeción invalida el Setup confirmado:
+      // no debe quedar un Setup obsoleto (con orientación vieja) filtrándose
+      // hacia Stock/operaciones. face_id_apoyo/sujecion_config son las entradas
+      // de las que depende computeSetup.
+      const cambiaCara =
+        "face_id_apoyo" in config &&
+        config.face_id_apoyo !== state.montajeConfig.face_id_apoyo;
+      const cambiaSujecion =
+        "sujecion_config" in config &&
+        config.sujecion_config !== state.montajeConfig.sujecion_config;
+      const invalidar = state.setup !== null && (cambiaCara || cambiaSujecion);
+
+      return {
+        montajeConfig: { ...state.montajeConfig, ...config },
+        ...(invalidar ? { setup: null } : {}),
+      };
+    }),
+  confirmMontaje: () =>
+    set((state) => {
+      const faceId = state.montajeConfig.face_id_apoyo;
+      if (!state.meshData || faceId === null) {
+        console.warn(
+          "[camStore] confirmMontaje: falta meshData o cara de apoyo; no se crea Setup.",
+        );
+        return { setup: null };
+      }
+      const setup = computeSetup(
+        state.meshData,
+        faceId,
+        state.analisis,
+        state.montajeConfig.sujecion_config,
+      );
+      return { setup };
+    }),
+  invalidateSetup: () => set({ setup: null }),
   setMaterial: (material) => set({ material }),
   setMaquina: (maquina) => set({ maquina }),
   setStockConfig: (stockConfig) => set({ stockConfig }),
@@ -238,7 +288,8 @@ export const useCamStore = create<CamState>((set) => ({
   setOrdenSetups: (ordenSetups) => set({ ordenSetups }),
   setGcodeSetups: (gcodeSetups) => set({ gcodeSetups }),
   setMeshData: (meshData) =>
-    set({ meshData, meshLoading: false, meshError: null }),
+    // Cargar una geometría nueva invalida cualquier Setup previo.
+    set({ meshData, meshLoading: false, meshError: null, setup: null }),
   setMeshLoading: (meshLoading) => set({ meshLoading }),
   setMeshError: (meshError) => set({ meshError, meshLoading: false }),
   reset: () =>
@@ -257,6 +308,7 @@ export const useCamStore = create<CamState>((set) => ({
       stockConfig: STOCK_INICIAL,
       datumConfig: DATUM_INICIAL,
       montajeConfig: MONTAJE_INICIAL,
+      setup: null,
       ordenSetups: "superior_primero",
       gcodeSetups: [],
     }),
