@@ -1,5 +1,5 @@
 // src/modules/cam/components/steps/StepStock.tsx
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useCamStore } from "../../store/camStore";
 import { CamViewer3D } from "../CamViewer3D";
 import { WizardNavButtons } from "./WizardNavButtons";
@@ -10,8 +10,36 @@ import {
   AlertTriangle,
   ChevronUp,
   ChevronDown,
+  Lock,
+  X,
 } from "lucide-react";
 import type { StockConfig } from "../../store/camStore";
+import {
+  deriveStockFaces,
+  resolveStockFace,
+  stockFacesByBoxIndex,
+  setFaceAllowance,
+  finalRectDims,
+  validateStockFaces,
+  roleLabel,
+  type StockFace,
+  type StockFaceDirection,
+} from "../../utils/stockFaces";
+
+// Etiquetas posicionales (presentación) para las caras 'libre' del resumen y el
+// popover. Los roles apoyo/mecanizado vienen del dominio (roleLabel).
+const DIRECTION_LABEL: Record<StockFaceDirection, string> = {
+  x_pos: "Derecha (X+)",
+  x_neg: "Izquierda (X−)",
+  y_pos: "Atrás (Y+)",
+  y_neg: "Frente (Y−)",
+  z_pos: "Superior (Z+)",
+  z_neg: "Inferior (Z−)",
+};
+
+function faceSummaryLabel(f: StockFace): string {
+  return f.role === "libre" ? DIRECTION_LABEL[f.direction] : roleLabel(f.role);
+}
 
 export const StepStock = () => {
   const analisis = useCamStore((s) => s.analisis);
@@ -21,70 +49,60 @@ export const StepStock = () => {
   const setStep = useCamStore((s) => s.setStep);
   const montajeConfig = useCamStore((s) => s.montajeConfig);
   // Setup persistente = ÚNICA fuente de la orientación de montaje (frame máquina).
-  // StepStock ya NO recalcula el bounding box rotado: lo lee de aquí.
   const setup = useCamStore((s) => s.setup);
 
-  const [initialized, setInitialized] = useState(false);
+  // Popover contextual: cara de stock activa (índice de BoxGeometry) + posición
+  // en pantalla (proyectada por el visor) para anclarlo a la cara.
+  const [popover, setPopover] = useState<{
+    faceIndex: number;
+    x: number;
+    y: number;
+  } | null>(null);
 
-  // Inicializar stock por defecto a partir de las dimensiones POST-ROTACIÓN que
-  // vienen del Setup (setup.rotatedBBox), NO recalculando desde la geometría.
+  const closePopover = () => setPopover(null);
+
+  // Inicializar defaults una vez por Setup (id). Preserva las StockFaces que el
+  // store ya derivó en confirmMontaje; si faltan, las deriva aquí.
+  const initedSetupId = useRef<string | null>(null);
   useEffect(() => {
-    if (initialized || !analisis || !setup) return;
+    if (!analisis || !setup) return;
+    if (initedSetupId.current === setup.id) return;
+    initedSetupId.current = setup.id;
 
     const tipoPieza = analisis.tipo_pieza || "placa";
-
-    // Dimensiones POST-ROTACIÓN leídas directamente del Setup (frame máquina).
-    // width = X, depth = Y, height = Z (vertical).
     const { width, depth, height } = setup.rotatedBBox;
-
-    console.log("🔍 [StepStock] Dimensiones desde Setup.rotatedBBox:", {
-      supportFaceId: setup.supportFace.faceId,
-      width,
-      depth,
-      height,
-    });
-
     const tipoStock = tipoPieza === "disco" ? "cilindrico" : "rectangular";
-
-    // Sobre-material cilíndrico por defecto (rectangular arranca en 0 por cara).
     const sobreRadial = 2;
     const sobreAxial = 3;
 
+    const stockFaces =
+      stockConfig.stockFaces.length === 6
+        ? stockConfig.stockFaces
+        : deriveStockFaces(setup);
+
     const newConfig: StockConfig = {
+      ...stockConfig,
       tipo: tipoStock,
       modo: "sobrematerial",
-
-      // Rectangular exacto (default = pieza exacta, dimensiones POST-ROTACIÓN)
       ancho_mm: Math.round(width),
       largo_mm: Math.round(depth),
       alto_mm: Math.round(height),
-
-      // Cilíndrico (dimensiones POST-ROTACIÓN)
       diametro_mm: Math.round(Math.max(width, depth) + 2 * sobreRadial),
       longitud_mm: Math.round(height + 2 * sobreAxial),
-
-      // Seis offsets por cara (frame del Setup), todos en 0.
-      sobre_x_pos_mm: 0,
-      sobre_x_neg_mm: 0,
-      sobre_y_pos_mm: 0,
-      sobre_y_neg_mm: 0,
-      sobre_z_pos_mm: 0,
-      sobre_z_neg_mm: 0,
-
-      // Cilíndrico
+      stockFaces,
       sobre_radial_mm: sobreRadial,
       sobre_axial_mm: sobreAxial,
     };
-
     setStockConfig(newConfig);
-    setInitialized(true);
-  }, [analisis, setup, initialized, setStockConfig]);
+  }, [analisis, setup, stockConfig, setStockConfig]);
 
   const handleTipoChange = (tipo: "rectangular" | "cilindrico") => {
+    closePopover();
     setStockConfig({ ...stockConfig, tipo });
   };
 
   const handleModoChange = (modo: "dimensiones" | "sobrematerial") => {
+    closePopover();
     setStockConfig({ ...stockConfig, modo });
   };
 
@@ -92,11 +110,38 @@ export const StepStock = () => {
     setStockConfig({ ...stockConfig, [field]: value });
   };
 
-  // Dimensiones finales del stock rectangular a partir de rotatedBBox + los seis
-  // offsets por cara (independientes positivo/negativo por eje del Setup).
+  // Editar el allowance de una cara (dominio: bloqueadas quedan en 0, clamp >=0).
+  const updateAllowance = (direction: StockFaceDirection, value: number) => {
+    setStockConfig({
+      ...stockConfig,
+      stockFaces: setFaceAllowance(stockConfig.stockFaces, direction, value),
+    });
+  };
+
+  // ¿Modo edición por-cara sobre el visor? (rectangular + sobre-material)
+  const editingPorCara =
+    stockConfig.tipo === "rectangular" && stockConfig.modo === "sobrematerial";
+
+  // 6 StockFaces en orden de índice de BoxGeometry para el visor (memo estable).
+  const boxIndexFaces = useMemo(
+    () =>
+      setup && stockConfig.stockFaces.length === 6
+        ? stockFacesByBoxIndex(stockConfig.stockFaces)
+        : null,
+    [setup, stockConfig.stockFaces],
+  );
+
+  const onStockFaceClick = (
+    faceIndex: number,
+    screen: { x: number; y: number },
+  ) => {
+    // Abrir popover anclado a la cara. El dominio decide si es editable (rol).
+    setPopover({ faceIndex, x: screen.x, y: screen.y });
+  };
+
+  // Dimensiones finales rectangulares (dominio para sobre-material).
   const getRectStockDims = (): { x: number; y: number; z: number } | null => {
     if (!setup) return null;
-    const { width, depth, height } = setup.rotatedBBox;
     if (stockConfig.modo === "dimensiones") {
       return {
         x: stockConfig.ancho_mm,
@@ -104,11 +149,7 @@ export const StepStock = () => {
         z: stockConfig.alto_mm,
       };
     }
-    return {
-      x: width + stockConfig.sobre_x_pos_mm + stockConfig.sobre_x_neg_mm,
-      y: depth + stockConfig.sobre_y_pos_mm + stockConfig.sobre_y_neg_mm,
-      z: height + stockConfig.sobre_z_pos_mm + stockConfig.sobre_z_neg_mm,
-    };
+    return finalRectDims(setup, stockConfig.stockFaces);
   };
 
   const getCylStockDims = (): { d: number; len: number } | null => {
@@ -124,53 +165,49 @@ export const StepStock = () => {
     };
   };
 
-  // Validar que el stock sea >= pieza en cada eje (frame del Setup).
+  // Validación (decimal-aware). Sobre-material rectangular delega en el dominio.
   const validateStockDimensions = (): { valid: boolean; warnings: string[] } => {
     if (!setup) return { valid: true, warnings: [] };
-
     const { width, depth, height } = setup.rotatedBBox;
     const warnings: string[] = [];
 
     if (stockConfig.tipo === "rectangular") {
-      const dims = getRectStockDims();
-      if (!dims) return { valid: true, warnings: [] };
-
-      // Comparación por eje (cada par +/- suma sobre la dimensión de la pieza).
-      if (dims.x < width) {
-        warnings.push(
-          `Ancho (${Math.round(dims.x)}mm) es menor que la pieza (${Math.round(width)}mm)`,
-        );
-      }
-      if (dims.y < depth) {
-        warnings.push(
-          `Largo (${Math.round(dims.y)}mm) es menor que la pieza (${Math.round(depth)}mm)`,
-        );
-      }
-      if (dims.z < height) {
-        warnings.push(
-          `Alto (${Math.round(dims.z)}mm) es menor que la pieza (${Math.round(height)}mm)`,
-        );
+      if (stockConfig.modo === "dimensiones") {
+        const d = getRectStockDims();
+        if (!d) return { valid: true, warnings: [] };
+        if (d.x < width)
+          warnings.push(
+            `Ancho (${Math.round(d.x)}mm) es menor que la pieza (${Math.round(width)}mm)`,
+          );
+        if (d.y < depth)
+          warnings.push(
+            `Largo (${Math.round(d.y)}mm) es menor que la pieza (${Math.round(depth)}mm)`,
+          );
+        if (d.z < height)
+          warnings.push(
+            `Alto (${Math.round(d.z)}mm) es menor que la pieza (${Math.round(height)}mm)`,
+          );
+      } else {
+        // Sobre-material >= 0 ⇒ stock >= pieza siempre; solo integridad de datos.
+        return validateStockFaces(stockConfig.stockFaces);
       }
     } else {
-      const dims = getCylStockDims();
-      if (!dims) return { valid: true, warnings: [] };
+      const d = getCylStockDims();
+      if (!d) return { valid: true, warnings: [] };
       const piezaDiamRadial = Math.max(width, depth);
-      if (dims.d < piezaDiamRadial) {
+      if (d.d < piezaDiamRadial)
         warnings.push(
-          `Diámetro (${Math.round(dims.d)}mm) es menor que la pieza (${Math.round(piezaDiamRadial)}mm)`,
+          `Diámetro (${Math.round(d.d)}mm) es menor que la pieza (${Math.round(piezaDiamRadial)}mm)`,
         );
-      }
-      if (dims.len < height) {
+      if (d.len < height)
         warnings.push(
-          `Longitud (${Math.round(dims.len)}mm) es menor que la pieza (${Math.round(height)}mm)`,
+          `Longitud (${Math.round(d.len)}mm) es menor que la pieza (${Math.round(height)}mm)`,
         );
-      }
     }
 
     return { valid: warnings.length === 0, warnings };
   };
 
-  // Texto resumen del stock calculado.
   const getStockDimensions = (): string => {
     if (!setup) return "";
     if (stockConfig.tipo === "rectangular") {
@@ -191,9 +228,7 @@ export const StepStock = () => {
     );
   }
 
-  // Sin Setup confirmado no hay orientación de montaje: el stock no puede
-  // derivarse. Pedir volver a confirmar el montaje en lugar de caer a la
-  // geometría cruda (que ignoraría la cara de apoyo elegida).
+  // Sin Setup confirmado no hay orientación de montaje (panel Phase 2A-1).
   if (!setup) {
     return (
       <div className="space-y-4">
@@ -221,6 +256,17 @@ export const StepStock = () => {
   }
 
   const validation = validateStockDimensions();
+  const faces = stockConfig.stockFaces;
+
+  // Cara resuelta para el popover (dirección/rol/bloqueo) — mapeo PURO del
+  // dominio a partir del índice reportado por el visor.
+  const activeResolved =
+    popover !== null ? resolveStockFace(popover.faceIndex, setup) : null;
+  const activeAllowance =
+    activeResolved !== null
+      ? (faces.find((f) => f.direction === activeResolved.direction)
+          ?.allowance ?? 0)
+      : 0;
 
   return (
     <div className="space-y-4 md:space-y-6">
@@ -230,24 +276,100 @@ export const StepStock = () => {
           Configurar Stock (Material Bruto)
         </h2>
         <p className="mt-1 text-xs md:text-sm text-text-muted">
-          Define las dimensiones del material bruto antes de mecanizar
+          {editingPorCara
+            ? "Haz clic en una cara del stock para editar su sobre-material"
+            : "Define las dimensiones del material bruto antes de mecanizar"}
         </p>
       </div>
 
       {/* Layout responsive: columna en móvil, 2 columnas en desktop */}
       <div className="flex flex-col lg:flex-row gap-4 md:gap-6">
-        {/* Visor 3D */}
-        <div className="flex-1 min-h-[300px] lg:min-h-[500px]">
-          <CamViewer3D
-            dimensiones={{
-              x: meshData.bounding_box.max[0] - meshData.bounding_box.min[0],
-              y: meshData.bounding_box.max[1] - meshData.bounding_box.min[1],
-              z: meshData.bounding_box.max[2] - meshData.bounding_box.min[2],
-            }}
-            stockConfig={stockConfig}
-            faceIdDestacada={montajeConfig.face_id_apoyo}
-            sujecionConfig={montajeConfig.sujecion_config}
-          />
+        {/* Visor 3D + popover contextual + resumen por-cara */}
+        <div className="flex-1 space-y-3">
+          <div className="relative min-h-[300px] lg:min-h-[500px]">
+            <CamViewer3D
+              dimensiones={{
+                x: meshData.bounding_box.max[0] - meshData.bounding_box.min[0],
+                y: meshData.bounding_box.max[1] - meshData.bounding_box.min[1],
+                z: meshData.bounding_box.max[2] - meshData.bounding_box.min[2],
+              }}
+              stockConfig={stockConfig}
+              faceIdDestacada={montajeConfig.face_id_apoyo}
+              sujecionConfig={montajeConfig.sujecion_config}
+              stockFacesByBoxIndex={boxIndexFaces}
+              activeStockFaceIndex={
+                editingPorCara ? (popover?.faceIndex ?? null) : null
+              }
+              onStockFaceClick={editingPorCara ? onStockFaceClick : undefined}
+            />
+
+            {/* Popover contextual anclado a la cara pinchada */}
+            {editingPorCara && popover && activeResolved && (
+              <div
+                className="absolute z-20 w-52"
+                style={{
+                  left: popover.x,
+                  top: popover.y,
+                  transform: "translate(-50%, 12px)",
+                }}
+              >
+                <div className="rounded-xl border border-border bg-bg-elevated p-3 shadow-2xl">
+                  <div className="mb-2 flex items-center justify-between gap-2">
+                    <span className="text-xs font-semibold text-text-primary">
+                      {faceSummaryLabel(activeResolved)}
+                    </span>
+                    <button
+                      onClick={closePopover}
+                      className="text-text-muted hover:text-text-primary"
+                      aria-label="Cerrar"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  </div>
+                  {activeResolved.locked ? (
+                    <div className="flex items-center gap-2 rounded-lg bg-bg-base/60 px-2 py-2 text-xs text-text-muted">
+                      <Lock className="h-3.5 w-3.5 shrink-0" />
+                      <span>
+                        Cara de apoyo: bloqueada en 0 mm (no se añade material
+                        contra la sujeción).
+                      </span>
+                    </div>
+                  ) : (
+                    <InputField
+                      label="Sobre-material"
+                      value={activeAllowance}
+                      onChange={(v) =>
+                        updateAllowance(activeResolved.direction, v)
+                      }
+                      unit="mm"
+                    />
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Resumen READ-ONLY: rol + allowance por cara */}
+          {editingPorCara && faces.length === 6 && (
+            <div className="flex flex-wrap gap-1.5">
+              {faces.map((f) => (
+                <span
+                  key={f.direction}
+                  className={`inline-flex items-center gap-1 rounded-lg border px-2 py-1 text-[11px] ${
+                    f.role === "mecanizado"
+                      ? "border-green-500/40 bg-green-500/10 text-green-300"
+                      : f.role === "apoyo"
+                        ? "border-slate-500/40 bg-slate-500/10 text-slate-300"
+                        : "border-border bg-bg-elevated text-text-secondary"
+                  }`}
+                >
+                  {f.locked && <Lock className="h-3 w-3" />}
+                  {faceSummaryLabel(f)} {f.allowance}mm
+                  {f.locked && " · bloqueado"}
+                </span>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* Formulario */}
@@ -338,54 +460,13 @@ export const StepStock = () => {
                     />
                   </>
                 ) : (
-                  /* ── UI TEMPORAL (Phase 2A-1): seis campos planos para validar
-                       el flujo de datos. La interacción centrada en el visor
-                       (click-cara → editar su sobre-material) llega en 2A-2. ── */
-                  <div className="space-y-3">
-                    <p className="text-[10px] md:text-xs text-text-muted">
-                      Sobre-material por cara (frame del Setup). UI temporal de
-                      validación — la versión final será sobre el visor.
-                    </p>
-                    <div className="grid grid-cols-2 gap-2">
-                      <InputField
-                        label="X+"
-                        value={stockConfig.sobre_x_pos_mm}
-                        onChange={(v) => handleInputChange("sobre_x_pos_mm", v)}
-                        unit="mm"
-                      />
-                      <InputField
-                        label="X−"
-                        value={stockConfig.sobre_x_neg_mm}
-                        onChange={(v) => handleInputChange("sobre_x_neg_mm", v)}
-                        unit="mm"
-                      />
-                      <InputField
-                        label="Y+"
-                        value={stockConfig.sobre_y_pos_mm}
-                        onChange={(v) => handleInputChange("sobre_y_pos_mm", v)}
-                        unit="mm"
-                      />
-                      <InputField
-                        label="Y−"
-                        value={stockConfig.sobre_y_neg_mm}
-                        onChange={(v) => handleInputChange("sobre_y_neg_mm", v)}
-                        unit="mm"
-                      />
-                      <InputField
-                        label="Z+"
-                        value={stockConfig.sobre_z_pos_mm}
-                        onChange={(v) => handleInputChange("sobre_z_pos_mm", v)}
-                        unit="mm"
-                      />
-                      <InputField
-                        label="Z− (apoyo)"
-                        value={stockConfig.sobre_z_neg_mm}
-                        onChange={() => {}}
-                        unit="mm"
-                        disabled
-                        help="Cara de apoyo: no se añade material contra la sujeción."
-                      />
-                    </div>
+                  <div className="rounded-xl border border-border bg-bg-elevated/50 p-3 text-xs text-text-muted">
+                    Edita el sobre-material haciendo <b>clic en cada cara</b> del
+                    stock en el visor. La cara{" "}
+                    <span className="text-green-300">de mecanizado</span> es el
+                    objetivo primario; la cara{" "}
+                    <span className="text-slate-300">de apoyo</span> está
+                    bloqueada en 0.
                   </div>
                 )}
               </>

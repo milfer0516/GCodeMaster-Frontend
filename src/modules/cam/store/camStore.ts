@@ -3,8 +3,10 @@ import { create } from "zustand";
 import type { MeshData } from "../services/camService";
 import type { Maquina } from "../../../services/maquinasService";
 import { computeSetup, type Setup } from "../utils/computeSetup";
+import { deriveStockFaces, type StockFace } from "../utils/stockFaces";
 
 export type { Setup };
+export type { StockFace };
 
 // DESPUÉS
 export type CamStep =
@@ -48,14 +50,13 @@ export interface StockConfig {
   diametro_mm: number;
   longitud_mm: number;
 
-  // Sobre-material rectangular: seis offsets independientes por cara (frame del Setup)
-  sobre_x_pos_mm: number;
-  sobre_x_neg_mm: number;
-  sobre_y_pos_mm: number;
-  sobre_y_neg_mm: number;
-  sobre_z_pos_mm: number;
-  sobre_z_neg_mm: number;
-  // Sobre-material cilíndrico
+  // Sobre-material rectangular: entidades StockFace (exactamente 6 cuando hay
+  // Setup confirmado). Reemplaza los seis floats sueltos de la fase 2A-1.
+  // Se regenera en confirmMontaje y se limpia al invalidar el Setup.
+  stockFaces: StockFace[];
+
+  // Sobre-material cilíndrico (no se subsume limpiamente en StockFace: radial
+  // uniforme + axial. Se mantiene tal cual — ver nota en el reporte 2A-2).
   sobre_radial_mm: number;
   sobre_axial_mm: number;
 }
@@ -190,13 +191,9 @@ const STOCK_INICIAL: StockConfig = {
   diametro_mm: 100,
   longitud_mm: 50,
 
-  // Sobre-material rectangular (seis offsets por cara, default 0)
-  sobre_x_pos_mm: 0,
-  sobre_x_neg_mm: 0,
-  sobre_y_pos_mm: 0,
-  sobre_y_neg_mm: 0,
-  sobre_z_pos_mm: 0,
-  sobre_z_neg_mm: 0,
+  // Sobre-material rectangular: vacío hasta confirmar el montaje (se deriva del
+  // Setup en confirmMontaje).
+  stockFaces: [],
   // Sobre-material cilíndrico
   sobre_radial_mm: 2,
   sobre_axial_mm: 3,
@@ -238,14 +235,16 @@ export const useCamStore = create<CamState>((set) => ({
   setArchivo: (archivo) => set({ archivo, nombreArchivo: archivo?.name ?? "" }),
   setAnalisis: (idJob, analisis) => {
     const ops = convertirOperaciones(analisis);
-    set({
+    set((state) => ({
       idJob,
       analisis,
       operaciones: ops,
       meshData: null,
       meshError: null,
       setup: null,
-    });
+      // Cascade: sin Setup no hay StockFaces válidas.
+      stockConfig: { ...state.stockConfig, stockFaces: [] },
+    }));
   },
   setOperaciones: (operaciones) => set({ operaciones }),
   toggleOperacion: (id) =>
@@ -270,7 +269,15 @@ export const useCamStore = create<CamState>((set) => ({
 
       return {
         montajeConfig: { ...state.montajeConfig, ...config },
-        ...(invalidar ? { setup: null } : {}),
+        // Cascade Setup → StockFaces: invalidar el Setup limpia las StockFaces
+        // para que no queden sobre-materiales huérfanos en un frame que ya no
+        // existe (se regeneran en el próximo confirmMontaje).
+        ...(invalidar
+          ? {
+              setup: null,
+              stockConfig: { ...state.stockConfig, stockFaces: [] },
+            }
+          : {}),
       };
     }),
   confirmMontaje: () =>
@@ -288,9 +295,26 @@ export const useCamStore = create<CamState>((set) => ({
         state.analisis,
         state.montajeConfig.sujecion_config,
       );
-      return { setup };
+      if (!setup) {
+        return {
+          setup: null,
+          stockConfig: { ...state.stockConfig, stockFaces: [] },
+        };
+      }
+      // Cascade Setup → StockFaces: regenerar las 6 caras desde el nuevo Setup,
+      // reasignando roles y RESETEANDO los sobre-materiales a 0 (los antiguos
+      // referían un frame que ya no existe — no se arrastran).
+      const stockFaces = deriveStockFaces(setup);
+      return {
+        setup,
+        stockConfig: { ...state.stockConfig, stockFaces },
+      };
     }),
-  invalidateSetup: () => set({ setup: null }),
+  invalidateSetup: () =>
+    set((state) => ({
+      setup: null,
+      stockConfig: { ...state.stockConfig, stockFaces: [] },
+    })),
   setMaterial: (material) => set({ material }),
   setMaquina: (maquina) => set({ maquina }),
   setStockConfig: (stockConfig) => set({ stockConfig }),
@@ -298,8 +322,14 @@ export const useCamStore = create<CamState>((set) => ({
   setOrdenSetups: (ordenSetups) => set({ ordenSetups }),
   setGcodeSetups: (gcodeSetups) => set({ gcodeSetups }),
   setMeshData: (meshData) =>
-    // Cargar una geometría nueva invalida cualquier Setup previo.
-    set({ meshData, meshLoading: false, meshError: null, setup: null }),
+    // Cargar una geometría nueva invalida cualquier Setup previo (y sus StockFaces).
+    set((state) => ({
+      meshData,
+      meshLoading: false,
+      meshError: null,
+      setup: null,
+      stockConfig: { ...state.stockConfig, stockFaces: [] },
+    })),
   setMeshLoading: (meshLoading) => set({ meshLoading }),
   setMeshError: (meshError) => set({ meshError, meshLoading: false }),
   reset: () =>

@@ -8,6 +8,7 @@ import type { MeshData, FaceMetadata } from "../services/camService";
 import type { Operacion } from "../store/camStore";
 import { Loader2, AlertCircle } from "lucide-react";
 import type { SujecionConfig, StockConfig } from "../store/camStore";
+import type { StockFace, StockFaceRole } from "../utils/stockFaces";
 
 // ── Props — mismas que el visor anterior para no romper StepOperaciones ──
 // DESPUÉS
@@ -22,6 +23,39 @@ interface Props {
   sujecionConfig?: SujecionConfig | null;
   piezaBoundingBox?: { x: number; y: number; z: number };
   stockConfig?: StockConfig | null;
+
+  // ── Stock por-cara (Phase 2A-2) — el visor es consumidor VISUAL puro ──
+  // El dominio entrega las 6 StockFaces YA ordenadas por índice de cara de la
+  // BoxGeometry (materialIndex 0..5). El visor solo las indexa; NUNCA mapea
+  // cara→dirección/rol. Ver src/modules/cam/utils/stockFaces.ts.
+  stockFacesByBoxIndex?: StockFace[] | null;
+  activeStockFaceIndex?: number | null;
+  onStockFaceClick?: (
+    faceIndex: number,
+    screen: { x: number; y: number },
+    locked: boolean,
+  ) => void;
+  onStockFaceHover?: (faceIndex: number | null) => void;
+}
+
+// Colores del stock por rol + estado (hover/activo). El VISOR no decide roles:
+// recibe el rol ya derivado por el dominio y solo lo pinta.
+function stockFaceColor(
+  role: StockFaceRole,
+  isHover: boolean,
+  isActive: boolean,
+): { color: number; opacity: number } {
+  if (isActive) return { color: 0xfbbf24, opacity: 0.48 }; // ámbar fuerte
+  if (isHover) return { color: 0xfbbf24, opacity: 0.34 }; // ámbar
+  switch (role) {
+    case "apoyo":
+      return { color: 0x64748b, opacity: 0.1 }; // gris/atenuado (bloqueado)
+    case "mecanizado":
+      return { color: 0x22c55e, opacity: 0.2 }; // verde (objetivo primario)
+    case "libre":
+    default:
+      return { color: 0x88ccff, opacity: 0.14 }; // azul translúcido
+  }
 }
 // ── Colores ────────────────────────────────────────────────────────────────
 const COLOR_BASE = new THREE.Color(0x4a90d9); // azul acero — cara sin feature
@@ -175,6 +209,10 @@ export function CamViewer3D({
   sujecionConfig = null,
   piezaBoundingBox,
   stockConfig = null,
+  stockFacesByBoxIndex = null,
+  activeStockFaceIndex = null,
+  onStockFaceClick,
+  onStockFaceHover,
 }: Props) {
   const mountRef = useRef<HTMLDivElement>(null);
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
@@ -185,9 +223,15 @@ export function CamViewer3D({
   const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
   const controlsRef = useRef<OrbitControls | null>(null);
   const stockMeshRef = useRef<THREE.Group | null>(null);
+  // Malla de la caja de stock (para picking) y sus 6 materiales (uno por cara
+  // de la BoxGeometry, materialIndex 0..5) para resaltar caras individuales.
+  const stockBoxMeshRef = useRef<THREE.Mesh | null>(null);
+  const stockMaterialsRef = useRef<THREE.MeshBasicMaterial[]>([]);
 
   // Cara seleccionada con click simple para mostrar su dimensión en el panel
   const [faceInfo, setFaceInfo] = useState<FaceMetadata | null>(null);
+  // Índice de cara de stock bajo el cursor (para resaltar + label de valor).
+  const [stockHover, setStockHover] = useState<number | null>(null);
 
   const {
     archivo,
@@ -724,6 +768,8 @@ export function CamViewer3D({
       });
       stockMeshRef.current = null;
     }
+    stockBoxMeshRef.current = null;
+    stockMaterialsRef.current = [];
 
     // Sin stockConfig o sin Setup confirmado no se dibuja stock: el stock vive
     // en el frame MÁQUINA definido por setup.rotatedBBox (ya post-rotación).
@@ -735,21 +781,24 @@ export function CamViewer3D({
 
     const stockGroup = new THREE.Group();
 
-    // Materiales compartidos
-    const fillMaterial = new THREE.MeshBasicMaterial({
-      color: 0x88ccff,
-      transparent: true,
-      opacity: 0.15,
-      side: THREE.DoubleSide,
-    });
+    // Material de aristas (wireframe) compartido.
     const lineMaterial = new THREE.LineBasicMaterial({
       color: 0x4499dd,
       linewidth: 2,
     });
 
+    // ¿Caja rectangular editable por cara? Solo en modo sobre-material y con las
+    // 6 StockFaces provistas por el dominio. En dimensiones exactas / cilíndrico
+    // se dibuja una caja/cilindro simple (no editable por cara).
+    const editablePorCara =
+      stockConfig.tipo === "rectangular" &&
+      stockConfig.modo === "sobrematerial" &&
+      Array.isArray(stockFacesByBoxIndex) &&
+      stockFacesByBoxIndex.length === 6;
+
     if (stockConfig.tipo === "rectangular") {
       // Extents del stock en coords MÁQUINA (frame del Setup). Cada cara se
-      // expande de forma independiente con su offset por cara.
+      // expande de forma independiente con su allowance por cara.
       let minX: number, maxX: number, minY: number, maxY: number, minZ: number, maxZ: number;
       if (stockConfig.modo === "dimensiones") {
         // Dimensiones exactas: centradas en el footprint, base en la mesa.
@@ -760,12 +809,16 @@ export function CamViewer3D({
         minZ = rbb.min[2];
         maxZ = rbb.min[2] + stockConfig.alto_mm;
       } else {
-        minX = rbb.min[0] - stockConfig.sobre_x_neg_mm;
-        maxX = rbb.max[0] + stockConfig.sobre_x_pos_mm;
-        minY = rbb.min[1] - stockConfig.sobre_y_neg_mm;
-        maxY = rbb.max[1] + stockConfig.sobre_y_pos_mm;
-        minZ = rbb.min[2] - stockConfig.sobre_z_neg_mm;
-        maxZ = rbb.max[2] + stockConfig.sobre_z_pos_mm;
+        // Sobre-material por cara. Índices de BoxGeometry (materialIndex):
+        // 0=+X, 1=-X, 2=+Y, 3=-Y, 4=+Z, 5=-Z. El visor solo indexa el array
+        // que el dominio ya ordenó; no interpreta la dirección.
+        const a = (i: number) => stockFacesByBoxIndex?.[i]?.allowance ?? 0;
+        maxX = rbb.max[0] + a(0);
+        minX = rbb.min[0] - a(1);
+        maxY = rbb.max[1] + a(2);
+        minY = rbb.min[1] - a(3);
+        maxZ = rbb.max[2] + a(4);
+        minZ = rbb.min[2] - a(5);
       }
 
       const totalX = maxX - minX;
@@ -779,13 +832,49 @@ export function CamViewer3D({
       const boxGeometry = new THREE.BoxGeometry(totalX, totalY, totalZ);
       boxGeometry.translate(cx, cy, cz);
 
-      const boxMesh = new THREE.Mesh(boxGeometry, fillMaterial);
+      let boxMesh: THREE.Mesh;
+      if (editablePorCara) {
+        // 6 materiales (uno por cara/materialIndex) para resaltar caras.
+        const mats = stockFacesByBoxIndex!.map((face, i) => {
+          const isActive = i === activeStockFaceIndex;
+          const isHover = i === stockHover;
+          const { color, opacity } = stockFaceColor(
+            face.role,
+            isHover,
+            isActive,
+          );
+          return new THREE.MeshBasicMaterial({
+            color,
+            transparent: true,
+            opacity,
+            side: THREE.DoubleSide,
+          });
+        });
+        stockMaterialsRef.current = mats;
+        boxMesh = new THREE.Mesh(boxGeometry, mats);
+        stockBoxMeshRef.current = boxMesh;
+      } else {
+        const fillMaterial = new THREE.MeshBasicMaterial({
+          color: 0x88ccff,
+          transparent: true,
+          opacity: 0.15,
+          side: THREE.DoubleSide,
+        });
+        boxMesh = new THREE.Mesh(boxGeometry, fillMaterial);
+      }
+
       const edges = new THREE.EdgesGeometry(boxGeometry);
       const wireframe = new THREE.LineSegments(edges, lineMaterial);
 
       stockGroup.add(boxMesh);
       stockGroup.add(wireframe);
     } else {
+      const fillMaterial = new THREE.MeshBasicMaterial({
+        color: 0x88ccff,
+        transparent: true,
+        opacity: 0.15,
+        side: THREE.DoubleSide,
+      });
       // Cilíndrico: radial uniforme en el OD, axial en la dirección de la cara
       // de mecanizado (eje Z máquina, hacia arriba).
       let stockDiameter: number, stockLength: number;
@@ -829,7 +918,87 @@ export function CamViewer3D({
 
     scene.add(stockGroup);
     stockMeshRef.current = stockGroup;
-  }, [stockConfig, meshData, setup]);
+    // Nota: los colores de hover/activo se re-aplican en el efecto 6b (no
+    // reconstruye la geometría — solo recolorea los materiales por cara).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [stockConfig, meshData, setup, stockFacesByBoxIndex]);
+
+  // ── 6b. Resaltar cara de stock activa / en hover (sin reconstruir) ──────
+  useEffect(() => {
+    const mats = stockMaterialsRef.current;
+    if (!mats.length || !stockFacesByBoxIndex) return;
+    mats.forEach((m, i) => {
+      const role = stockFacesByBoxIndex[i]?.role ?? "libre";
+      const { color, opacity } = stockFaceColor(
+        role,
+        i === stockHover,
+        i === activeStockFaceIndex,
+      );
+      m.color.setHex(color);
+      m.opacity = opacity;
+    });
+  }, [activeStockFaceIndex, stockHover, stockFacesByBoxIndex]);
+
+  // ── 6c. Picking de caras de stock (solo reporta ÍNDICE + posición) ──────
+  // El visor NO conoce roles ni ejes: raycastea la caja de stock, obtiene el
+  // materialIndex (0..5) de la cara pinchada y lo reporta al dominio, junto con
+  // la proyección a pantalla del punto para anclar el popover. La interpretación
+  // (dirección/rol/bloqueo) la hace el dominio (resolveStockFace).
+  useEffect(() => {
+    if (!onStockFaceClick && !onStockFaceHover) return;
+    if (!rendererRef.current || !cameraRef.current || !mountRef.current) return;
+
+    const el = mountRef.current;
+    const renderer = rendererRef.current;
+    const camera = cameraRef.current;
+    const raycaster = new THREE.Raycaster();
+    const mouse = new THREE.Vector2();
+
+    const getHit = (e: MouseEvent) => {
+      const box = stockBoxMeshRef.current;
+      if (!box) return null;
+      const rect = el.getBoundingClientRect();
+      mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+      mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+      raycaster.setFromCamera(mouse, camera);
+      const hits = raycaster.intersectObject(box, false);
+      if (hits.length === 0) return null;
+      const faceIndex = hits[0].face?.materialIndex ?? null;
+      if (faceIndex === null) return null;
+      return { faceIndex, point: hits[0].point };
+    };
+
+    const projectToScreen = (worldPoint: THREE.Vector3) => {
+      const rect = el.getBoundingClientRect();
+      const v = worldPoint.clone().project(camera);
+      return {
+        x: (v.x * 0.5 + 0.5) * rect.width,
+        y: (-v.y * 0.5 + 0.5) * rect.height,
+      };
+    };
+
+    const handleMove = (e: MouseEvent) => {
+      const hit = getHit(e);
+      const idx = hit ? hit.faceIndex : null;
+      setStockHover((prev) => (prev === idx ? prev : idx));
+      onStockFaceHover?.(idx);
+    };
+
+    const handleClick = (e: MouseEvent) => {
+      const hit = getHit(e);
+      if (!hit) return;
+      const locked =
+        stockFacesByBoxIndex?.[hit.faceIndex]?.locked ?? false;
+      onStockFaceClick?.(hit.faceIndex, projectToScreen(hit.point), locked);
+    };
+
+    renderer.domElement.addEventListener("mousemove", handleMove);
+    renderer.domElement.addEventListener("click", handleClick);
+    return () => {
+      renderer.domElement.removeEventListener("mousemove", handleMove);
+      renderer.domElement.removeEventListener("click", handleClick);
+    };
+  }, [onStockFaceClick, onStockFaceHover, stockFacesByBoxIndex]);
 
   // ── Render ─────────────────────────────────────────────────────────────
   if (meshLoading) {
@@ -870,6 +1039,20 @@ export function CamViewer3D({
           style={{ pointerEvents: "none" }}
         >
           {formatFaceDimension(faceInfo)}
+        </div>
+      )}
+
+      {/* Label de la cara de stock en hover — muestra su sobre-material actual.
+          Los datos (rol/allowance) vienen ya resueltos del dominio; el visor
+          solo indexa por el índice de cara. */}
+      {stockHover !== null && stockFacesByBoxIndex?.[stockHover] && (
+        <div
+          className="absolute top-2 right-2 rounded-lg bg-black/70 px-3 py-1.5 text-sm font-medium text-white shadow-lg backdrop-blur-sm"
+          style={{ pointerEvents: "none" }}
+        >
+          {stockFacesByBoxIndex[stockHover].locked
+            ? "Apoyo · bloqueado (0 mm)"
+            : `${stockFacesByBoxIndex[stockHover].allowance} mm`}
         </div>
       )}
     </div>

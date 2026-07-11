@@ -107,13 +107,23 @@ SujecionConfig.envolvente.z_apoyo_mm  // mounting height for G-Code — source o
 StockConfig {
   tipo: "rectangular" | "cilindrico"
   modo: "dimensiones" | "sobrematerial"
-  ancho_mm, largo_mm, alto_mm            // rectangular
+  ancho_mm, largo_mm, alto_mm            // rectangular (dimensiones exactas)
   diametro_mm, longitud_mm               // cylindrical
-  sobre_radial_mm, sobre_axial_mm        // cylindrical stock allowance
-  sobre_x_pos_mm, sobre_x_neg_mm,        // rectangular: six independent per-face
-  sobre_y_pos_mm, sobre_y_neg_mm,        //   offsets in the Setup coordinate frame
-  sobre_z_pos_mm, sobre_z_neg_mm         //   (z_neg = support face, locked at 0)
+  sobre_radial_mm, sobre_axial_mm        // cylindrical stock allowance (unchanged)
+  stockFaces: StockFace[]                // rectangular allowance = 6 StockFace entities (Phase 2A-2)
 }
+
+// StockFace (src/modules/cam/utils/stockFaces.ts) — PURE domain, one per box face:
+StockFace {
+  direction: 'x_pos'|'x_neg'|'y_pos'|'y_neg'|'z_pos'|'z_neg'  // key in Setup/machine frame
+  role: 'apoyo' | 'mecanizado' | 'libre'   // derived from Setup (rotation-aware)
+  allowance: number                        // mm (>= 0)
+  locked: boolean                          // true for apoyo face (pinned to 0)
+}
+// deriveStockFaces(setup) assigns roles + resets allowances (called in confirmMontaje).
+// resolveStockFace(pickedBoxFaceIndex, setup) maps a Viewer-reported materialIndex → StockFace.
+// The Viewer reports only the face INDEX; it never maps face→role/direction. Cascade: any
+// Setup invalidation clears stockFaces (no orphaned allowances in a dead coordinate frame).
 ```
 
 ## SujecionOverlay3D — pending issue
