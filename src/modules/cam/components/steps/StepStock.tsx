@@ -3,7 +3,14 @@ import { useEffect, useState } from "react";
 import { useCamStore } from "../../store/camStore";
 import { CamViewer3D } from "../CamViewer3D";
 import { WizardNavButtons } from "./WizardNavButtons";
-import { Package, Box, Cylinder, AlertTriangle } from "lucide-react";
+import {
+  Package,
+  Box,
+  Cylinder,
+  AlertTriangle,
+  ChevronUp,
+  ChevronDown,
+} from "lucide-react";
 import type { StockConfig } from "../../store/camStore";
 
 export const StepStock = () => {
@@ -476,6 +483,10 @@ interface InputFieldProps {
   disabled?: boolean;
 }
 
+// Paso del spinner (flechas ↑/↓). Solo aplica a los botones: escribir a mano
+// acepta cualquier decimal (72.3, 108.24), no se restringe a múltiplos de 0.5.
+const STEP = 0.5;
+
 function InputField({
   label,
   value,
@@ -484,6 +495,40 @@ function InputField({
   help,
   disabled = false,
 }: InputFieldProps) {
+  // Estado de texto local: permite estados intermedios al teclear ("72.",
+  // "108.2") sin que el value numérico controlado los recorte. El input es
+  // type="text" + inputMode="decimal" para que NO haya validación de step
+  // nativa que bloquee decimales arbitrarios.
+  const [text, setText] = useState(String(value));
+
+  // Re-sincronizar el texto cuando el value externo cambia (init, flechas)
+  // y difiere numéricamente de lo que hay escrito.
+  useEffect(() => {
+    const parsed = parseFloat(text);
+    if (parsed !== value && !(Number.isNaN(parsed) && value === 0)) {
+      setText(String(value));
+    }
+    // Solo depende de value: no queremos re-sincronizar en cada tecla.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [value]);
+
+  const handleText = (raw: string) => {
+    setText(raw);
+    const n = parseFloat(raw);
+    if (!Number.isNaN(n)) onChange(n);
+    else if (raw.trim() === "") onChange(0);
+    // Estados intermedios como "72." o "-" no emiten onChange hasta ser válidos.
+  };
+
+  const bump = (delta: number) => {
+    if (disabled) return;
+    const base = Number.isNaN(parseFloat(text)) ? 0 : parseFloat(text);
+    // Redondeo a 2 decimales para evitar 79.49999… al sumar/restar 0.5.
+    const next = Math.max(0, Math.round((base + delta) * 100) / 100);
+    setText(String(next));
+    onChange(next);
+  };
+
   return (
     <div>
       <label className="block text-xs md:text-sm font-medium text-text-secondary mb-1.5">
@@ -491,19 +536,45 @@ function InputField({
       </label>
       <div className="relative">
         <input
-          type="number"
-          value={value}
-          onChange={(e) => onChange(parseFloat(e.target.value) || 0)}
+          type="text"
+          inputMode="decimal"
+          value={text}
+          onChange={(e) => handleText(e.target.value)}
           disabled={disabled}
-          className={`w-full rounded-xl border border-border bg-bg-elevated px-3 md:px-4 py-2.5 md:py-3 min-h-[44px] text-sm text-text-primary focus:border-accent-blue focus:outline-none focus:ring-2 focus:ring-accent-blue/20 ${
+          className={`w-full rounded-xl border border-border bg-bg-elevated px-3 md:px-4 py-2.5 md:py-3 min-h-[44px] pr-16 text-sm text-text-primary focus:border-accent-blue focus:outline-none focus:ring-2 focus:ring-accent-blue/20 ${
             disabled ? "opacity-50 cursor-not-allowed" : ""
           }`}
-          step="0.1"
-          min="0"
         />
-        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-text-muted">
+        <span className="absolute right-9 top-1/2 -translate-y-1/2 text-xs text-text-muted">
           {unit}
         </span>
+        {/* Spinner ±0.5 — solo mueve por 0.5; teclear acepta cualquier decimal */}
+        <div className="absolute right-1 top-1/2 -translate-y-1/2 flex flex-col">
+          <button
+            type="button"
+            tabIndex={-1}
+            aria-label={`Aumentar ${label} 0.5`}
+            onClick={() => bump(STEP)}
+            disabled={disabled}
+            className={`flex h-5 w-6 items-center justify-center rounded text-text-muted hover:text-accent-blue ${
+              disabled ? "opacity-30 cursor-not-allowed" : ""
+            }`}
+          >
+            <ChevronUp className="h-3.5 w-3.5" />
+          </button>
+          <button
+            type="button"
+            tabIndex={-1}
+            aria-label={`Disminuir ${label} 0.5`}
+            onClick={() => bump(-STEP)}
+            disabled={disabled}
+            className={`flex h-5 w-6 items-center justify-center rounded text-text-muted hover:text-accent-blue ${
+              disabled ? "opacity-30 cursor-not-allowed" : ""
+            }`}
+          >
+            <ChevronDown className="h-3.5 w-3.5" />
+          </button>
+        </div>
       </div>
       {help && (
         <p className="mt-1 text-[10px] md:text-xs text-text-muted">{help}</p>
