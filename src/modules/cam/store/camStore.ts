@@ -48,11 +48,16 @@ export interface StockConfig {
   diametro_mm: number;
   longitud_mm: number;
 
-  // Sobre-material (cuando modo = "sobrematerial")
-  sobre_radial_mm: number;   // para cilindro
-  sobre_axial_mm: number;    // para cilindro
-  sobre_xy_mm: number;       // para rectangular
-  sobre_z_mm: number;        // para rectangular
+  // Sobre-material rectangular: seis offsets independientes por cara (frame del Setup)
+  sobre_x_pos_mm: number;
+  sobre_x_neg_mm: number;
+  sobre_y_pos_mm: number;
+  sobre_y_neg_mm: number;
+  sobre_z_pos_mm: number;
+  sobre_z_neg_mm: number;
+  // Sobre-material cilíndrico
+  sobre_radial_mm: number;
+  sobre_axial_mm: number;
 }
 
 export interface DatumConfig {
@@ -185,11 +190,16 @@ const STOCK_INICIAL: StockConfig = {
   diametro_mm: 100,
   longitud_mm: 50,
 
-  // Sobre-material
+  // Sobre-material rectangular (seis offsets por cara, default 0)
+  sobre_x_pos_mm: 0,
+  sobre_x_neg_mm: 0,
+  sobre_y_pos_mm: 0,
+  sobre_y_neg_mm: 0,
+  sobre_z_pos_mm: 0,
+  sobre_z_neg_mm: 0,
+  // Sobre-material cilíndrico
   sobre_radial_mm: 2,
   sobre_axial_mm: 3,
-  sobre_xy_mm: 2,
-  sobre_z_mm: 2,
 };
 
 const MONTAJE_INICIAL: MontajeConfig = {

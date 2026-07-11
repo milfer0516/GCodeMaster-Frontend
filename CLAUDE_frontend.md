@@ -110,7 +110,9 @@ StockConfig {
   ancho_mm, largo_mm, alto_mm            // rectangular
   diametro_mm, longitud_mm               // cylindrical
   sobre_radial_mm, sobre_axial_mm        // cylindrical stock allowance
-  sobre_xy_mm, sobre_z_mm                // rectangular stock allowance
+  sobre_x_pos_mm, sobre_x_neg_mm,        // rectangular: six independent per-face
+  sobre_y_pos_mm, sobre_y_neg_mm,        //   offsets in the Setup coordinate frame
+  sobre_z_pos_mm, sobre_z_neg_mm         //   (z_neg = support face, locked at 0)
 }
 ```
 

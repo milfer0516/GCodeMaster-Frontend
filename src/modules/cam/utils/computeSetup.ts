@@ -12,10 +12,11 @@
 // persistence — works in machine coordinates and must never inherit viewer
 // conventions.
 //
-// This function unifies the transform math that currently lives (a) inside
-// CamViewer3D's rotation effect (~lines 424-535, expressed in the Three.js
-// display frame) and (b) in rotatedBoundingBox.ts (dims only, also display
-// frame). Here it is expressed once, in the OCC frame, as pure data.
+// This function unifies the transform math that previously lived (a) inside
+// CamViewer3D's rotation effect (expressed in the Three.js display frame) and
+// (b) in the now-deleted rotatedBoundingBox.ts (dims only, also display frame).
+// Here it is expressed once, in the OCC frame, as pure data. Stock consumes
+// setup.rotatedBBox directly (Phase 2A-1) instead of recomputing dimensions.
 
 import * as THREE from "three";
 import type { MeshData } from "../services/camService";

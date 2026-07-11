@@ -566,12 +566,6 @@ export function CamViewer3D({
       meshRef.current.position.y = posYStart + (posYTarget - posYStart) * ease;
       meshRef.current.position.z = posZStart + (posZTarget - posZStart) * ease;
 
-      // Sincronizar stock con mesh (si existe)
-      if (stockMeshRef.current) {
-        stockMeshRef.current.quaternion.copy(meshRef.current.quaternion);
-        stockMeshRef.current.position.copy(meshRef.current.position);
-      }
-
       // Interpolar target de la cámara para que siga al centro visual del mesh
       controlsRef.current.target.lerpVectors(targetStart, targetEnd, ease);
 
@@ -731,144 +725,111 @@ export function CamViewer3D({
       stockMeshRef.current = null;
     }
 
-    if (!stockConfig) return;
+    // Sin stockConfig o sin Setup confirmado no se dibuja stock: el stock vive
+    // en el frame MÁQUINA definido por setup.rotatedBBox (ya post-rotación).
+    // NO se recomputa la rotación aquí; la caja es axis-aligned en máquina y
+    // solo se lleva a display con VIEWER_BASE_Q (OCC/máquina → Three.js).
+    if (!stockConfig || !setup) return;
 
-    const bb = meshData.bounding_box;
-    const bbMin = bb.min;
-    const bbMax = bb.max;
-
-    // Calcular dimensiones del stock en coordenadas OCC (pre-rotation)
-    // IMPORTANTE: Estas dimensiones son en el espacio OCC ORIGINAL, antes de
-    // cualquier rotación. El stock se rotará junto con el mesh, por lo que
-    // necesita las mismas dimensiones base que el mesh en OCC.
-    let stockWidth = 0;   // X en OCC
-    let stockDepth = 0;   // Y en OCC
-    let stockHeight = 0;  // Z en OCC
-    let stockDiameter = 0;
-    let stockLength = 0;
-
-    const piezaWidth = bbMax[0] - bbMin[0];
-    const piezaDepth = bbMax[1] - bbMin[1];
-    const piezaHeight = bbMax[2] - bbMin[2];
-
-    if (stockConfig.tipo === "rectangular") {
-      if (stockConfig.modo === "dimensiones") {
-        stockWidth = stockConfig.ancho_mm;
-        stockDepth = stockConfig.largo_mm;
-        stockHeight = stockConfig.alto_mm;
-      } else {
-        stockWidth = piezaWidth + 2 * stockConfig.sobre_xy_mm;
-        stockDepth = piezaDepth + 2 * stockConfig.sobre_xy_mm;
-        stockHeight = piezaHeight + 2 * stockConfig.sobre_z_mm;
-      }
-    } else {
-      // Cilíndrico
-      if (stockConfig.modo === "dimensiones") {
-        stockDiameter = stockConfig.diametro_mm;
-        stockLength = stockConfig.longitud_mm;
-      } else {
-        const piezaDiamRadial = Math.max(piezaWidth, piezaDepth);
-        stockDiameter = piezaDiamRadial + 2 * stockConfig.sobre_radial_mm;
-        stockLength = piezaHeight + 2 * stockConfig.sobre_axial_mm;
-      }
-    }
+    const rbb = setup.rotatedBBox; // { min, max, center, width, depth, height }
 
     const stockGroup = new THREE.Group();
 
+    // Materiales compartidos
+    const fillMaterial = new THREE.MeshBasicMaterial({
+      color: 0x88ccff,
+      transparent: true,
+      opacity: 0.15,
+      side: THREE.DoubleSide,
+    });
+    const lineMaterial = new THREE.LineBasicMaterial({
+      color: 0x4499dd,
+      linewidth: 2,
+    });
+
     if (stockConfig.tipo === "rectangular") {
-      // Caja translúcida
-      // IMPORTANTE: Las dimensiones son en coordenadas Three.js (post-rotation),
-      // pero las mapeamos a OCC (pre-rotation) para que después de rotar
-      // con el mismo quaternion que el mesh, queden correctas.
-      //
-      // Stock dimensions from StepStock son:
-      // - ancho_mm: Three.js X (width)
-      // - largo_mm: Three.js Z (depth) — en OCC sería Y antes de -90° X rotation
-      // - alto_mm: Three.js Y (height) — en OCC sería Z antes de -90° X rotation
-      //
-      // Mapeo inverso para BoxGeometry (que luego se rotará -90° X):
-      // OCC X = Three.js X = ancho_mm
-      // OCC Y = Three.js Z = largo_mm
-      // OCC Z = Three.js Y = alto_mm
-      const boxGeometry = new THREE.BoxGeometry(
-        stockWidth,  // ancho_mm → OCC X
-        stockDepth,  // largo_mm → OCC Y
-        stockHeight, // alto_mm → OCC Z
-      );
+      // Extents del stock en coords MÁQUINA (frame del Setup). Cada cara se
+      // expande de forma independiente con su offset por cara.
+      let minX: number, maxX: number, minY: number, maxY: number, minZ: number, maxZ: number;
+      if (stockConfig.modo === "dimensiones") {
+        // Dimensiones exactas: centradas en el footprint, base en la mesa.
+        minX = rbb.center[0] - stockConfig.ancho_mm / 2;
+        maxX = rbb.center[0] + stockConfig.ancho_mm / 2;
+        minY = rbb.center[1] - stockConfig.largo_mm / 2;
+        maxY = rbb.center[1] + stockConfig.largo_mm / 2;
+        minZ = rbb.min[2];
+        maxZ = rbb.min[2] + stockConfig.alto_mm;
+      } else {
+        minX = rbb.min[0] - stockConfig.sobre_x_neg_mm;
+        maxX = rbb.max[0] + stockConfig.sobre_x_pos_mm;
+        minY = rbb.min[1] - stockConfig.sobre_y_neg_mm;
+        maxY = rbb.max[1] + stockConfig.sobre_y_pos_mm;
+        minZ = rbb.min[2] - stockConfig.sobre_z_neg_mm;
+        maxZ = rbb.max[2] + stockConfig.sobre_z_pos_mm;
+      }
 
-      // Offset the geometry so its base (Z=0 in OCC) aligns with the mesh's base
-      // The mesh was positioned with -bbMin[2] to put its base at Y=0
-      // The box is naturally centered at [0,0,0], extending ±stockHeight/2 in Z
-      // To align bases: shift the box up by stockHeight/2 in OCC Z
-      boxGeometry.translate(0, 0, stockHeight / 2);
+      const totalX = maxX - minX;
+      const totalY = maxY - minY;
+      const totalZ = maxZ - minZ;
+      const cx = (minX + maxX) / 2;
+      const cy = (minY + maxY) / 2;
+      const cz = (minZ + maxZ) / 2;
 
-      const boxMaterial = new THREE.MeshBasicMaterial({
-        color: 0x88ccff,
-        transparent: true,
-        opacity: 0.15,
-        side: THREE.DoubleSide,
-      });
-      const boxMesh = new THREE.Mesh(boxGeometry, boxMaterial);
+      // BoxGeometry en frame máquina (X, Y, Z), colocada en su centro máquina.
+      const boxGeometry = new THREE.BoxGeometry(totalX, totalY, totalZ);
+      boxGeometry.translate(cx, cy, cz);
 
-      // Wireframe
+      const boxMesh = new THREE.Mesh(boxGeometry, fillMaterial);
       const edges = new THREE.EdgesGeometry(boxGeometry);
-      const lineMaterial = new THREE.LineBasicMaterial({
-        color: 0x4499dd,
-        linewidth: 2,
-      });
       const wireframe = new THREE.LineSegments(edges, lineMaterial);
 
       stockGroup.add(boxMesh);
       stockGroup.add(wireframe);
-
-      // La rotación y posición se copiarán del mesh (línea ~809)
     } else {
-      // Cilindro translúcido
-      // CylinderGeometry: eje por defecto es Y, centered at origin
-      // Offset so base is at Y=0 instead of centered
+      // Cilíndrico: radial uniforme en el OD, axial en la dirección de la cara
+      // de mecanizado (eje Z máquina, hacia arriba).
+      let stockDiameter: number, stockLength: number;
+      if (stockConfig.modo === "dimensiones") {
+        stockDiameter = stockConfig.diametro_mm;
+        stockLength = stockConfig.longitud_mm;
+      } else {
+        const piezaDiamRadial = Math.max(rbb.width, rbb.depth);
+        stockDiameter = piezaDiamRadial + 2 * stockConfig.sobre_radial_mm;
+        stockLength = rbb.height + 2 * stockConfig.sobre_axial_mm;
+      }
+
+      // CylinderGeometry tiene el eje en Y; lo giramos a Z (máquina) y lo
+      // colocamos con la base en la mesa, centrado en el footprint.
       const cylinderGeometry = new THREE.CylinderGeometry(
         stockDiameter / 2,
         stockDiameter / 2,
         stockLength,
         32,
       );
+      cylinderGeometry.rotateX(Math.PI / 2); // eje Y → eje Z (máquina)
+      cylinderGeometry.translate(
+        rbb.center[0],
+        rbb.center[1],
+        rbb.min[2] + stockLength / 2,
+      );
 
-      // Offset the geometry so its base aligns with the mesh's base
-      // Shift the cylinder up by stockLength/2 in Y
-      cylinderGeometry.translate(0, stockLength / 2, 0);
-
-      const cylinderMaterial = new THREE.MeshBasicMaterial({
-        color: 0x88ccff,
-        transparent: true,
-        opacity: 0.15,
-        side: THREE.DoubleSide,
-      });
-      const cylinderMesh = new THREE.Mesh(cylinderGeometry, cylinderMaterial);
-
-      // Wireframe
+      const cylinderMesh = new THREE.Mesh(cylinderGeometry, fillMaterial);
       const edges = new THREE.EdgesGeometry(cylinderGeometry);
-      const lineMaterial = new THREE.LineBasicMaterial({
-        color: 0x4499dd,
-        linewidth: 2,
-      });
       const wireframe = new THREE.LineSegments(edges, lineMaterial);
 
       stockGroup.add(cylinderMesh);
       stockGroup.add(wireframe);
-
-      // La rotación y posición se copiarán del mesh (línea ~809)
     }
+
+    // La caja está en coords MÁQUINA (Z arriba). VIEWER_BASE_Q la lleva a
+    // display (misma conversión de frame que usa el mesh vía occToDisplay).
+    // NO se copia mesh.quaternion: el stock ya incorpora la orientación.
+    stockGroup.quaternion.copy(VIEWER_BASE_Q);
+    stockGroup.position.set(0, 0, 0);
 
     scene.add(stockGroup);
     stockMeshRef.current = stockGroup;
-
-    // Sincronizar inmediatamente con la rotación/posición actual del mesh
-    // (importante cuando navegamos a este paso y el mesh ya está rotado)
-    if (meshRef.current) {
-      stockGroup.quaternion.copy(meshRef.current.quaternion);
-      stockGroup.position.copy(meshRef.current.position);
-    }
-  }, [stockConfig, meshData]);
+  }, [stockConfig, meshData, setup]);
 
   // ── Render ─────────────────────────────────────────────────────────────
   if (meshLoading) {

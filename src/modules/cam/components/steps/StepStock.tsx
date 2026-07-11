@@ -3,9 +3,8 @@ import { useEffect, useState } from "react";
 import { useCamStore } from "../../store/camStore";
 import { CamViewer3D } from "../CamViewer3D";
 import { WizardNavButtons } from "./WizardNavButtons";
-import { Package, Box, Cylinder } from "lucide-react";
+import { Package, Box, Cylinder, AlertTriangle } from "lucide-react";
 import type { StockConfig } from "../../store/camStore";
-import { computeRotatedBoundingBox } from "../../utils/rotatedBoundingBox";
 
 export const StepStock = () => {
   const analisis = useCamStore((s) => s.analisis);
@@ -14,43 +13,33 @@ export const StepStock = () => {
   const setStockConfig = useCamStore((s) => s.setStockConfig);
   const setStep = useCamStore((s) => s.setStep);
   const montajeConfig = useCamStore((s) => s.montajeConfig);
+  // Setup persistente = ÚNICA fuente de la orientación de montaje (frame máquina).
+  // StepStock ya NO recalcula el bounding box rotado: lo lee de aquí.
+  const setup = useCamStore((s) => s.setup);
 
   const [initialized, setInitialized] = useState(false);
 
-  // Inicializar stock por defecto basado en tipo_pieza y bounding box ROTADO
-  // CRÍTICO: debe usar el bounding box POST-ROTACIÓN (después de aplicar la cara
-  // de apoyo seleccionada en StepMontaje), no el bounding box original del STEP.
+  // Inicializar stock por defecto a partir de las dimensiones POST-ROTACIÓN que
+  // vienen del Setup (setup.rotatedBBox), NO recalculando desde la geometría.
   useEffect(() => {
-    if (initialized || !analisis || !meshData) return;
+    if (initialized || !analisis || !setup) return;
 
     const tipoPieza = analisis.tipo_pieza || "placa";
 
-    // Obtener dimensiones POST-ROTACIÓN desde montajeConfig.face_normal_apoyo
-    const faceNormal = montajeConfig.face_normal_apoyo;
-    const rotatedBB = computeRotatedBoundingBox(meshData, faceNormal);
+    // Dimensiones POST-ROTACIÓN leídas directamente del Setup (frame máquina).
+    // width = X, depth = Y, height = Z (vertical).
+    const { width, depth, height } = setup.rotatedBBox;
 
-    // rotatedBB está en coordenadas Three.js (X=ancho, Y=altura, Z=profundidad)
-    // Mapear a las dimensiones de stock:
-    // - Ancho (X): Three.js X (width)
-    // - Largo (Y): Three.js Z (depth)  ← OJO: Three.js Z es la profundidad "horizontal"
-    // - Alto (Z): Three.js Y (height)  ← Three.js Y es la altura "vertical"
-    const piezaWidth = rotatedBB.width;   // Ancho en X
-    const piezaDepth = rotatedBB.depth;   // Largo en Y (en realidad Three.js Z)
-    const piezaHeight = rotatedBB.height; // Alto en Z (en realidad Three.js Y)
-
-    console.log('🔍 [StepStock] Dimensiones POST-ROTACIÓN:', {
-      faceNormal,
-      rotatedBB,
-      piezaWidth,
-      piezaDepth,
-      piezaHeight,
+    console.log("🔍 [StepStock] Dimensiones desde Setup.rotatedBBox:", {
+      supportFaceId: setup.supportFace.faceId,
+      width,
+      depth,
+      height,
     });
 
     const tipoStock = tipoPieza === "disco" ? "cilindrico" : "rectangular";
 
-    // Sobre-material por defecto
-    const sobreXY = 2;
-    const sobreZ = 2;
+    // Sobre-material cilíndrico por defecto (rectangular arranca en 0 por cara).
     const sobreRadial = 2;
     const sobreAxial = 3;
 
@@ -58,25 +47,31 @@ export const StepStock = () => {
       tipo: tipoStock,
       modo: "sobrematerial",
 
-      // Rectangular (usando dimensiones POST-ROTACIÓN)
-      ancho_mm: Math.round(piezaWidth + 2 * sobreXY),
-      largo_mm: Math.round(piezaDepth + 2 * sobreXY),
-      alto_mm: Math.round(piezaHeight + 2 * sobreZ),
+      // Rectangular exacto (default = pieza exacta, dimensiones POST-ROTACIÓN)
+      ancho_mm: Math.round(width),
+      largo_mm: Math.round(depth),
+      alto_mm: Math.round(height),
 
-      // Cilíndrico (usando dimensiones POST-ROTACIÓN)
-      diametro_mm: Math.round(Math.max(piezaWidth, piezaDepth) + 2 * sobreRadial),
-      longitud_mm: Math.round(piezaHeight + 2 * sobreAxial),
+      // Cilíndrico (dimensiones POST-ROTACIÓN)
+      diametro_mm: Math.round(Math.max(width, depth) + 2 * sobreRadial),
+      longitud_mm: Math.round(height + 2 * sobreAxial),
 
-      // Sobre-material
+      // Seis offsets por cara (frame del Setup), todos en 0.
+      sobre_x_pos_mm: 0,
+      sobre_x_neg_mm: 0,
+      sobre_y_pos_mm: 0,
+      sobre_y_neg_mm: 0,
+      sobre_z_pos_mm: 0,
+      sobre_z_neg_mm: 0,
+
+      // Cilíndrico
       sobre_radial_mm: sobreRadial,
       sobre_axial_mm: sobreAxial,
-      sobre_xy_mm: sobreXY,
-      sobre_z_mm: sobreZ,
     };
 
     setStockConfig(newConfig);
     setInitialized(true);
-  }, [analisis, meshData, initialized, setStockConfig, montajeConfig.face_normal_apoyo]);
+  }, [analisis, setup, initialized, setStockConfig]);
 
   const handleTipoChange = (tipo: "rectangular" | "cilindrico") => {
     setStockConfig({ ...stockConfig, tipo });
@@ -90,65 +85,77 @@ export const StepStock = () => {
     setStockConfig({ ...stockConfig, [field]: value });
   };
 
-  // Validar que las dimensiones del stock sean >= dimensiones reales de la pieza POST-ROTACIÓN
+  // Dimensiones finales del stock rectangular a partir de rotatedBBox + los seis
+  // offsets por cara (independientes positivo/negativo por eje del Setup).
+  const getRectStockDims = (): { x: number; y: number; z: number } | null => {
+    if (!setup) return null;
+    const { width, depth, height } = setup.rotatedBBox;
+    if (stockConfig.modo === "dimensiones") {
+      return {
+        x: stockConfig.ancho_mm,
+        y: stockConfig.largo_mm,
+        z: stockConfig.alto_mm,
+      };
+    }
+    return {
+      x: width + stockConfig.sobre_x_pos_mm + stockConfig.sobre_x_neg_mm,
+      y: depth + stockConfig.sobre_y_pos_mm + stockConfig.sobre_y_neg_mm,
+      z: height + stockConfig.sobre_z_pos_mm + stockConfig.sobre_z_neg_mm,
+    };
+  };
+
+  const getCylStockDims = (): { d: number; len: number } | null => {
+    if (!setup) return null;
+    const { width, depth, height } = setup.rotatedBBox;
+    if (stockConfig.modo === "dimensiones") {
+      return { d: stockConfig.diametro_mm, len: stockConfig.longitud_mm };
+    }
+    const piezaDiamRadial = Math.max(width, depth);
+    return {
+      d: piezaDiamRadial + 2 * stockConfig.sobre_radial_mm,
+      len: height + 2 * stockConfig.sobre_axial_mm,
+    };
+  };
+
+  // Validar que el stock sea >= pieza en cada eje (frame del Setup).
   const validateStockDimensions = (): { valid: boolean; warnings: string[] } => {
-    if (!meshData || !stockConfig) return { valid: true, warnings: [] };
+    if (!setup) return { valid: true, warnings: [] };
 
-    const faceNormal = montajeConfig.face_normal_apoyo;
-    const rotatedBB = computeRotatedBoundingBox(meshData, faceNormal);
-
+    const { width, depth, height } = setup.rotatedBBox;
     const warnings: string[] = [];
 
     if (stockConfig.tipo === "rectangular") {
-      // Obtener dimensiones efectivas del stock
-      let stockWidth, stockDepth, stockHeight;
-      if (stockConfig.modo === "dimensiones") {
-        stockWidth = stockConfig.ancho_mm;
-        stockDepth = stockConfig.largo_mm;
-        stockHeight = stockConfig.alto_mm;
-      } else {
-        stockWidth = rotatedBB.width + 2 * stockConfig.sobre_xy_mm;
-        stockDepth = rotatedBB.depth + 2 * stockConfig.sobre_xy_mm;
-        stockHeight = rotatedBB.height + 2 * stockConfig.sobre_z_mm;
-      }
+      const dims = getRectStockDims();
+      if (!dims) return { valid: true, warnings: [] };
 
-      // Validar cada eje
-      if (stockWidth < rotatedBB.width) {
+      // Comparación por eje (cada par +/- suma sobre la dimensión de la pieza).
+      if (dims.x < width) {
         warnings.push(
-          `Ancho (${Math.round(stockWidth)}mm) es menor que la pieza (${Math.round(rotatedBB.width)}mm)`
+          `Ancho (${Math.round(dims.x)}mm) es menor que la pieza (${Math.round(width)}mm)`,
         );
       }
-      if (stockDepth < rotatedBB.depth) {
+      if (dims.y < depth) {
         warnings.push(
-          `Largo (${Math.round(stockDepth)}mm) es menor que la pieza (${Math.round(rotatedBB.depth)}mm)`
+          `Largo (${Math.round(dims.y)}mm) es menor que la pieza (${Math.round(depth)}mm)`,
         );
       }
-      if (stockHeight < rotatedBB.height) {
+      if (dims.z < height) {
         warnings.push(
-          `Alto (${Math.round(stockHeight)}mm) es menor que la pieza (${Math.round(rotatedBB.height)}mm)`
+          `Alto (${Math.round(dims.z)}mm) es menor que la pieza (${Math.round(height)}mm)`,
         );
       }
     } else {
-      // Cilíndrico
-      let stockDiameter, stockLength;
-      if (stockConfig.modo === "dimensiones") {
-        stockDiameter = stockConfig.diametro_mm;
-        stockLength = stockConfig.longitud_mm;
-      } else {
-        const piezaDiamRadial = Math.max(rotatedBB.width, rotatedBB.depth);
-        stockDiameter = piezaDiamRadial + 2 * stockConfig.sobre_radial_mm;
-        stockLength = rotatedBB.height + 2 * stockConfig.sobre_axial_mm;
-      }
-
-      const piezaDiamRadial = Math.max(rotatedBB.width, rotatedBB.depth);
-      if (stockDiameter < piezaDiamRadial) {
+      const dims = getCylStockDims();
+      if (!dims) return { valid: true, warnings: [] };
+      const piezaDiamRadial = Math.max(width, depth);
+      if (dims.d < piezaDiamRadial) {
         warnings.push(
-          `Diámetro (${Math.round(stockDiameter)}mm) es menor que la pieza (${Math.round(piezaDiamRadial)}mm)`
+          `Diámetro (${Math.round(dims.d)}mm) es menor que la pieza (${Math.round(piezaDiamRadial)}mm)`,
         );
       }
-      if (stockLength < rotatedBB.height) {
+      if (dims.len < height) {
         warnings.push(
-          `Longitud (${Math.round(stockLength)}mm) es menor que la pieza (${Math.round(rotatedBB.height)}mm)`
+          `Longitud (${Math.round(dims.len)}mm) es menor que la pieza (${Math.round(height)}mm)`,
         );
       }
     }
@@ -156,45 +163,17 @@ export const StepStock = () => {
     return { valid: warnings.length === 0, warnings };
   };
 
-  const validation = validateStockDimensions();
-
-  // Calcular dimensiones reales del stock para mostrar resumen
-  // CRÍTICO: debe usar el bounding box POST-ROTACIÓN igual que la inicialización
+  // Texto resumen del stock calculado.
   const getStockDimensions = (): string => {
-    if (!meshData || !stockConfig) return "";
-
-    // Usar dimensiones POST-ROTACIÓN
-    const faceNormal = montajeConfig.face_normal_apoyo;
-    const rotatedBB = computeRotatedBoundingBox(meshData, faceNormal);
-
-    const piezaWidth = rotatedBB.width;
-    const piezaDepth = rotatedBB.depth;
-    const piezaHeight = rotatedBB.height;
-
+    if (!setup) return "";
     if (stockConfig.tipo === "rectangular") {
-      let w, l, h;
-      if (stockConfig.modo === "dimensiones") {
-        w = stockConfig.ancho_mm;
-        l = stockConfig.largo_mm;
-        h = stockConfig.alto_mm;
-      } else {
-        w = piezaWidth + 2 * stockConfig.sobre_xy_mm;
-        l = piezaDepth + 2 * stockConfig.sobre_xy_mm;
-        h = piezaHeight + 2 * stockConfig.sobre_z_mm;
-      }
-      return `${Math.round(w)} × ${Math.round(l)} × ${Math.round(h)} mm`;
-    } else {
-      let d, len;
-      if (stockConfig.modo === "dimensiones") {
-        d = stockConfig.diametro_mm;
-        len = stockConfig.longitud_mm;
-      } else {
-        const piezaDiamRadial = Math.max(piezaWidth, piezaDepth);
-        d = piezaDiamRadial + 2 * stockConfig.sobre_radial_mm;
-        len = piezaHeight + 2 * stockConfig.sobre_axial_mm;
-      }
-      return `Ø${Math.round(d)} × ${Math.round(len)} mm`;
+      const d = getRectStockDims();
+      if (!d) return "";
+      return `${Math.round(d.x)} × ${Math.round(d.y)} × ${Math.round(d.z)} mm`;
     }
+    const d = getCylStockDims();
+    if (!d) return "";
+    return `Ø${Math.round(d.d)} × ${Math.round(d.len)} mm`;
   };
 
   if (!analisis || !meshData) {
@@ -204,6 +183,37 @@ export const StepStock = () => {
       </div>
     );
   }
+
+  // Sin Setup confirmado no hay orientación de montaje: el stock no puede
+  // derivarse. Pedir volver a confirmar el montaje en lugar de caer a la
+  // geometría cruda (que ignoraría la cara de apoyo elegida).
+  if (!setup) {
+    return (
+      <div className="space-y-4">
+        <div className="rounded-xl border border-amber-500/50 bg-amber-500/10 p-4 md:p-6 flex items-start gap-3">
+          <AlertTriangle className="h-5 w-5 md:h-6 md:w-6 text-amber-400 shrink-0 mt-0.5" />
+          <div>
+            <p className="text-sm md:text-base font-semibold text-amber-300">
+              Falta confirmar el montaje
+            </p>
+            <p className="mt-1 text-xs md:text-sm text-amber-200/80">
+              El stock se calcula a partir de la orientación de montaje
+              (cara de apoyo). Vuelve al paso de Montaje y confírmalo antes de
+              configurar el material bruto.
+            </p>
+            <button
+              onClick={() => setStep("montaje")}
+              className="mt-3 rounded-xl border border-amber-500/60 bg-amber-500/20 px-4 py-2 text-sm font-medium text-amber-100 hover:bg-amber-500/30 transition"
+            >
+              ← Volver a Montaje
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  const validation = validateStockDimensions();
 
   return (
     <div className="space-y-4 md:space-y-6">
@@ -321,22 +331,55 @@ export const StepStock = () => {
                     />
                   </>
                 ) : (
-                  <>
-                    <InputField
-                      label="Sobre-material XY"
-                      value={stockConfig.sobre_xy_mm}
-                      onChange={(v) => handleInputChange("sobre_xy_mm", v)}
-                      unit="mm"
-                      help="Material extra en cada lado (X, Y)"
-                    />
-                    <InputField
-                      label="Sobre-material Z"
-                      value={stockConfig.sobre_z_mm}
-                      onChange={(v) => handleInputChange("sobre_z_mm", v)}
-                      unit="mm"
-                      help="Material extra arriba y abajo"
-                    />
-                  </>
+                  /* ── UI TEMPORAL (Phase 2A-1): seis campos planos para validar
+                       el flujo de datos. La interacción centrada en el visor
+                       (click-cara → editar su sobre-material) llega en 2A-2. ── */
+                  <div className="space-y-3">
+                    <p className="text-[10px] md:text-xs text-text-muted">
+                      Sobre-material por cara (frame del Setup). UI temporal de
+                      validación — la versión final será sobre el visor.
+                    </p>
+                    <div className="grid grid-cols-2 gap-2">
+                      <InputField
+                        label="X+"
+                        value={stockConfig.sobre_x_pos_mm}
+                        onChange={(v) => handleInputChange("sobre_x_pos_mm", v)}
+                        unit="mm"
+                      />
+                      <InputField
+                        label="X−"
+                        value={stockConfig.sobre_x_neg_mm}
+                        onChange={(v) => handleInputChange("sobre_x_neg_mm", v)}
+                        unit="mm"
+                      />
+                      <InputField
+                        label="Y+"
+                        value={stockConfig.sobre_y_pos_mm}
+                        onChange={(v) => handleInputChange("sobre_y_pos_mm", v)}
+                        unit="mm"
+                      />
+                      <InputField
+                        label="Y−"
+                        value={stockConfig.sobre_y_neg_mm}
+                        onChange={(v) => handleInputChange("sobre_y_neg_mm", v)}
+                        unit="mm"
+                      />
+                      <InputField
+                        label="Z+"
+                        value={stockConfig.sobre_z_pos_mm}
+                        onChange={(v) => handleInputChange("sobre_z_pos_mm", v)}
+                        unit="mm"
+                      />
+                      <InputField
+                        label="Z− (apoyo)"
+                        value={stockConfig.sobre_z_neg_mm}
+                        onChange={() => {}}
+                        unit="mm"
+                        disabled
+                        help="Cara de apoyo: no se añade material contra la sujeción."
+                      />
+                    </div>
+                  </div>
                 )}
               </>
             ) : (
@@ -363,14 +406,14 @@ export const StepStock = () => {
                       value={stockConfig.sobre_radial_mm}
                       onChange={(v) => handleInputChange("sobre_radial_mm", v)}
                       unit="mm"
-                      help="Material extra en el radio"
+                      help="Material extra en el radio (uniforme en el OD)"
                     />
                     <InputField
                       label="Sobre-material axial"
                       value={stockConfig.sobre_axial_mm}
                       onChange={(v) => handleInputChange("sobre_axial_mm", v)}
                       unit="mm"
-                      help="Material extra en la longitud"
+                      help="Material extra en la dirección de la cara de mecanizado"
                     />
                   </>
                 )}
@@ -406,7 +449,7 @@ export const StepStock = () => {
               </ul>
               <p className="text-[10px] md:text-xs text-red-300/80 mt-2">
                 El stock debe ser mayor o igual que las dimensiones de la pieza
-                en su orientación actual (después de la rotación de montaje).
+                en su orientación de montaje (después de la rotación).
               </p>
             </div>
           )}
@@ -430,9 +473,17 @@ interface InputFieldProps {
   onChange: (value: number) => void;
   unit: string;
   help?: string;
+  disabled?: boolean;
 }
 
-function InputField({ label, value, onChange, unit, help }: InputFieldProps) {
+function InputField({
+  label,
+  value,
+  onChange,
+  unit,
+  help,
+  disabled = false,
+}: InputFieldProps) {
   return (
     <div>
       <label className="block text-xs md:text-sm font-medium text-text-secondary mb-1.5">
@@ -443,7 +494,10 @@ function InputField({ label, value, onChange, unit, help }: InputFieldProps) {
           type="number"
           value={value}
           onChange={(e) => onChange(parseFloat(e.target.value) || 0)}
-          className="w-full rounded-xl border border-border bg-bg-elevated px-3 md:px-4 py-2.5 md:py-3 min-h-[44px] text-sm text-text-primary focus:border-accent-blue focus:outline-none focus:ring-2 focus:ring-accent-blue/20"
+          disabled={disabled}
+          className={`w-full rounded-xl border border-border bg-bg-elevated px-3 md:px-4 py-2.5 md:py-3 min-h-[44px] text-sm text-text-primary focus:border-accent-blue focus:outline-none focus:ring-2 focus:ring-accent-blue/20 ${
+            disabled ? "opacity-50 cursor-not-allowed" : ""
+          }`}
           step="0.1"
           min="0"
         />
