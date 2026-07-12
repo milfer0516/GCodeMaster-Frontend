@@ -1,20 +1,30 @@
 // src/modules/cam/utils/stockFaces.ts
 //
-// PURE domain logic for stock allowance faces (Phase 2A-2).
+// VIEWER-CENTRIC per-face stock capture (Phase 2B).
 //
-// A StockFace models one of the six faces of the rectangular stock box as a
-// first-class entity: its direction key (in the Setup/machine frame), the
-// manufacturing role derived from the montaje (apoyo / mecanizado / libre),
-// its allowance in mm, and whether it is locked.
+// A StockFace models one of the six faces of the rectangular stock box:
+//   - direction: Setup-frame key (x_pos, y_neg, etc.)
+//   - role: visual presentation (apoyo=support, mecanizado=machining, libre=free)
+//   - allowance: how much RAW MATERIAL sits on that face (operator measured it)
+//   - locked: true for apoyo (no material against the clamp)
 //
-// This file is the SINGLE place that maps geometry ↔ manufacturing meaning:
-//   - deriveStockFaces(setup): assign roles from the Setup (rotation-aware).
-//   - resolveStockFace(pickedFaceIndex, setup): map a Viewer-reported box face
-//     INDEX → its Setup-frame direction/role. The Viewer never does this.
-//   - finalRectDims / validation helpers.
+// ARCHITECTURAL PRINCIPLE: Viewer-centric interaction is CORE to this product.
+// Wherever the 3D viewer shows the solid, face-picking must work. The operator
+// POINTS at the physical face (never interprets coordinate labels). The anchored
+// contextual popover is the preferred interaction.
 //
-// It imports ONLY the Setup domain type + three (for quaternion math). It must
-// NEVER import the store or any React/Viewer code — it is pure and testable.
+// The 'allowance' field now carries REAL MEASURED DATA: how much raw material
+// the operator measured with a caliper on that specific face. Raw stock is almost
+// never centered: a 120mm block for a 104mm part has 16mm extra, but rarely 8mm
+// on each side. The operator knows the real distribution because they measured it.
+// Capturing it per-face is DATA — assuming it's centered would be guessing, which
+// this system never does. Both overall raw dims (what they bought) AND per-face
+// distribution (how the excess sits) are sent to the engine.
+//
+// The frontend CAPTURES (including per-face) and PAINTS the engine's response.
+// The engine does ALL calculation (raw−final, /2 radial, passes, feeds, speeds).
+//
+// This file is PURE: imports ONLY Setup + three. NEVER the store or React/Viewer.
 
 import * as THREE from "three";
 import type { Setup } from "./computeSetup";
@@ -31,9 +41,9 @@ export type StockFaceRole = "apoyo" | "mecanizado" | "libre";
 
 export interface StockFace {
   direction: StockFaceDirection; // key in the Setup/machine frame
-  role: StockFaceRole; // derived from the Setup
-  allowance: number; // stock allowance in mm (>= 0)
-  locked: boolean; // true for the apoyo face
+  role: StockFaceRole; // derived from the Setup (for viewer presentation)
+  allowance: number; // Phase 2B: RAW MATERIAL on this face (operator measured with caliper)
+  locked: boolean; // true for the apoyo face (no material against the clamp)
 }
 
 // THREE.BoxGeometry group order (materialIndex 0..5). The Viewer reports the
@@ -182,8 +192,8 @@ export function getAllowance(
 }
 
 /**
- * Immutably set one face's allowance. Locked faces are pinned to 0 (attempts to
- * change them are ignored). Negative allowances are clamped to 0.
+ * Immutably set raw material on one face (operator measured with caliper).
+ * Locked faces (apoyo) are pinned to 0. Negative values clamped to 0.
  */
 export function setFaceAllowance(
   faces: StockFace[],
@@ -195,46 +205,6 @@ export function setFaceAllowance(
     if (f.locked) return { ...f, allowance: 0 };
     return { ...f, allowance: Math.max(0, allowance) };
   });
-}
-
-/**
- * Final rectangular stock dimensions in the Setup frame:
- *   axis = rotatedBBox extent + (positive-face allowance) + (negative-face
- *   allowance) on that axis. Independent per face.
- */
-export function finalRectDims(
-  setup: Setup,
-  faces: StockFace[],
-): { x: number; y: number; z: number } {
-  const { width, depth, height } = setup.rotatedBBox;
-  return {
-    x: width + getAllowance(faces, "x_pos") + getAllowance(faces, "x_neg"),
-    y: depth + getAllowance(faces, "y_pos") + getAllowance(faces, "y_neg"),
-    z: height + getAllowance(faces, "z_pos") + getAllowance(faces, "z_neg"),
-  };
-}
-
-/**
- * Validate faces: allowance must be >= 0, and locked (apoyo) faces must be 0.
- * With allowances >= 0 the stock is always >= the part on every axis, so the
- * only failure modes are data-integrity ones.
- */
-export function validateStockFaces(faces: StockFace[]): {
-  valid: boolean;
-  warnings: string[];
-} {
-  const warnings: string[] = [];
-  for (const f of faces) {
-    if (f.allowance < 0) {
-      warnings.push(`Sobre-material negativo en cara ${f.direction}.`);
-    }
-    if (f.locked && f.allowance !== 0) {
-      warnings.push(
-        `La cara de apoyo (${f.direction}) debe permanecer en 0 (bloqueada).`,
-      );
-    }
-  }
-  return { valid: warnings.length === 0, warnings };
 }
 
 // Presentation helper (used by the read-only summary). Kept here so the label

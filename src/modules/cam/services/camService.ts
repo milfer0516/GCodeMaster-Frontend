@@ -86,6 +86,41 @@ export async function tessellateStep(
   return data as MeshData;
 }
 
+// ── Transform frontend StockConfig to engine's bruto_medido payload ──────
+// Sends BOTH overall raw dimensions (what the operator bought/has) AND per-face
+// raw distribution (how the excess actually sits). They complement each other:
+// raw stock is almost never centered, so the per-face data is REAL MEASURED
+// information, not a guess.
+export function buildStockPayload(stockConfig: any): object {
+  if (stockConfig.tipo === "rectangular") {
+    const payload: any = {
+      tipo: "bruto_medido",
+      forma: "rectangular",
+      ancho_bruto_mm: stockConfig.ancho_bruto_mm,
+      largo_bruto_mm: stockConfig.largo_bruto_mm,
+      alto_bruto_mm: stockConfig.alto_bruto_mm,
+    };
+
+    // Include per-face raw stock distribution if available (6 faces measured)
+    if (Array.isArray(stockConfig.stockFaces) && stockConfig.stockFaces.length === 6) {
+      payload.por_cara = {};
+      stockConfig.stockFaces.forEach((face: any) => {
+        payload.por_cara[face.direction] = face.allowance;
+      });
+    }
+
+    return payload;
+  } else {
+    // cilindrico: uniform radial, no per-face granularity
+    return {
+      tipo: "bruto_medido",
+      forma: "cilindrico",
+      diametro_bruto_mm: stockConfig.diametro_bruto_mm,
+      longitud_bruta_mm: stockConfig.longitud_bruta_mm,
+    };
+  }
+}
+
 // ── Generar G-Code ────────────────────────────────────────────────────────
 export async function generateGcode(payload: {
   archivo: File;
@@ -105,7 +140,9 @@ export async function generateGcode(payload: {
   form.append("operaciones_json", JSON.stringify(payload.operaciones));
   form.append("herramientas_json", JSON.stringify(payload.herramientas));
   form.append("material_key", payload.materialKey);
-  form.append("stock_json", JSON.stringify(payload.stockConfig));
+  // Transform to engine's bruto_medido format
+  const stockPayload = buildStockPayload(payload.stockConfig);
+  form.append("stock_json", JSON.stringify(stockPayload));
   form.append("datum_json", JSON.stringify(payload.datumConfig));
   form.append("montaje_json", JSON.stringify(payload.montajeConfig));
   form.append("orden_setups", payload.ordenSetups ?? "superior_primero");

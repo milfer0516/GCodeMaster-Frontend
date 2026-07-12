@@ -19,8 +19,6 @@ import {
   resolveStockFace,
   stockFacesByBoxIndex,
   setFaceAllowance,
-  finalRectDims,
-  validateStockFaces,
   roleLabel,
   type StockFace,
   type StockFaceDirection,
@@ -72,8 +70,10 @@ export const StepStock = () => {
     const tipoPieza = analisis.tipo_pieza || "placa";
     const { width, depth, height } = setup.rotatedBBox;
     const tipoStock = tipoPieza === "disco" ? "cilindrico" : "rectangular";
-    const sobreRadial = 2;
-    const sobreAxial = 3;
+
+    // Default raw stock: part dimensions + typical allowances as starting point
+    const defaultRadial = 2;
+    const defaultAxial = 3;
 
     const stockFaces =
       stockConfig.stockFaces.length === 6
@@ -83,15 +83,14 @@ export const StepStock = () => {
     const newConfig: StockConfig = {
       ...stockConfig,
       tipo: tipoStock,
-      modo: "sobrematerial",
-      ancho_mm: Math.round(width),
-      largo_mm: Math.round(depth),
-      alto_mm: Math.round(height),
-      diametro_mm: Math.round(Math.max(width, depth) + 2 * sobreRadial),
-      longitud_mm: Math.round(height + 2 * sobreAxial),
+      // Raw rectangular: start with part size + small margin
+      ancho_bruto_mm: Math.round(width + 4),
+      largo_bruto_mm: Math.round(depth + 4),
+      alto_bruto_mm: Math.round(height + 6),
+      // Raw cylindrical: start with part size + typical allowance
+      diametro_bruto_mm: Math.round(Math.max(width, depth) + 2 * defaultRadial),
+      longitud_bruta_mm: Math.round(height + 2 * defaultAxial),
       stockFaces,
-      sobre_radial_mm: sobreRadial,
-      sobre_axial_mm: sobreAxial,
     };
     setStockConfig(newConfig);
   }, [analisis, setup, stockConfig, setStockConfig]);
@@ -101,26 +100,25 @@ export const StepStock = () => {
     setStockConfig({ ...stockConfig, tipo });
   };
 
-  const handleModoChange = (modo: "dimensiones" | "sobrematerial") => {
-    closePopover();
-    setStockConfig({ ...stockConfig, modo });
-  };
-
   const handleInputChange = (field: keyof StockConfig, value: number) => {
     setStockConfig({ ...stockConfig, [field]: value });
   };
 
-  // Editar el allowance de una cara (dominio: bloqueadas quedan en 0, clamp >=0).
-  const updateAllowance = (direction: StockFaceDirection, value: number) => {
+  // Editar el material bruto que sobresale en una cara específica (dato REAL
+  // medido por el operador con calibre, NO un cálculo). El raw stock casi nunca
+  // está centrado: un bloque de 120mm para una pieza de 104mm tiene 16mm extra,
+  // pero raramente 8mm en cada lado. El operador sabe la distribución real porque
+  // la midió. Capturarla por cara es DATO REAL — asumir que está centrado sería
+  // adivinar, lo cual este sistema nunca hace.
+  const updateRawStockOnFace = (direction: StockFaceDirection, value: number) => {
     setStockConfig({
       ...stockConfig,
       stockFaces: setFaceAllowance(stockConfig.stockFaces, direction, value),
     });
   };
 
-  // ¿Modo edición por-cara sobre el visor? (rectangular + sobre-material)
-  const editingPorCara =
-    stockConfig.tipo === "rectangular" && stockConfig.modo === "sobrematerial";
+  // Face-picking habilitado para rectangular (el operador apunta a la cara física)
+  const facePickingEnabled = stockConfig.tipo === "rectangular";
 
   // 6 StockFaces en orden de índice de BoxGeometry para el visor (memo estable).
   const boxIndexFaces = useMemo(
@@ -139,85 +137,55 @@ export const StepStock = () => {
     setPopover({ faceIndex, x: screen.x, y: screen.y });
   };
 
-  // Dimensiones finales rectangulares (dominio para sobre-material).
-  const getRectStockDims = (): { x: number; y: number; z: number } | null => {
+  // Raw stock dimensions (what the operator entered)
+  const getRawStockDims = (): { x: number; y: number; z: number } | { d: number; len: number } | null => {
     if (!setup) return null;
-    if (stockConfig.modo === "dimensiones") {
+    if (stockConfig.tipo === "rectangular") {
       return {
-        x: stockConfig.ancho_mm,
-        y: stockConfig.largo_mm,
-        z: stockConfig.alto_mm,
+        x: stockConfig.ancho_bruto_mm,
+        y: stockConfig.largo_bruto_mm,
+        z: stockConfig.alto_bruto_mm,
       };
     }
-    return finalRectDims(setup, stockConfig.stockFaces);
-  };
-
-  const getCylStockDims = (): { d: number; len: number } | null => {
-    if (!setup) return null;
-    const { width, depth, height } = setup.rotatedBBox;
-    if (stockConfig.modo === "dimensiones") {
-      return { d: stockConfig.diametro_mm, len: stockConfig.longitud_mm };
-    }
-    const piezaDiamRadial = Math.max(width, depth);
     return {
-      d: piezaDiamRadial + 2 * stockConfig.sobre_radial_mm,
-      len: height + 2 * stockConfig.sobre_axial_mm,
+      d: stockConfig.diametro_bruto_mm,
+      len: stockConfig.longitud_bruta_mm,
     };
   };
 
-  // Validación (decimal-aware). Sobre-material rectangular delega en el dominio.
-  const validateStockDimensions = (): { valid: boolean; warnings: string[] } => {
-    if (!setup) return { valid: true, warnings: [] };
+  // Final part dimensions (for comparison display)
+  const getFinalPartDims = (): { x: number; y: number; z: number } | { d: number; len: number } | null => {
+    if (!setup) return null;
     const { width, depth, height } = setup.rotatedBBox;
-    const warnings: string[] = [];
-
     if (stockConfig.tipo === "rectangular") {
-      if (stockConfig.modo === "dimensiones") {
-        const d = getRectStockDims();
-        if (!d) return { valid: true, warnings: [] };
-        if (d.x < width)
-          warnings.push(
-            `Ancho (${Math.round(d.x)}mm) es menor que la pieza (${Math.round(width)}mm)`,
-          );
-        if (d.y < depth)
-          warnings.push(
-            `Largo (${Math.round(d.y)}mm) es menor que la pieza (${Math.round(depth)}mm)`,
-          );
-        if (d.z < height)
-          warnings.push(
-            `Alto (${Math.round(d.z)}mm) es menor que la pieza (${Math.round(height)}mm)`,
-          );
-      } else {
-        // Sobre-material >= 0 ⇒ stock >= pieza siempre; solo integridad de datos.
-        return validateStockFaces(stockConfig.stockFaces);
-      }
-    } else {
-      const d = getCylStockDims();
-      if (!d) return { valid: true, warnings: [] };
-      const piezaDiamRadial = Math.max(width, depth);
-      if (d.d < piezaDiamRadial)
-        warnings.push(
-          `Diámetro (${Math.round(d.d)}mm) es menor que la pieza (${Math.round(piezaDiamRadial)}mm)`,
-        );
-      if (d.len < height)
-        warnings.push(
-          `Longitud (${Math.round(d.len)}mm) es menor que la pieza (${Math.round(height)}mm)`,
-        );
+      return { x: width, y: depth, z: height };
     }
-
-    return { valid: warnings.length === 0, warnings };
+    const piezaDiamRadial = Math.max(width, depth);
+    return { d: piezaDiamRadial, len: height };
   };
 
-  const getStockDimensions = (): string => {
-    if (!setup) return "";
-    if (stockConfig.tipo === "rectangular") {
-      const d = getRectStockDims();
-      if (!d) return "";
-      return `${Math.round(d.x)} × ${Math.round(d.y)} × ${Math.round(d.z)} mm`;
+  const getStockDimensionsDisplay = (): string => {
+    const raw = getRawStockDims();
+    if (!raw) return "";
+    if (stockConfig.tipo === "rectangular" && 'x' in raw) {
+      return `${Math.round(raw.x)} × ${Math.round(raw.y)} × ${Math.round(raw.z)} mm`;
     }
-    const d = getCylStockDims();
-    if (!d) return "";
-    return `Ø${Math.round(d.d)} × ${Math.round(d.len)} mm`;
+    if ('d' in raw) {
+      return `Ø${Math.round(raw.d)} × ${Math.round(raw.len)} mm`;
+    }
+    return "";
+  };
+
+  const getPartDimensionsDisplay = (): string => {
+    const part = getFinalPartDims();
+    if (!part) return "";
+    if (stockConfig.tipo === "rectangular" && 'x' in part) {
+      return `${Math.round(part.x)} × ${Math.round(part.y)} × ${Math.round(part.z)} mm`;
+    }
+    if ('d' in part) {
+      return `Ø${Math.round(part.d)} × ${Math.round(part.len)} mm`;
+    }
+    return "";
   };
 
   if (!analisis || !meshData) {
@@ -255,14 +223,13 @@ export const StepStock = () => {
     );
   }
 
-  const validation = validateStockDimensions();
   const faces = stockConfig.stockFaces;
 
   // Cara resuelta para el popover (dirección/rol/bloqueo) — mapeo PURO del
   // dominio a partir del índice reportado por el visor.
   const activeResolved =
     popover !== null ? resolveStockFace(popover.faceIndex, setup) : null;
-  const activeAllowance =
+  const activeRawStock =
     activeResolved !== null
       ? (faces.find((f) => f.direction === activeResolved.direction)
           ?.allowance ?? 0)
@@ -273,12 +240,12 @@ export const StepStock = () => {
       {/* Header */}
       <div>
         <h2 className="text-base md:text-lg font-bold text-text-primary">
-          Configurar Stock (Material Bruto)
+          Material Bruto Disponible
         </h2>
         <p className="mt-1 text-xs md:text-sm text-text-muted">
-          {editingPorCara
-            ? "Haz clic en una cara del stock para editar su sobre-material"
-            : "Define las dimensiones del material bruto antes de mecanizar"}
+          {facePickingEnabled
+            ? "Ingresa las dimensiones generales del bloque y haz clic en cada cara para capturar el material bruto que sobresale (medido con calibre)"
+            : "Ingresa las dimensiones del material bruto que tienes (medidas con calibre)"}
         </p>
       </div>
 
@@ -286,7 +253,7 @@ export const StepStock = () => {
       <div className="flex flex-col lg:flex-row gap-4 md:gap-6">
         {/* Visor 3D + popover contextual + resumen por-cara */}
         <div className="flex-1 space-y-3">
-          <div className="relative min-h-[300px] lg:min-h-[500px]">
+          <div className="relative h-[400px] lg:h-[600px]">
             <CamViewer3D
               dimensiones={{
                 x: meshData.bounding_box.max[0] - meshData.bounding_box.min[0],
@@ -298,15 +265,15 @@ export const StepStock = () => {
               sujecionConfig={montajeConfig.sujecion_config}
               stockFacesByBoxIndex={boxIndexFaces}
               activeStockFaceIndex={
-                editingPorCara ? (popover?.faceIndex ?? null) : null
+                facePickingEnabled ? (popover?.faceIndex ?? null) : null
               }
-              onStockFaceClick={editingPorCara ? onStockFaceClick : undefined}
+              onStockFaceClick={facePickingEnabled ? onStockFaceClick : undefined}
             />
 
             {/* Popover contextual anclado a la cara pinchada */}
-            {editingPorCara && popover && activeResolved && (
+            {facePickingEnabled && popover && activeResolved && (
               <div
-                className="absolute z-20 w-52"
+                className="absolute z-20 w-64"
                 style={{
                   left: popover.x,
                   top: popover.y,
@@ -330,27 +297,34 @@ export const StepStock = () => {
                     <div className="flex items-center gap-2 rounded-lg bg-bg-base/60 px-2 py-2 text-xs text-text-muted">
                       <Lock className="h-3.5 w-3.5 shrink-0" />
                       <span>
-                        Cara de apoyo: bloqueada en 0 mm (no se añade material
+                        Cara de apoyo: bloqueada en 0 mm (no hay material bruto
                         contra la sujeción).
                       </span>
                     </div>
                   ) : (
-                    <InputField
-                      label="Sobre-material"
-                      value={activeAllowance}
-                      onChange={(v) =>
-                        updateAllowance(activeResolved.direction, v)
-                      }
-                      unit="mm"
-                    />
+                    <>
+                      <p className="text-[10px] text-text-muted mb-2">
+                        Cuánto material bruto sobresale en esta cara (medido con
+                        calibre). El bloque casi nunca está centrado: captura la
+                        distribución real.
+                      </p>
+                      <InputField
+                        label="Material bruto en esta cara"
+                        value={activeRawStock}
+                        onChange={(v) =>
+                          updateRawStockOnFace(activeResolved.direction, v)
+                        }
+                        unit="mm"
+                      />
+                    </>
                   )}
                 </div>
               </div>
             )}
           </div>
 
-          {/* Resumen READ-ONLY: rol + allowance por cara */}
-          {editingPorCara && faces.length === 6 && (
+          {/* Resumen READ-ONLY: rol + raw stock por cara */}
+          {facePickingEnabled && faces.length === 6 && (
             <div className="flex flex-wrap gap-1.5">
               {faces.map((f) => (
                 <span
@@ -374,10 +348,10 @@ export const StepStock = () => {
 
         {/* Formulario */}
         <div className="flex-1 space-y-4 md:space-y-5">
-          {/* Tipo de stock */}
+          {/* Tipo de stock (forma del material que tiene el operador) */}
           <div>
             <label className="block text-xs md:text-sm font-medium text-text-secondary mb-2">
-              Tipo de Stock
+              Forma del Material Bruto
             </label>
             <div className="grid grid-cols-2 gap-2">
               <button
@@ -403,144 +377,84 @@ export const StepStock = () => {
                 <span className="text-sm font-medium">Cilíndrico</span>
               </button>
             </div>
+            <p className="mt-2 text-[10px] md:text-xs text-text-muted">
+              Selecciona la forma del material que tienes en el almacén (independiente de la forma de la pieza final)
+            </p>
           </div>
 
-          {/* Modo de entrada */}
-          <div>
-            <label className="block text-xs md:text-sm font-medium text-text-secondary mb-2">
-              Método de Entrada
-            </label>
-            <div className="grid grid-cols-2 gap-2">
-              <button
-                onClick={() => handleModoChange("dimensiones")}
-                className={`rounded-xl border-2 p-2 md:p-3 min-h-[44px] text-xs md:text-sm font-medium transition ${
-                  stockConfig.modo === "dimensiones"
-                    ? "border-accent-blue bg-accent-blue/10 text-accent-blue"
-                    : "border-border bg-bg-elevated text-text-muted hover:border-accent-blue/50"
-                }`}
-              >
-                Dimensiones exactas
-              </button>
-              <button
-                onClick={() => handleModoChange("sobrematerial")}
-                className={`rounded-xl border-2 p-2 md:p-3 min-h-[44px] text-xs md:text-sm font-medium transition ${
-                  stockConfig.modo === "sobrematerial"
-                    ? "border-accent-blue bg-accent-blue/10 text-accent-blue"
-                    : "border-border bg-bg-elevated text-text-muted hover:border-accent-blue/50"
-                }`}
-              >
-                Por sobre-material
-              </button>
-            </div>
+          {/* Dimensiones de la pieza final (referencia) */}
+          <div className="rounded-xl border border-border bg-bg-elevated/50 p-3 md:p-4">
+            <p className="text-xs font-medium text-text-secondary mb-1">
+              Dimensiones de la pieza final:
+            </p>
+            <p className="text-sm font-mono text-text-primary">
+              {getPartDimensionsDisplay()}
+            </p>
           </div>
 
-          {/* Inputs según tipo y modo */}
+          {/* Inputs de dimensiones RAW medidas */}
           <div className="space-y-3">
             {stockConfig.tipo === "rectangular" ? (
               <>
-                {stockConfig.modo === "dimensiones" ? (
-                  <>
-                    <InputField
-                      label="Ancho (X)"
-                      value={stockConfig.ancho_mm}
-                      onChange={(v) => handleInputChange("ancho_mm", v)}
-                      unit="mm"
-                    />
-                    <InputField
-                      label="Largo (Y)"
-                      value={stockConfig.largo_mm}
-                      onChange={(v) => handleInputChange("largo_mm", v)}
-                      unit="mm"
-                    />
-                    <InputField
-                      label="Alto (Z)"
-                      value={stockConfig.alto_mm}
-                      onChange={(v) => handleInputChange("alto_mm", v)}
-                      unit="mm"
-                    />
-                  </>
-                ) : (
-                  <div className="rounded-xl border border-border bg-bg-elevated/50 p-3 text-xs text-text-muted">
-                    Edita el sobre-material haciendo <b>clic en cada cara</b> del
-                    stock en el visor. La cara{" "}
-                    <span className="text-green-300">de mecanizado</span> es el
-                    objetivo primario; la cara{" "}
-                    <span className="text-slate-300">de apoyo</span> está
-                    bloqueada en 0.
-                  </div>
-                )}
+                <InputField
+                  label="Ancho bruto (X)"
+                  value={stockConfig.ancho_bruto_mm}
+                  onChange={(v) => handleInputChange("ancho_bruto_mm", v)}
+                  unit="mm"
+                />
+                <InputField
+                  label="Largo bruto (Y)"
+                  value={stockConfig.largo_bruto_mm}
+                  onChange={(v) => handleInputChange("largo_bruto_mm", v)}
+                  unit="mm"
+                />
+                <InputField
+                  label="Alto bruto (Z)"
+                  value={stockConfig.alto_bruto_mm}
+                  onChange={(v) => handleInputChange("alto_bruto_mm", v)}
+                  unit="mm"
+                />
               </>
             ) : (
               <>
-                {stockConfig.modo === "dimensiones" ? (
-                  <>
-                    <InputField
-                      label="Diámetro"
-                      value={stockConfig.diametro_mm}
-                      onChange={(v) => handleInputChange("diametro_mm", v)}
-                      unit="mm"
-                    />
-                    <InputField
-                      label="Longitud"
-                      value={stockConfig.longitud_mm}
-                      onChange={(v) => handleInputChange("longitud_mm", v)}
-                      unit="mm"
-                    />
-                  </>
-                ) : (
-                  <>
-                    <InputField
-                      label="Sobre-material radial"
-                      value={stockConfig.sobre_radial_mm}
-                      onChange={(v) => handleInputChange("sobre_radial_mm", v)}
-                      unit="mm"
-                      help="Material extra en el radio (uniforme en el OD)"
-                    />
-                    <InputField
-                      label="Sobre-material axial"
-                      value={stockConfig.sobre_axial_mm}
-                      onChange={(v) => handleInputChange("sobre_axial_mm", v)}
-                      unit="mm"
-                      help="Material extra en la dirección de la cara de mecanizado"
-                    />
-                  </>
-                )}
+                <InputField
+                  label="Diámetro bruto"
+                  value={stockConfig.diametro_bruto_mm}
+                  onChange={(v) => handleInputChange("diametro_bruto_mm", v)}
+                  unit="mm"
+                />
+                <InputField
+                  label="Longitud bruta"
+                  value={stockConfig.longitud_bruta_mm}
+                  onChange={(v) => handleInputChange("longitud_bruta_mm", v)}
+                  unit="mm"
+                />
               </>
             )}
           </div>
 
-          {/* Resumen del stock */}
+          {/* Resumen del material bruto ingresado */}
           <div className="rounded-xl border border-accent-blue/30 bg-accent-blue/10 p-3 md:p-4">
             <div className="flex items-center gap-2">
               <Package className="h-4 w-4 md:h-5 md:w-5 text-accent-blue" />
               <div>
                 <p className="text-xs md:text-sm font-medium text-text-primary">
-                  Stock calculado:
+                  Material bruto ingresado:
                 </p>
                 <p className="text-sm md:text-base font-bold text-accent-blue">
-                  {getStockDimensions()}
+                  {getStockDimensionsDisplay()}
                 </p>
               </div>
             </div>
           </div>
 
-          {/* Validación: advertir si el stock es menor que la pieza */}
-          {!validation.valid && (
-            <div className="rounded-xl border border-red-500/50 bg-red-500/10 p-3 md:p-4">
-              <p className="text-xs md:text-sm font-semibold text-red-400 mb-1">
-                ⚠️ Stock insuficiente
-              </p>
-              <ul className="text-xs text-red-300 space-y-0.5">
-                {validation.warnings.map((warning, idx) => (
-                  <li key={idx}>• {warning}</li>
-                ))}
-              </ul>
-              <p className="text-[10px] md:text-xs text-red-300/80 mt-2">
-                El stock debe ser mayor o igual que las dimensiones de la pieza
-                en su orientación de montaje (después de la rotación).
-              </p>
-            </div>
-          )}
+          <div className="rounded-xl border border-border bg-bg-elevated/50 p-3 text-xs text-text-muted">
+            <p>
+              El motor CAM calculará automáticamente el material a remover,
+              pasadas de desbaste y acabado, y parámetros de corte cuando
+              generes el G-Code.
+            </p>
+          </div>
         </div>
       </div>
 

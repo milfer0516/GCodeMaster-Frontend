@@ -39,26 +39,24 @@ export interface MaterialSeleccionado {
 
 export interface StockConfig {
   tipo: "rectangular" | "cilindrico";
-  modo: "dimensiones" | "sobrematerial";
 
-  // Stock rectangular (placa/bloque)
-  ancho_mm: number;      // X
-  largo_mm: number;      // Y
-  alto_mm: number;       // Z
+  // Stock rectangular (placa/bloque) — RAW measured dimensions the operator has
+  ancho_bruto_mm: number;      // X raw (overall block dimension)
+  largo_bruto_mm: number;      // Y raw (overall block dimension)
+  alto_bruto_mm: number;       // Z raw (overall block dimension)
 
-  // Stock cilíndrico (disco/eje)
-  diametro_mm: number;
-  longitud_mm: number;
+  // Stock cilíndrico (disco/eje) — RAW measured dimensions the operator has
+  diametro_bruto_mm: number;   // raw diameter
+  longitud_bruta_mm: number;   // raw length
 
-  // Sobre-material rectangular: entidades StockFace (exactamente 6 cuando hay
-  // Setup confirmado). Reemplaza los seis floats sueltos de la fase 2A-1.
-  // Se regenera en confirmMontaje y se limpia al invalidar el Setup.
+  // StockFaces: per-face raw stock distribution (rectangular only). The operator
+  // measures how much raw material sits on each face with a caliper. Raw stock
+  // is almost never centered: a 120mm block for a 104mm part has 16mm extra, but
+  // rarely 8mm on each side. This is REAL DATA, not a computed allowance. The
+  // 'allowance' field carries the per-face raw material measurement. Both overall
+  // dims AND per-face distribution are sent to the engine — they complement each
+  // other (what the operator bought vs. how the excess actually sits).
   stockFaces: StockFace[];
-
-  // Sobre-material cilíndrico (no se subsume limpiamente en StockFace: radial
-  // uniforme + axial. Se mantiene tal cual — ver nota en el reporte 2A-2).
-  sobre_radial_mm: number;
-  sobre_axial_mm: number;
 }
 
 export interface DatumConfig {
@@ -157,6 +155,14 @@ interface CamState {
   // Paso 7 — Resultado
   gcodeSetups: SetupResultado[];
 
+  // Engine response (plan de mecanizado, parametros de corte, errores de validacion)
+  engineResponse: {
+    plan_mecanizado?: any;
+    parametros_corte?: any;
+    stock?: any;
+    error?: string;
+  } | null;
+
   // Acciones
   setStep: (step: CamStep) => void;
   setArchivo: (archivo: File | null) => void;
@@ -172,6 +178,7 @@ interface CamState {
   setDatumConfig: (config: DatumConfig) => void;
   setOrdenSetups: (orden: string) => void;
   setGcodeSetups: (setups: SetupResultado[]) => void;
+  setEngineResponse: (response: any) => void;
   setMeshData: (data: MeshData) => void;
   setMeshLoading: (loading: boolean) => void;
   setMeshError: (error: string | null) => void;
@@ -180,23 +187,18 @@ interface CamState {
 
 const STOCK_INICIAL: StockConfig = {
   tipo: "rectangular",
-  modo: "sobrematerial",
 
-  // Rectangular
-  ancho_mm: 100,
-  largo_mm: 100,
-  alto_mm: 25,
+  // Rectangular raw measured
+  ancho_bruto_mm: 100,
+  largo_bruto_mm: 100,
+  alto_bruto_mm: 25,
 
-  // Cilíndrico
-  diametro_mm: 100,
-  longitud_mm: 50,
+  // Cilíndrico raw measured
+  diametro_bruto_mm: 100,
+  longitud_bruta_mm: 50,
 
-  // Sobre-material rectangular: vacío hasta confirmar el montaje (se deriva del
-  // Setup en confirmMontaje).
+  // StockFaces for viewer presentation only (vacío hasta confirmar montaje)
   stockFaces: [],
-  // Sobre-material cilíndrico
-  sobre_radial_mm: 2,
-  sobre_axial_mm: 3,
 };
 
 const MONTAJE_INICIAL: MontajeConfig = {
@@ -230,6 +232,7 @@ export const useCamStore = create<CamState>((set) => ({
   setup: null,
   ordenSetups: "superior_primero",
   gcodeSetups: [],
+  engineResponse: null,
 
   setStep: (step) => set({ step }),
   setArchivo: (archivo) => set({ archivo, nombreArchivo: archivo?.name ?? "" }),
@@ -321,6 +324,7 @@ export const useCamStore = create<CamState>((set) => ({
   setDatumConfig: (datumConfig) => set({ datumConfig }),
   setOrdenSetups: (ordenSetups) => set({ ordenSetups }),
   setGcodeSetups: (gcodeSetups) => set({ gcodeSetups }),
+  setEngineResponse: (engineResponse) => set({ engineResponse }),
   setMeshData: (meshData) =>
     // Cargar una geometría nueva invalida cualquier Setup previo (y sus StockFaces).
     set((state) => ({
@@ -351,6 +355,7 @@ export const useCamStore = create<CamState>((set) => ({
       setup: null,
       ordenSetups: "superior_primero",
       gcodeSetups: [],
+      engineResponse: null,
     }),
 }));
 

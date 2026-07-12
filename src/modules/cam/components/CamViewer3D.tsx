@@ -923,6 +923,46 @@ export function CamViewer3D({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [stockConfig, meshData, setup, stockFacesByBoxIndex]);
 
+  // ── 6a-fit. Auto-fit camera to frame both part and stock envelope ───────
+  useEffect(() => {
+    if (!setup || !stockConfig || !cameraRef.current || !controlsRef.current) return;
+
+    const camera = cameraRef.current;
+    const controls = controlsRef.current;
+    const rbb = setup.rotatedBBox;
+
+    // Compute stock envelope dimensions based on current stockConfig
+    let stockMaxX: number, stockMaxY: number, stockMaxZ: number;
+
+    if (stockConfig.tipo === "rectangular") {
+      stockMaxX = stockConfig.ancho_bruto_mm;
+      stockMaxY = stockConfig.largo_bruto_mm;
+      stockMaxZ = stockConfig.alto_bruto_mm;
+    } else {
+      // Cylindrical: diameter and length
+      stockMaxX = stockConfig.diametro_bruto_mm;
+      stockMaxY = stockConfig.diametro_bruto_mm;
+      stockMaxZ = stockConfig.longitud_bruta_mm;
+    }
+
+    // Maximum dimension considering both part and stock
+    const maxDim = Math.max(
+      rbb.width, rbb.depth, rbb.height,
+      stockMaxX, stockMaxY, stockMaxZ
+    );
+
+    // Position camera to frame the entire envelope
+    const distance = maxDim * 1.8;
+    camera.position.set(distance, distance * 0.75, distance);
+    camera.lookAt(0, 0, maxDim * 0.3); // Look slightly above center
+
+    // Update controls limits based on new scale
+    controls.minDistance = maxDim * 0.2;
+    controls.maxDistance = maxDim * 8;
+    controls.target.set(0, 0, maxDim * 0.3);
+    controls.update();
+  }, [stockConfig, setup]);
+
   // ── 6b. Resaltar cara de stock activa / en hover (sin reconstruir) ──────
   useEffect(() => {
     const mats = stockMaterialsRef.current;
