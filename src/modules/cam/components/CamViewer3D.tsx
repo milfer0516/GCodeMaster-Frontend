@@ -777,6 +777,12 @@ export function CamViewer3D({
     // solo se lleva a display con VIEWER_BASE_Q (OCC/máquina → Three.js).
     if (!stockConfig || !setup) return;
 
+    // Don't render stock wireframe if operator hasn't entered raw dimensions yet
+    const hasRawDims = stockConfig.tipo === "rectangular"
+      ? stockConfig.ancho_bruto_mm > 0 && stockConfig.largo_bruto_mm > 0 && stockConfig.alto_bruto_mm > 0
+      : stockConfig.diametro_bruto_mm > 0 && stockConfig.longitud_bruta_mm > 0;
+    if (!hasRawDims) return;
+
     const rbb = setup.rotatedBBox; // { min, max, center, width, depth, height }
 
     const stockGroup = new THREE.Group();
@@ -787,38 +793,35 @@ export function CamViewer3D({
       linewidth: 2,
     });
 
-    // ¿Caja rectangular editable por cara? Solo en modo sobre-material y con las
-    // 6 StockFaces provistas por el dominio. En dimensiones exactas / cilíndrico
-    // se dibuja una caja/cilindro simple (no editable por cara).
+    // ¿Caja rectangular editable por cara? Cuando las 6 StockFaces están
+    // provistas por el dominio (con per-face raw stock data).
     const editablePorCara =
       stockConfig.tipo === "rectangular" &&
-      stockConfig.modo === "sobrematerial" &&
       Array.isArray(stockFacesByBoxIndex) &&
       stockFacesByBoxIndex.length === 6;
 
     if (stockConfig.tipo === "rectangular") {
-      // Extents del stock en coords MÁQUINA (frame del Setup). Cada cara se
-      // expande de forma independiente con su allowance por cara.
+      // Extents del stock en coords MÁQUINA (frame del Setup).
       let minX: number, maxX: number, minY: number, maxY: number, minZ: number, maxZ: number;
-      if (stockConfig.modo === "dimensiones") {
-        // Dimensiones exactas: centradas en el footprint, base en la mesa.
-        minX = rbb.center[0] - stockConfig.ancho_mm / 2;
-        maxX = rbb.center[0] + stockConfig.ancho_mm / 2;
-        minY = rbb.center[1] - stockConfig.largo_mm / 2;
-        maxY = rbb.center[1] + stockConfig.largo_mm / 2;
-        minZ = rbb.min[2];
-        maxZ = rbb.min[2] + stockConfig.alto_mm;
-      } else {
-        // Sobre-material por cara. Índices de BoxGeometry (materialIndex):
-        // 0=+X, 1=-X, 2=+Y, 3=-Y, 4=+Z, 5=-Z. El visor solo indexa el array
-        // que el dominio ya ordenó; no interpreta la dirección.
-        const a = (i: number) => stockFacesByBoxIndex?.[i]?.allowance ?? 0;
+
+      // Check if we have per-face raw stock data or overall dimensions only
+      if (editablePorCara && stockFacesByBoxIndex) {
+        // Per-face raw stock: use the measured distribution
+        const a = (i: number) => stockFacesByBoxIndex[i]?.allowance ?? 0;
         maxX = rbb.max[0] + a(0);
         minX = rbb.min[0] - a(1);
         maxY = rbb.max[1] + a(2);
         minY = rbb.min[1] - a(3);
         maxZ = rbb.max[2] + a(4);
         minZ = rbb.min[2] - a(5);
+      } else {
+        // Overall raw dimensions only: centered on footprint, base on table
+        minX = rbb.center[0] - stockConfig.ancho_bruto_mm / 2;
+        maxX = rbb.center[0] + stockConfig.ancho_bruto_mm / 2;
+        minY = rbb.center[1] - stockConfig.largo_bruto_mm / 2;
+        maxY = rbb.center[1] + stockConfig.largo_bruto_mm / 2;
+        minZ = rbb.min[2];
+        maxZ = rbb.min[2] + stockConfig.alto_bruto_mm;
       }
 
       const totalX = maxX - minX;
@@ -875,17 +878,9 @@ export function CamViewer3D({
         opacity: 0.15,
         side: THREE.DoubleSide,
       });
-      // Cilíndrico: radial uniforme en el OD, axial en la dirección de la cara
-      // de mecanizado (eje Z máquina, hacia arriba).
-      let stockDiameter: number, stockLength: number;
-      if (stockConfig.modo === "dimensiones") {
-        stockDiameter = stockConfig.diametro_mm;
-        stockLength = stockConfig.longitud_mm;
-      } else {
-        const piezaDiamRadial = Math.max(rbb.width, rbb.depth);
-        stockDiameter = piezaDiamRadial + 2 * stockConfig.sobre_radial_mm;
-        stockLength = rbb.height + 2 * stockConfig.sobre_axial_mm;
-      }
+      // Cilíndrico: raw dimensions entered by operator
+      const stockDiameter = stockConfig.diametro_bruto_mm;
+      const stockLength = stockConfig.longitud_bruta_mm;
 
       // CylinderGeometry tiene el eje en Y; lo giramos a Z (máquina) y lo
       // colocamos con la base en la mesa, centrado en el footprint.

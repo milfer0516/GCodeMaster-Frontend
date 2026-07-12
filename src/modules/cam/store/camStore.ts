@@ -188,14 +188,14 @@ interface CamState {
 const STOCK_INICIAL: StockConfig = {
   tipo: "rectangular",
 
-  // Rectangular raw measured
-  ancho_bruto_mm: 100,
-  largo_bruto_mm: 100,
-  alto_bruto_mm: 25,
+  // Rectangular raw measured — START EMPTY, operator enters what they measured
+  ancho_bruto_mm: 0,
+  largo_bruto_mm: 0,
+  alto_bruto_mm: 0,
 
-  // Cilíndrico raw measured
-  diametro_bruto_mm: 100,
-  longitud_bruta_mm: 50,
+  // Cilíndrico raw measured — START EMPTY, operator enters what they measured
+  diametro_bruto_mm: 0,
+  longitud_bruta_mm: 0,
 
   // StockFaces for viewer presentation only (vacío hasta confirmar montaje)
   stockFaces: [],

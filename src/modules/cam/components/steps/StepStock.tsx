@@ -59,8 +59,9 @@ export const StepStock = () => {
 
   const closePopover = () => setPopover(null);
 
-  // Inicializar defaults una vez por Setup (id). Preserva las StockFaces que el
-  // store ya derivó en confirmMontaje; si faltan, las deriva aquí.
+  // Inicializar StockFaces una vez por Setup (id). NO auto-fill raw dimensions —
+  // the operator enters what they physically measured with a caliper. The system
+  // NEVER GUESSES raw stock.
   const initedSetupId = useRef<string | null>(null);
   useEffect(() => {
     if (!analisis || !setup) return;
@@ -68,28 +69,17 @@ export const StepStock = () => {
     initedSetupId.current = setup.id;
 
     const tipoPieza = analisis.tipo_pieza || "placa";
-    const { width, depth, height } = setup.rotatedBBox;
     const tipoStock = tipoPieza === "disco" ? "cilindrico" : "rectangular";
-
-    // Default raw stock: part dimensions + typical allowances as starting point
-    const defaultRadial = 2;
-    const defaultAxial = 3;
 
     const stockFaces =
       stockConfig.stockFaces.length === 6
         ? stockConfig.stockFaces
         : deriveStockFaces(setup);
 
+    // Only set tipo and stockFaces. DO NOT auto-fill raw dimensions.
     const newConfig: StockConfig = {
       ...stockConfig,
       tipo: tipoStock,
-      // Raw rectangular: start with part size + small margin
-      ancho_bruto_mm: Math.round(width + 4),
-      largo_bruto_mm: Math.round(depth + 4),
-      alto_bruto_mm: Math.round(height + 6),
-      // Raw cylindrical: start with part size + typical allowance
-      diametro_bruto_mm: Math.round(Math.max(width, depth) + 2 * defaultRadial),
-      longitud_bruta_mm: Math.round(height + 2 * defaultAxial),
       stockFaces,
     };
     setStockConfig(newConfig);
@@ -186,6 +176,20 @@ export const StepStock = () => {
       return `Ø${Math.round(part.d)} × ${Math.round(part.len)} mm`;
     }
     return "";
+  };
+
+  // Validation: operator must enter raw dimensions before advancing. Do NOT
+  // validate feasibility (raw >= part) — the engine does that and returns a
+  // Spanish error. Only block if EMPTY (not entered at all).
+  const hasRawDimensions = (): boolean => {
+    if (stockConfig.tipo === "rectangular") {
+      return stockConfig.ancho_bruto_mm > 0 &&
+             stockConfig.largo_bruto_mm > 0 &&
+             stockConfig.alto_bruto_mm > 0;
+    } else {
+      return stockConfig.diametro_bruto_mm > 0 &&
+             stockConfig.longitud_bruta_mm > 0;
+    }
   };
 
   if (!analisis || !meshData) {
@@ -448,13 +452,6 @@ export const StepStock = () => {
             </div>
           </div>
 
-          <div className="rounded-xl border border-border bg-bg-elevated/50 p-3 text-xs text-text-muted">
-            <p>
-              El motor CAM calculará automáticamente el material a remover,
-              pasadas de desbaste y acabado, y parámetros de corte cuando
-              generes el G-Code.
-            </p>
-          </div>
         </div>
       </div>
 
@@ -462,7 +459,7 @@ export const StepStock = () => {
       <WizardNavButtons
         prevStep="material"
         nextStep="operaciones"
-        canAdvance={true}
+        canAdvance={hasRawDimensions()}
       />
     </div>
   );
@@ -494,12 +491,18 @@ function InputField({
   // "108.2") sin que el value numérico controlado los recorte. El input es
   // type="text" + inputMode="decimal" para que NO haya validación de step
   // nativa que bloquee decimales arbitrarios.
-  const [text, setText] = useState(String(value));
+  // EMPTY STATE: cuando value es 0 (no entrado), mostramos string vacío.
+  const [text, setText] = useState(value === 0 ? "" : String(value));
 
   // Re-sincronizar el texto cuando el value externo cambia (init, flechas)
   // y difiere numéricamente de lo que hay escrito.
   useEffect(() => {
     const parsed = parseFloat(text);
+    // Si value es 0 y text no está vacío, limpiar a vacío (estado inicial)
+    if (value === 0 && text !== "") {
+      setText("");
+      return;
+    }
     if (parsed !== value && !(Number.isNaN(parsed) && value === 0)) {
       setText(String(value));
     }
@@ -535,8 +538,9 @@ function InputField({
           inputMode="decimal"
           value={text}
           onChange={(e) => handleText(e.target.value)}
+          placeholder="Medir con calibre"
           disabled={disabled}
-          className={`w-full rounded-xl border border-border bg-bg-elevated px-3 md:px-4 py-2.5 md:py-3 min-h-[44px] pr-16 text-sm text-text-primary focus:border-accent-blue focus:outline-none focus:ring-2 focus:ring-accent-blue/20 ${
+          className={`w-full rounded-xl border border-border bg-bg-elevated px-3 md:px-4 py-2.5 md:py-3 min-h-[44px] pr-16 text-sm text-text-primary placeholder:text-text-muted/50 focus:border-accent-blue focus:outline-none focus:ring-2 focus:ring-accent-blue/20 ${
             disabled ? "opacity-50 cursor-not-allowed" : ""
           }`}
         />
