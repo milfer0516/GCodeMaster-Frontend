@@ -9,7 +9,8 @@ import type { Operacion } from "../store/camStore";
 import { Loader2, AlertCircle } from "lucide-react";
 import { formatMm } from "../../../utils/format";
 import type { SujecionConfig, StockConfig } from "../store/camStore";
-import type { StockFace, StockFaceRole } from "../utils/stockFaces";
+import type { StockFaceRole, StockPickRegion } from "../utils/stockFaces";
+import { cylTotals } from "../utils/stockFaces";
 
 // ── Props — mismas que el visor anterior para no romper StepOperaciones ──
 // DESPUÉS
@@ -25,11 +26,12 @@ interface Props {
   piezaBoundingBox?: { x: number; y: number; z: number };
   stockConfig?: StockConfig | null;
 
-  // ── Stock por-cara (Phase 2A-2) — el visor es consumidor VISUAL puro ──
-  // El dominio entrega las 6 StockFaces YA ordenadas por índice de cara de la
-  // BoxGeometry (materialIndex 0..5). El visor solo las indexa; NUNCA mapea
-  // cara→dirección/rol. Ver src/modules/cam/utils/stockFaces.ts.
-  stockFacesByBoxIndex?: StockFace[] | null;
+  // ── Stock por-región — el visor es consumidor VISUAL puro ──
+  // El dominio entrega las regiones pickables YA ordenadas por materialIndex:
+  // rectangular = 6 caras de la BoxGeometry (0..5); cilíndrico = 3 regiones
+  // (0=lateral/radial, 1=tapa mecanizado, 2=tapa apoyo). El visor solo las
+  // indexa por materialIndex; NUNCA mapea índice→dirección/rol. Ver stockFaces.ts.
+  stockFacesByBoxIndex?: StockPickRegion[] | null;
   activeStockFaceIndex?: number | null;
   onStockFaceClick?: (
     faceIndex: number,
@@ -226,7 +228,7 @@ export function CamViewer3D({
   const stockMeshRef = useRef<THREE.Group | null>(null);
   // Malla de la caja de stock (para picking) y sus 6 materiales (uno por cara
   // de la BoxGeometry, materialIndex 0..5) para resaltar caras individuales.
-  const stockBoxMeshRef = useRef<THREE.Mesh | null>(null);
+  const stockPickMeshRef = useRef<THREE.Mesh | null>(null);
   const stockMaterialsRef = useRef<THREE.MeshBasicMaterial[]>([]);
 
   // Cara seleccionada con click simple para mostrar su dimensión en el panel
@@ -769,7 +771,7 @@ export function CamViewer3D({
       });
       stockMeshRef.current = null;
     }
-    stockBoxMeshRef.current = null;
+    stockPickMeshRef.current = null;
     stockMaterialsRef.current = [];
 
     // Sin stockConfig o sin Setup confirmado no se dibuja stock: el stock vive
@@ -778,14 +780,10 @@ export function CamViewer3D({
     // solo se lleva a display con VIEWER_BASE_Q (OCC/máquina → Three.js).
     if (!stockConfig || !setup) return;
 
-    // Dibujar el wireframe en cuanto haya AL MENOS UNA dimensión válida — no
-    // esperar a que estén las tres. Los ejes aún sin medir hacen fallback a la
-    // dimensión de la pieza (abajo), así el box nunca queda degenerado.
-    const hasRawDims = stockConfig.tipo === "rectangular"
-      ? stockConfig.ancho_bruto_mm > 0 || stockConfig.largo_bruto_mm > 0 || stockConfig.alto_bruto_mm > 0
-      : stockConfig.diametro_bruto_mm > 0 || stockConfig.longitud_bruta_mm > 0;
-    if (!hasRawDims) return;
-
+    // SIN GATE. El envelope se dibuja SIEMPRE (offsets por defecto en 0 =
+    // skin-tight, envolviendo la pieza) para que el operador VEA el stock y sepa
+    // qué regiones puede clicar desde que entra al paso. Es feedback VISUAL: los
+    // campos del formulario siguen vacíos (no se inventa ninguna medida).
     const rbb = setup.rotatedBBox; // { min, max, center, width, depth, height }
 
     const stockGroup = new THREE.Group();
@@ -796,86 +794,48 @@ export function CamViewer3D({
       linewidth: 2,
     });
 
-    // ¿Caja rectangular editable por cara? Cuando las 6 StockFaces están
-    // provistas por el dominio (con per-face raw stock data).
-    const editablePorCara =
-      stockConfig.tipo === "rectangular" &&
-      Array.isArray(stockFacesByBoxIndex) &&
-      stockFacesByBoxIndex.length === 6;
-
     if (stockConfig.tipo === "rectangular") {
-      // Extents del stock en coords MÁQUINA (frame del Setup).
-      let minX: number, maxX: number, minY: number, maxY: number, minZ: number, maxZ: number;
+      // Las 6 caras deben venir del dominio; sin ellas no hay stock que pintar.
+      if (!stockFacesByBoxIndex || stockFacesByBoxIndex.length !== 6) return;
 
-      // Check if we have per-face raw stock data or overall dimensions only
-      if (editablePorCara && stockFacesByBoxIndex) {
-        // Per-face raw stock: use the measured distribution
-        const a = (i: number) => stockFacesByBoxIndex[i]?.allowance ?? 0;
-        maxX = rbb.max[0] + a(0);
-        minX = rbb.min[0] - a(1);
-        maxY = rbb.max[1] + a(2);
-        minY = rbb.min[1] - a(3);
-        maxZ = rbb.max[2] + a(4);
-        minZ = rbb.min[2] - a(5);
-      } else {
-        // Overall raw dimensions only: centered on footprint, base on table.
-        // Cada eje aún sin medir (0) cae de vuelta a la dimensión de la pieza,
-        // para que basta con UNA dimensión válida y el box no sea degenerado.
-        const anchoEff =
-          stockConfig.ancho_bruto_mm > 0 ? stockConfig.ancho_bruto_mm : rbb.width;
-        const largoEff =
-          stockConfig.largo_bruto_mm > 0 ? stockConfig.largo_bruto_mm : rbb.depth;
-        const altoEff =
-          stockConfig.alto_bruto_mm > 0 ? stockConfig.alto_bruto_mm : rbb.height;
-        minX = rbb.center[0] - anchoEff / 2;
-        maxX = rbb.center[0] + anchoEff / 2;
-        minY = rbb.center[1] - largoEff / 2;
-        maxY = rbb.center[1] + largoEff / 2;
-        minZ = rbb.min[2];
-        maxZ = rbb.min[2] + altoEff;
-      }
+      // Stock = pieza ± offset por cara (materialIndex 0..5). Todos los offsets en
+      // 0 ⇒ el box coincide con el bounding box de la pieza (skin-tight).
+      const a = (i: number) => stockFacesByBoxIndex[i]?.allowance ?? 0;
+      const maxX = rbb.max[0] + a(0);
+      const minX = rbb.min[0] - a(1);
+      const maxY = rbb.max[1] + a(2);
+      const minY = rbb.min[1] - a(3);
+      const maxZ = rbb.max[2] + a(4);
+      const minZ = rbb.min[2] - a(5);
 
-      const totalX = maxX - minX;
-      const totalY = maxY - minY;
-      const totalZ = maxZ - minZ;
-      const cx = (minX + maxX) / 2;
-      const cy = (minY + maxY) / 2;
-      const cz = (minZ + maxZ) / 2;
+      const boxGeometry = new THREE.BoxGeometry(
+        maxX - minX,
+        maxY - minY,
+        maxZ - minZ,
+      );
+      boxGeometry.translate(
+        (minX + maxX) / 2,
+        (minY + maxY) / 2,
+        (minZ + maxZ) / 2,
+      );
 
-      // BoxGeometry en frame máquina (X, Y, Z), colocada en su centro máquina.
-      const boxGeometry = new THREE.BoxGeometry(totalX, totalY, totalZ);
-      boxGeometry.translate(cx, cy, cz);
-
-      let boxMesh: THREE.Mesh;
-      if (editablePorCara) {
-        // 6 materiales (uno por cara/materialIndex) para resaltar caras.
-        const mats = stockFacesByBoxIndex!.map((face, i) => {
-          const isActive = i === activeStockFaceIndex;
-          const isHover = i === stockHover;
-          const { color, opacity } = stockFaceColor(
-            face.role,
-            isHover,
-            isActive,
-          );
-          return new THREE.MeshBasicMaterial({
-            color,
-            transparent: true,
-            opacity,
-            side: THREE.DoubleSide,
-          });
-        });
-        stockMaterialsRef.current = mats;
-        boxMesh = new THREE.Mesh(boxGeometry, mats);
-        stockBoxMeshRef.current = boxMesh;
-      } else {
-        const fillMaterial = new THREE.MeshBasicMaterial({
-          color: 0x88ccff,
+      // 6 materiales (uno por cara/materialIndex) para resaltar y para picking.
+      const mats = stockFacesByBoxIndex.map((face, i) => {
+        const { color, opacity } = stockFaceColor(
+          face.role,
+          i === stockHover,
+          i === activeStockFaceIndex,
+        );
+        return new THREE.MeshBasicMaterial({
+          color,
           transparent: true,
-          opacity: 0.15,
+          opacity,
           side: THREE.DoubleSide,
         });
-        boxMesh = new THREE.Mesh(boxGeometry, fillMaterial);
-      }
+      });
+      stockMaterialsRef.current = mats;
+      const boxMesh = new THREE.Mesh(boxGeometry, mats);
+      stockPickMeshRef.current = boxMesh;
 
       const edges = new THREE.EdgesGeometry(boxGeometry);
       const wireframe = new THREE.LineSegments(edges, lineMaterial);
@@ -883,40 +843,45 @@ export function CamViewer3D({
       stockGroup.add(boxMesh);
       stockGroup.add(wireframe);
     } else {
-      const fillMaterial = new THREE.MeshBasicMaterial({
-        color: 0x88ccff,
-        transparent: true,
-        opacity: 0.15,
-        side: THREE.DoubleSide,
-      });
-      // Cilíndrico: raw dimensions entered by operator. El diámetro/longitud aún
-      // sin medir (0) cae de vuelta a la dimensión de la pieza, para que basta
-      // con UNA dimensión válida y el cilindro no sea degenerado.
-      const stockDiameter =
-        stockConfig.diametro_bruto_mm > 0
-          ? stockConfig.diametro_bruto_mm
-          : Math.max(rbb.width, rbb.depth);
-      const stockLength =
-        stockConfig.longitud_bruta_mm > 0
-          ? stockConfig.longitud_bruta_mm
-          : rbb.height;
+      // Cilíndrico: Ø/longitud DERIVADOS de pieza + offsets de región. Offsets en
+      // 0 ⇒ cilindro skin-tight. 3 materiales por región (materialIndex
+      // 0=lateral/radial, 1=tapa mecanizado, 2=tapa apoyo) para resaltar y
+      // picking — mismo mecanismo que la caja.
+      const regions = stockFacesByBoxIndex; // 3 regiones en orden de materialIndex
+      const { diameter, length } = cylTotals(rbb, stockConfig.cyl);
 
       // CylinderGeometry tiene el eje en Y; lo giramos a Z (máquina) y lo
-      // colocamos con la base en la mesa, centrado en el footprint.
+      // colocamos con la base (tapa de apoyo) en la mesa, centrado en el footprint.
       const cylinderGeometry = new THREE.CylinderGeometry(
-        stockDiameter / 2,
-        stockDiameter / 2,
-        stockLength,
-        32,
+        diameter / 2,
+        diameter / 2,
+        length,
+        48,
       );
       cylinderGeometry.rotateX(Math.PI / 2); // eje Y → eje Z (máquina)
       cylinderGeometry.translate(
         rbb.center[0],
         rbb.center[1],
-        rbb.min[2] + stockLength / 2,
+        rbb.min[2] + length / 2,
       );
 
-      const cylinderMesh = new THREE.Mesh(cylinderGeometry, fillMaterial);
+      const mats = [0, 1, 2].map((i) => {
+        const { color, opacity } = stockFaceColor(
+          regions?.[i]?.role ?? "libre",
+          i === stockHover,
+          i === activeStockFaceIndex,
+        );
+        return new THREE.MeshBasicMaterial({
+          color,
+          transparent: true,
+          opacity,
+          side: THREE.DoubleSide,
+        });
+      });
+      stockMaterialsRef.current = mats;
+      const cylinderMesh = new THREE.Mesh(cylinderGeometry, mats);
+      stockPickMeshRef.current = cylinderMesh;
+
       const edges = new THREE.EdgesGeometry(cylinderGeometry);
       const wireframe = new THREE.LineSegments(edges, lineMaterial);
 
@@ -952,25 +917,10 @@ export function CamViewer3D({
     const controls = controlsRef.current;
     const rbb = setup.rotatedBBox;
 
-    // Compute stock envelope dimensions based on current stockConfig
-    let stockMaxX: number, stockMaxY: number, stockMaxZ: number;
-
-    if (stockConfig.tipo === "rectangular") {
-      stockMaxX = stockConfig.ancho_bruto_mm;
-      stockMaxY = stockConfig.largo_bruto_mm;
-      stockMaxZ = stockConfig.alto_bruto_mm;
-    } else {
-      // Cylindrical: diameter and length
-      stockMaxX = stockConfig.diametro_bruto_mm;
-      stockMaxY = stockConfig.diametro_bruto_mm;
-      stockMaxZ = stockConfig.longitud_bruta_mm;
-    }
-
-    // Maximum dimension considering both part and stock
-    const maxDim = Math.max(
-      rbb.width, rbb.depth, rbb.height,
-      stockMaxX, stockMaxY, stockMaxZ
-    );
+    // Encuadre inicial basado en la PIEZA: los offsets arrancan en 0 (skin-tight),
+    // así que el stock coincide con la pieza en el primer render. La cámara solo
+    // vuelve a moverse cuando el operador orbita (este efecto corre una vez/Setup).
+    const maxDim = Math.max(rbb.width, rbb.depth, rbb.height);
 
     // Position camera to frame the entire envelope
     const distance = maxDim * 1.8;
@@ -1016,7 +966,7 @@ export function CamViewer3D({
     const mouse = new THREE.Vector2();
 
     const getHit = (e: MouseEvent) => {
-      const box = stockBoxMeshRef.current;
+      const box = stockPickMeshRef.current;
       if (!box) return null;
       const rect = el.getBoundingClientRect();
       mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;

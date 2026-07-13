@@ -258,40 +258,156 @@ export function totalOnAxis(
   );
 }
 
-/**
- * FORM → FACES: convert a typed per-axis TOTAL into per-face excess, immutably.
- * The excess (total − part, clamped ≥ 0) is distributed:
- *   - Support axis (one face is the locked apoyo face): ALL excess goes to the
- *     machining (non-locked) face; the support face stays pinned at 0. No raw
- *     material can exist between the part and the fixture.
- *   - Free axis (neither face locked): split symmetrically, half on each face.
- * The wireframe updates automatically because it already reads the allowances.
- */
-export function setAxisTotal(
-  faces: StockFace[],
-  setup: Setup,
-  axis: StockAxis,
-  total: number,
-): StockFace[] {
-  const spec = AXES.find((a) => a.axis === axis);
-  if (!spec) return faces;
+// A pickable stock region as the VIEWER needs it: role (for colour), the current
+// offset (allowance) and whether it is locked. Both the 6 box faces (StockFace)
+// and the 3 cylinder regions satisfy this shape, so the viewer indexes one array
+// regardless of stock shape. (StockFace is assignable to StockPickRegion.)
+export interface StockPickRegion {
+  role: StockFaceRole;
+  allowance: number;
+  locked: boolean;
+}
 
-  const excess = Math.max(0, total - partDimOnAxis(setup, axis));
-  const posLocked = faces.find((f) => f.direction === spec.pos)?.locked ?? false;
-  const negLocked = faces.find((f) => f.direction === spec.neg)?.locked ?? false;
+// ── Cylindrical stock: 3 regions (NOT 6 box faces) ─────────────────────────
+//
+// A round bar has three physical regions the operator can measure independently:
+//   - radial:          uniform material around the OD (OD grows by 2×offset)
+//   - axial_machining: the free flat end (away from the fixture)
+//   - axial_support:   the end resting on the fixture — LOCKED at 0
+// Same principle as the rectangular per-face model: offsets are the source of
+// truth, the total (Ø / length) is DERIVED and read-only. The operator declares
+// the offsets; the system never infers which region gets material.
 
-  if (posLocked || negLocked) {
-    const machiningDir = posLocked ? spec.neg : spec.pos;
-    const supportDir = posLocked ? spec.pos : spec.neg;
-    let out = setFaceAllowance(faces, machiningDir, excess);
-    out = setFaceAllowance(out, supportDir, 0);
-    return out;
+export type CylRegionKind = "radial" | "axial_machining" | "axial_support";
+
+export interface CylStock {
+  radial: number; // offset on the radius (OD grows by 2× this)
+  axialMachining: number; // offset on the free/top flat end
+  axialSupport: number; // support end — LOCKED at 0
+}
+
+export const CYL_STOCK_INICIAL: CylStock = {
+  radial: 0,
+  axialMachining: 0,
+  axialSupport: 0,
+};
+
+// THREE.CylinderGeometry group order (materialIndex): 0 = lateral, 1 = top cap,
+// 2 = bottom cap. The viewer builds the cylinder axis along machine +Z with the
+// base on the table, so the top cap = machining (up, away from the fixture) and
+// the bottom cap = support (on the table). This is the picking contract, the
+// cylinder analogue of BOX_FACE_DIRECTIONS.
+export const CYL_REGION_BY_INDEX: readonly CylRegionKind[] = [
+  "radial", // 0 = lateral surface
+  "axial_machining", // 1 = top cap
+  "axial_support", // 2 = bottom cap (on the table)
+] as const;
+
+export function cylRegionLocked(kind: CylRegionKind): boolean {
+  return kind === "axial_support";
+}
+
+export function cylRegionRole(kind: CylRegionKind): StockFaceRole {
+  return kind === "axial_machining"
+    ? "mecanizado"
+    : kind === "axial_support"
+      ? "apoyo"
+      : "libre";
+}
+
+export function cylRegionLabel(kind: CylRegionKind): string {
+  switch (kind) {
+    case "radial":
+      return "Radial (Ø)";
+    case "axial_machining":
+      return "Cara de mecanizado";
+    case "axial_support":
+      return "Cara de apoyo";
   }
+}
 
-  const half = excess / 2;
-  let out = setFaceAllowance(faces, spec.pos, half);
-  out = setFaceAllowance(out, spec.neg, half);
-  return out;
+export function getCylOffset(cyl: CylStock, kind: CylRegionKind): number {
+  return kind === "radial"
+    ? cyl.radial
+    : kind === "axial_machining"
+      ? cyl.axialMachining
+      : cyl.axialSupport;
+}
+
+/** Immutably set a cylindrical region offset. Negatives clamped to 0; the
+ * support region is pinned to 0 (no material against the fixture). */
+export function setCylOffset(
+  cyl: CylStock,
+  kind: CylRegionKind,
+  value: number,
+): CylStock {
+  const v = Math.max(0, value);
+  if (kind === "axial_support") return { ...cyl, axialSupport: 0 };
+  if (kind === "radial") return { ...cyl, radial: v };
+  return { ...cyl, axialMachining: v };
+}
+
+/** The 3 cylinder regions in pick-index order (materialIndex 0..2) for the
+ * viewer — mirror of stockFacesByBoxIndex for the box. */
+export function cylRegionsByIndex(cyl: CylStock): StockPickRegion[] {
+  return CYL_REGION_BY_INDEX.map((kind) => ({
+    role: cylRegionRole(kind),
+    allowance: getCylOffset(cyl, kind),
+    locked: cylRegionLocked(kind),
+  }));
+}
+
+/** Map a viewer-reported picked cylinder region INDEX (0..2) to its region. */
+export function resolveCylRegion(index: number): {
+  kind: CylRegionKind;
+  role: StockFaceRole;
+  locked: boolean;
+  label: string;
+} | null {
+  const kind = CYL_REGION_BY_INDEX[index];
+  if (!kind) return null;
+  return {
+    kind,
+    role: cylRegionRole(kind),
+    locked: cylRegionLocked(kind),
+    label: cylRegionLabel(kind),
+  };
+}
+
+/**
+ * Mirror the engine's cylinder-axis identification (cam_builder
+ * _identificar_eje_cilindro): among the part's (x, y, z) bbox dims, the two
+ * CLOSEST form the diameter, the odd one is the length. Keeps the displayed
+ * total AND the payload consistent with what the engine computes. Part-agnostic
+ * — never assumes the axis is Z.
+ */
+export function cylPartDims(rbb: {
+  width: number;
+  depth: number;
+  height: number;
+}): { partOD: number; partLen: number } {
+  const x = rbb.width;
+  const y = rbb.depth;
+  const z = rbb.height;
+  const candidates: Array<{ diff: number; diameter: number; length: number }> = [
+    { diff: Math.abs(x - y), diameter: (x + y) / 2, length: z },
+    { diff: Math.abs(y - z), diameter: (y + z) / 2, length: x },
+    { diff: Math.abs(x - z), diameter: (x + z) / 2, length: y },
+  ];
+  candidates.sort((a, b) => a.diff - b.diff);
+  return { partOD: candidates[0].diameter, partLen: candidates[0].length };
+}
+
+/** DERIVED read-only cylindrical totals from part dims + offsets. */
+export function cylTotals(
+  rbb: { width: number; depth: number; height: number },
+  cyl: CylStock,
+): { diameter: number; length: number } {
+  const { partOD, partLen } = cylPartDims(rbb);
+  return {
+    diameter: partOD + 2 * cyl.radial,
+    length: partLen + cyl.axialMachining + cyl.axialSupport, // support locked at 0
+  };
 }
 
 // Presentation helper (used by the read-only summary). Kept here so the label

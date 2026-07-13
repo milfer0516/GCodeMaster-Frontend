@@ -3,10 +3,15 @@ import { create } from "zustand";
 import type { MeshData } from "../services/camService";
 import type { Maquina } from "../../../services/maquinasService";
 import { computeSetup, type Setup } from "../utils/computeSetup";
-import { deriveStockFaces, type StockFace } from "../utils/stockFaces";
+import {
+  deriveStockFaces,
+  CYL_STOCK_INICIAL,
+  type StockFace,
+  type CylStock,
+} from "../utils/stockFaces";
 
 export type { Setup };
-export type { StockFace };
+export type { StockFace, CylStock };
 
 // DESPUÉS
 export type CamStep =
@@ -40,23 +45,23 @@ export interface MaterialSeleccionado {
 export interface StockConfig {
   tipo: "rectangular" | "cilindrico";
 
-  // Stock rectangular (placa/bloque) — RAW measured dimensions the operator has
-  ancho_bruto_mm: number;      // X raw (overall block dimension)
-  largo_bruto_mm: number;      // Y raw (overall block dimension)
-  alto_bruto_mm: number;       // Z raw (overall block dimension)
-
-  // Stock cilíndrico (disco/eje) — RAW measured dimensions the operator has
-  diametro_bruto_mm: number;   // raw diameter
-  longitud_bruta_mm: number;   // raw length
-
-  // StockFaces: per-face raw stock distribution (rectangular only). The operator
-  // measures how much raw material sits on each face with a caliper. Raw stock
-  // is almost never centered: a 120mm block for a 104mm part has 16mm extra, but
-  // rarely 8mm on each side. This is REAL DATA, not a computed allowance. The
-  // 'allowance' field carries the per-face raw material measurement. Both overall
-  // dims AND per-face distribution are sent to the engine — they complement each
-  // other (what the operator bought vs. how the excess actually sits).
+  // SINGLE SOURCE OF TRUTH. Stock is defined ONLY by per-region offsets over the
+  // part's bounding box — never by a competing "total dimensions" form (that was
+  // the root cause of every desync). The resulting size is DERIVED and read-only.
+  //
+  // RECTANGULAR: 6 per-face offsets (X±, Y±, Z±). Each StockFace.allowance is how
+  // much raw material sticks out on that face, measured with a caliper by the
+  // operator. The support face is locked at 0.
   stockFaces: StockFace[];
+
+  // CYLINDRICAL: 3-region offsets (radial uniform around the OD, axial machining
+  // end, axial support end locked at 0). Same principle, 3 regions instead of 6.
+  cyl: CylStock;
+
+  // "Uniform" toggle per axis (rectangular, like SolidWorks' blue box): when on,
+  // editing the + offset copies its value to the − offset of that axis. Off by
+  // default — raw stock is rarely centered.
+  uniform: { x: boolean; y: boolean; z: boolean };
 }
 
 export interface DatumConfig {
@@ -187,19 +192,20 @@ interface CamState {
 
 const STOCK_INICIAL: StockConfig = {
   tipo: "rectangular",
-
-  // Rectangular raw measured — START EMPTY, operator enters what they measured
-  ancho_bruto_mm: 0,
-  largo_bruto_mm: 0,
-  alto_bruto_mm: 0,
-
-  // Cilíndrico raw measured — START EMPTY, operator enters what they measured
-  diametro_bruto_mm: 0,
-  longitud_bruta_mm: 0,
-
-  // StockFaces for viewer presentation only (vacío hasta confirmar montaje)
-  stockFaces: [],
+  // Offsets START EMPTY — the operator measures with a caliper. The system NEVER
+  // prefills or guesses a measurement nobody took (it would end up in the G-code).
+  stockFaces: [], // regenerated (all offsets 0) on confirmMontaje
+  cyl: { ...CYL_STOCK_INICIAL },
+  uniform: { x: false, y: false, z: false },
 };
+
+// When the Setup frame changes, the operator's measured offsets no longer apply
+// (they referred to an orientation that no longer exists). Reset all stock
+// measurements but PRESERVE the operator's declared raw SHAPE (tipo).
+const resetStockMeasurements = (s: StockConfig): StockConfig => ({
+  ...STOCK_INICIAL,
+  tipo: s.tipo,
+});
 
 const MONTAJE_INICIAL: MontajeConfig = {
   tipo_sujecion: null,
@@ -245,8 +251,8 @@ export const useCamStore = create<CamState>((set) => ({
       meshData: null,
       meshError: null,
       setup: null,
-      // Cascade: sin Setup no hay StockFaces válidas.
-      stockConfig: { ...state.stockConfig, stockFaces: [] },
+      // Cascade: sin Setup no hay offsets de stock válidos.
+      stockConfig: resetStockMeasurements(state.stockConfig),
     }));
   },
   setOperaciones: (operaciones) => set({ operaciones }),
@@ -278,7 +284,7 @@ export const useCamStore = create<CamState>((set) => ({
         ...(invalidar
           ? {
               setup: null,
-              stockConfig: { ...state.stockConfig, stockFaces: [] },
+              stockConfig: resetStockMeasurements(state.stockConfig),
             }
           : {}),
       };
@@ -301,22 +307,23 @@ export const useCamStore = create<CamState>((set) => ({
       if (!setup) {
         return {
           setup: null,
-          stockConfig: { ...state.stockConfig, stockFaces: [] },
+          stockConfig: resetStockMeasurements(state.stockConfig),
         };
       }
-      // Cascade Setup → StockFaces: regenerar las 6 caras desde el nuevo Setup,
-      // reasignando roles y RESETEANDO los sobre-materiales a 0 (los antiguos
-      // referían un frame que ya no existe — no se arrastran).
+      // Cascade Setup → offsets: regenerar las 6 caras desde el nuevo Setup,
+      // reasignando roles y RESETEANDO todos los offsets a 0 (los antiguos
+      // referían un frame que ya no existe — no se arrastran). También se limpian
+      // los offsets cilíndricos y los toggles uniform.
       const stockFaces = deriveStockFaces(setup);
       return {
         setup,
-        stockConfig: { ...state.stockConfig, stockFaces },
+        stockConfig: { ...resetStockMeasurements(state.stockConfig), stockFaces },
       };
     }),
   invalidateSetup: () =>
     set((state) => ({
       setup: null,
-      stockConfig: { ...state.stockConfig, stockFaces: [] },
+      stockConfig: resetStockMeasurements(state.stockConfig),
     })),
   setMaterial: (material) => set({ material }),
   setMaquina: (maquina) => set({ maquina }),
@@ -332,7 +339,7 @@ export const useCamStore = create<CamState>((set) => ({
       meshLoading: false,
       meshError: null,
       setup: null,
-      stockConfig: { ...state.stockConfig, stockFaces: [] },
+      stockConfig: resetStockMeasurements(state.stockConfig),
     })),
   setMeshLoading: (meshLoading) => set({ meshLoading }),
   setMeshError: (meshError) => set({ meshError, meshLoading: false }),

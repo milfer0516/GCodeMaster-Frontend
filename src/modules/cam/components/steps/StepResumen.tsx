@@ -1,11 +1,28 @@
 import { useCamStore } from "../../store/camStore";
 import { WizardNavButtons } from "./WizardNavButtons";
 import { AlertCircle, CheckCircle, Wrench, Gauge, Layers } from "lucide-react";
+import { formatMm } from "../../../../utils/format";
+import { totalOnAxis, cylTotals } from "../../utils/stockFaces";
 
 export const StepResumen = () => {
   const engineResponse = useCamStore((s) => s.engineResponse);
   const stockConfig = useCamStore((s) => s.stockConfig);
+  const setup = useCamStore((s) => s.setup);
   const material = useCamStore((s) => s.material);
+
+  // Read-only RESULTING stock size, DERIVED from part dims + per-region offsets
+  // (never a stored/typed value).
+  const stockResultante = ((): string => {
+    if (!setup) return "—";
+    if (stockConfig.tipo === "rectangular") {
+      const tx = totalOnAxis(stockConfig.stockFaces, setup, "x");
+      const ty = totalOnAxis(stockConfig.stockFaces, setup, "y");
+      const tz = totalOnAxis(stockConfig.stockFaces, setup, "z");
+      return `${formatMm(tx)} × ${formatMm(ty)} × ${formatMm(tz)} mm`;
+    }
+    const { diameter, length } = cylTotals(setup.rotatedBBox, stockConfig.cyl);
+    return `Ø${formatMm(diameter)} × ${formatMm(length)} mm`;
+  })();
 
   // Display engine's Spanish validation error if stock is too small
   if (engineResponse?.error) {
@@ -76,31 +93,10 @@ export const StepResumen = () => {
               {stockConfig.tipo === "rectangular" ? "Rectangular" : "Cilíndrico"}
             </span>
           </div>
-          {stockConfig.tipo === "rectangular" ? (
-            <>
-              <div className="flex justify-between">
-                <span className="text-text-muted">Dimensiones:</span>
-                <span className="font-mono text-text-primary">
-                  {Math.round(stockConfig.ancho_bruto_mm)} × {Math.round(stockConfig.largo_bruto_mm)} × {Math.round(stockConfig.alto_bruto_mm)} mm
-                </span>
-              </div>
-            </>
-          ) : (
-            <>
-              <div className="flex justify-between">
-                <span className="text-text-muted">Diámetro:</span>
-                <span className="font-mono text-text-primary">
-                  Ø{Math.round(stockConfig.diametro_bruto_mm)} mm
-                </span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-text-muted">Longitud:</span>
-                <span className="font-mono text-text-primary">
-                  {Math.round(stockConfig.longitud_bruta_mm)} mm
-                </span>
-              </div>
-            </>
-          )}
+          <div className="flex justify-between">
+            <span className="text-text-muted">Material bruto resultante:</span>
+            <span className="font-mono text-text-primary">{stockResultante}</span>
+          </div>
           {material && (
             <div className="flex justify-between pt-2 border-t border-border">
               <span className="text-text-muted">Material:</span>

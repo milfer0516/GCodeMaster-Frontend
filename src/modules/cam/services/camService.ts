@@ -1,5 +1,7 @@
 // src/modules/cam/services/camService.ts
 import { api } from "../../../services/api";
+import type { StockConfig } from "../store/camStore";
+import { cylTotals, type StockFaceDirection } from "../utils/stockFaces";
 
 export interface MaterialGlobal {
   id_material: number;
@@ -87,38 +89,54 @@ export async function tessellateStep(
 }
 
 // ── Transform frontend StockConfig to engine's bruto_medido payload ──────
-// Sends BOTH overall raw dimensions (what the operator bought/has) AND per-face
-// raw distribution (how the excess actually sits). They complement each other:
-// raw stock is almost never centered, so the per-face data is REAL MEASURED
-// information, not a guess.
-export function buildStockPayload(stockConfig: any): object {
+// SINGLE SOURCE OF TRUTH = per-region offsets. The overall totals the engine
+// requires (x/y/z or Ø/length) are DERIVED here from part dims + offsets — they
+// are a result, never an operator input. The gateway forwards this dict to the
+// engine VERBATIM, so the keys must be exactly what cam_builder expects:
+//   rectangular → x_mm/y_mm/z_mm (required, >0) + por_cara (per-face override)
+//   cilindrico  → diametro_mm/longitud_mm (required, >0)
+// partDims = the part's post-montaje bbox (setup.rotatedBBox width/depth/height).
+export function buildStockPayload(
+  stockConfig: StockConfig,
+  partDims: { x: number; y: number; z: number },
+): object {
   if (stockConfig.tipo === "rectangular") {
-    const payload: any = {
-      tipo: "bruto_medido",
-      forma: "rectangular",
-      ancho_bruto_mm: stockConfig.ancho_bruto_mm,
-      largo_bruto_mm: stockConfig.largo_bruto_mm,
-      alto_bruto_mm: stockConfig.alto_bruto_mm,
-    };
+    const off = (dir: StockFaceDirection): number =>
+      stockConfig.stockFaces.find((f) => f.direction === dir)?.allowance ?? 0;
 
-    // Include per-face raw stock distribution if available (6 faces measured)
-    if (Array.isArray(stockConfig.stockFaces) && stockConfig.stockFaces.length === 6) {
-      payload.por_cara = {};
-      stockConfig.stockFaces.forEach((face: any) => {
-        payload.por_cara[face.direction] = face.allowance;
-      });
-    }
-
-    return payload;
-  } else {
-    // cilindrico: uniform radial, no per-face granularity
+    // Derived totals (part + both offsets on the axis). The engine subtracts the
+    // part; por_cara then pins each face to the operator's exact measured offset,
+    // so the asymmetric distribution is preserved (never assumed centered). The
+    // support face (z_neg) is 0 — the engine also forces it to 0.
     return {
       tipo: "bruto_medido",
-      forma: "cilindrico",
-      diametro_bruto_mm: stockConfig.diametro_bruto_mm,
-      longitud_bruta_mm: stockConfig.longitud_bruta_mm,
+      forma: "rectangular",
+      x_mm: partDims.x + off("x_pos") + off("x_neg"),
+      y_mm: partDims.y + off("y_pos") + off("y_neg"),
+      z_mm: partDims.z + off("z_pos") + off("z_neg"),
+      por_cara: {
+        x_pos: off("x_pos"),
+        x_neg: off("x_neg"),
+        y_pos: off("y_pos"),
+        y_neg: off("y_neg"),
+        z_pos: off("z_pos"),
+        z_neg: off("z_neg"),
+      },
     };
   }
+
+  // Cilíndrico: derived Ø/length from part + region offsets. The engine computes
+  // radial removal per side = radial offset, axial removal = machining offset.
+  const { diameter, length } = cylTotals(
+    { width: partDims.x, depth: partDims.y, height: partDims.z },
+    stockConfig.cyl,
+  );
+  return {
+    tipo: "bruto_medido",
+    forma: "cilindrico",
+    diametro_mm: diameter,
+    longitud_mm: length,
+  };
 }
 
 // ── Generar G-Code ────────────────────────────────────────────────────────
@@ -128,7 +146,10 @@ export async function generateGcode(payload: {
   operaciones: any[];
   herramientas: any[];
   materialKey: string;
-  stockConfig: object;
+  stockConfig: StockConfig;
+  // Part's post-montaje bbox (setup.rotatedBBox width/depth/height). Required to
+  // derive the stock totals the engine expects from the per-region offsets.
+  partDims: { x: number; y: number; z: number };
   datumConfig: object;
   montajeConfig: object;
   ordenSetups?: string;
@@ -141,7 +162,7 @@ export async function generateGcode(payload: {
   form.append("herramientas_json", JSON.stringify(payload.herramientas));
   form.append("material_key", payload.materialKey);
   // Transform to engine's bruto_medido format
-  const stockPayload = buildStockPayload(payload.stockConfig);
+  const stockPayload = buildStockPayload(payload.stockConfig, payload.partDims);
   form.append("stock_json", JSON.stringify(stockPayload));
   form.append("datum_json", JSON.stringify(payload.datumConfig));
   form.append("montaje_json", JSON.stringify(payload.montajeConfig));
