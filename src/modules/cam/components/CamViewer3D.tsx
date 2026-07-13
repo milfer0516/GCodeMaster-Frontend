@@ -57,7 +57,7 @@ function stockFaceColor(
       return { color: 0x22c55e, opacity: 0.2 }; // verde (objetivo primario)
     case "libre":
     default:
-      return { color: 0x4ade80, opacity: 0.14 }; // verde translúcido — material bruto
+      return { color: 0x15803d, opacity: 0.22 }; // verde profundo translúcido — material bruto
   }
 }
 // ── Colores ────────────────────────────────────────────────────────────────
@@ -887,7 +887,11 @@ export function CamViewer3D({
       const cylinderMesh = new THREE.Mesh(cylinderGeometry, mats);
       stockPickMeshRef.current = cylinderMesh;
 
-      const edges = new THREE.EdgesGeometry(cylinderGeometry);
+      // thresholdAngle=30°: oculta las costuras entre facetas del cilindro
+      // (≈7.5° con 48 segmentos) y conserva solo el contorno real (los aros
+      // superior/inferior a 90°). Es geometría de DISPLAY — el pick mesh
+      // (cylinderMesh, arriba) usa cylinderGeometry sin tocar.
+      const edges = new THREE.EdgesGeometry(cylinderGeometry, 30);
       const wireframe = new THREE.LineSegments(edges, lineMaterial);
 
       stockGroup.add(cylinderMesh);
