@@ -19,10 +19,22 @@ import {
   resolveStockFace,
   stockFacesByBoxIndex,
   setFaceAllowance,
+  setAxisTotal,
+  totalOnAxis,
+  axisOfDirection,
   roleLabel,
+  type StockAxis,
   type StockFace,
   type StockFaceDirection,
 } from "../../utils/stockFaces";
+
+// Form field (per-axis raw TOTAL) ↔ machine axis. The total is DERIVED from the
+// per-face excess; these fields are the operator-facing view of that total.
+const AXIS_FIELD: Record<StockAxis, "ancho_bruto_mm" | "largo_bruto_mm" | "alto_bruto_mm"> = {
+  x: "ancho_bruto_mm",
+  y: "largo_bruto_mm",
+  z: "alto_bruto_mm",
+};
 
 // Etiquetas posicionales (presentación) para las caras 'libre' del resumen y el
 // popover. Los roles apoyo/mecanizado vienen del dominio (roleLabel).
@@ -94,6 +106,19 @@ export const StepStock = () => {
     setStockConfig({ ...stockConfig, [field]: value });
   };
 
+  // FORM → FACES. Typing a per-axis TOTAL in the form immediately converts it to
+  // per-face excess (the single source of truth) AND stores the typed total on
+  // the matching form field. The wireframe updates because it reads the faces;
+  // the popover updates because it reads the same faces. One value, two views.
+  const handleAxisTotalChange = (axis: StockAxis, total: number) => {
+    if (!setup) return;
+    setStockConfig({
+      ...stockConfig,
+      stockFaces: setAxisTotal(stockConfig.stockFaces, setup, axis, total),
+      [AXIS_FIELD[axis]]: total,
+    });
+  };
+
   // Editar el material bruto que sobresale en una cara específica (dato REAL
   // medido por el operador con calibre, NO un cálculo). El raw stock casi nunca
   // está centrado: un bloque de 120mm para una pieza de 104mm tiene 16mm extra,
@@ -101,9 +126,18 @@ export const StepStock = () => {
   // la midió. Capturarla por cara es DATO REAL — asumir que está centrado sería
   // adivinar, lo cual este sistema nunca hace.
   const updateRawStockOnFace = (direction: StockFaceDirection, value: number) => {
+    if (!setup) return;
+    // FACES → FORM. Editing one face in the popover changes that face's excess
+    // (source of truth). Recompute the axis TOTAL (part + this face + the
+    // opposite face) and write it to the matching form field so the form always
+    // shows the correct total. Only the touched axis is updated — the other axes
+    // stay as measured (empty until the operator captures them).
+    const stockFaces = setFaceAllowance(stockConfig.stockFaces, direction, value);
+    const axis = axisOfDirection(direction);
     setStockConfig({
       ...stockConfig,
-      stockFaces: setFaceAllowance(stockConfig.stockFaces, direction, value),
+      stockFaces,
+      [AXIS_FIELD[axis]]: totalOnAxis(stockFaces, setup, axis),
     });
   };
 
@@ -403,19 +437,19 @@ export const StepStock = () => {
                 <InputField
                   label="Ancho bruto (X)"
                   value={stockConfig.ancho_bruto_mm}
-                  onChange={(v) => handleInputChange("ancho_bruto_mm", v)}
+                  onChange={(v) => handleAxisTotalChange("x", v)}
                   unit="mm"
                 />
                 <InputField
                   label="Largo bruto (Y)"
                   value={stockConfig.largo_bruto_mm}
-                  onChange={(v) => handleInputChange("largo_bruto_mm", v)}
+                  onChange={(v) => handleAxisTotalChange("y", v)}
                   unit="mm"
                 />
                 <InputField
                   label="Alto bruto (Z)"
                   value={stockConfig.alto_bruto_mm}
-                  onChange={(v) => handleInputChange("alto_bruto_mm", v)}
+                  onChange={(v) => handleAxisTotalChange("z", v)}
                   unit="mm"
                 />
               </>

@@ -207,6 +207,93 @@ export function setFaceAllowance(
   });
 }
 
+// ── Axis ↔ face mapping + form-total conversion (Phase 2B bidirectional sync) ──
+//
+// SINGLE SOURCE OF TRUTH = per-face excess (StockFace.allowance). The form's
+// per-axis TOTAL is DERIVED: total_on_axis = part_dimension + excess_pos + excess_neg.
+// These helpers convert between the two so the form and the popover always touch
+// the SAME underlying data and can never contradict each other.
+
+export type StockAxis = "x" | "y" | "z";
+
+interface AxisSpec {
+  axis: StockAxis;
+  pos: StockFaceDirection;
+  neg: StockFaceDirection;
+}
+
+// rotatedBBox: width = X extent, depth = Y extent, height = Z extent.
+const AXES: readonly AxisSpec[] = [
+  { axis: "x", pos: "x_pos", neg: "x_neg" },
+  { axis: "y", pos: "y_pos", neg: "y_neg" },
+  { axis: "z", pos: "z_pos", neg: "z_neg" },
+] as const;
+
+export function axisOfDirection(direction: StockFaceDirection): StockAxis {
+  return direction[0] as StockAxis; // "x_pos" → "x", etc.
+}
+
+// Part dimension along a machine axis (from the Setup's post-montaje envelope).
+export function partDimOnAxis(setup: Setup, axis: StockAxis): number {
+  const rbb = setup.rotatedBBox;
+  return axis === "x" ? rbb.width : axis === "y" ? rbb.depth : rbb.height;
+}
+
+/**
+ * DERIVED total on an axis = part dimension + excess on the + face + excess on
+ * the − face. Reads BOTH faces of the axis (including the opposite one) so the
+ * form total always stays consistent with the per-face allowances.
+ */
+export function totalOnAxis(
+  faces: StockFace[],
+  setup: Setup,
+  axis: StockAxis,
+): number {
+  const spec = AXES.find((a) => a.axis === axis);
+  if (!spec) return 0;
+  return (
+    partDimOnAxis(setup, axis) +
+    getAllowance(faces, spec.pos) +
+    getAllowance(faces, spec.neg)
+  );
+}
+
+/**
+ * FORM → FACES: convert a typed per-axis TOTAL into per-face excess, immutably.
+ * The excess (total − part, clamped ≥ 0) is distributed:
+ *   - Support axis (one face is the locked apoyo face): ALL excess goes to the
+ *     machining (non-locked) face; the support face stays pinned at 0. No raw
+ *     material can exist between the part and the fixture.
+ *   - Free axis (neither face locked): split symmetrically, half on each face.
+ * The wireframe updates automatically because it already reads the allowances.
+ */
+export function setAxisTotal(
+  faces: StockFace[],
+  setup: Setup,
+  axis: StockAxis,
+  total: number,
+): StockFace[] {
+  const spec = AXES.find((a) => a.axis === axis);
+  if (!spec) return faces;
+
+  const excess = Math.max(0, total - partDimOnAxis(setup, axis));
+  const posLocked = faces.find((f) => f.direction === spec.pos)?.locked ?? false;
+  const negLocked = faces.find((f) => f.direction === spec.neg)?.locked ?? false;
+
+  if (posLocked || negLocked) {
+    const machiningDir = posLocked ? spec.neg : spec.pos;
+    const supportDir = posLocked ? spec.pos : spec.neg;
+    let out = setFaceAllowance(faces, machiningDir, excess);
+    out = setFaceAllowance(out, supportDir, 0);
+    return out;
+  }
+
+  const half = excess / 2;
+  let out = setFaceAllowance(faces, spec.pos, half);
+  out = setFaceAllowance(out, spec.neg, half);
+  return out;
+}
+
 // Presentation helper (used by the read-only summary). Kept here so the label
 // vocabulary stays with the domain roles, not scattered in components.
 export function roleLabel(role: StockFaceRole): string {
