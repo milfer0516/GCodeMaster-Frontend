@@ -375,17 +375,34 @@ export function resolveCylRegion(index: number): {
 }
 
 /**
- * Mirror the engine's cylinder-axis identification (cam_builder
+ * Part diameter + length for cylindrical stock.
+ *
+ * AXIS: mirror the engine's cylinder-axis identification (cam_builder
  * _identificar_eje_cilindro): among the part's (x, y, z) bbox dims, the two
- * CLOSEST form the diameter, the odd one is the length. Keeps the displayed
- * total AND the payload consistent with what the engine computes. Part-agnostic
- * — never assumes the axis is Z.
+ * CLOSEST form the diameter pair, the odd one is the length. Part-agnostic —
+ * never assumes the axis is Z.
+ *
+ * DIAMETER (P8): prefer the REAL dominant external cylinder's diameter
+ * (`dominantCylinderOD`, from setup.partCylinderOD) over the bounding box. The
+ * bbox is inflated by lips/torus/chamfers and OVER-reports the OD (phase_1: bbox
+ * Ø108.24 vs real Ø100 → nearly 2× error in radial removal, which drives the
+ * roughing passes and feeds/speeds and can break tools). The real Ø is trusted
+ * only when PLAUSIBLE as an outer diameter: present, not wider than the bbox
+ * radial (a cylinder can't exceed its own bbox), and not a tiny boss (≥ half the
+ * bbox radial). Otherwise it falls back to the bbox — never guesses.
+ *
+ * LENGTH: prefer the dominant cylinder's axial length ONLY when it RELIABLY
+ * spans the working axis (≈ the bbox extent, within 2%). A dominant cylinder is
+ * often just a short band — phase_1's Ø100 spans only 11mm of a 35mm part, and
+ * brida's Ø172 only 38mm of 72mm — and trusting that would leave the stock too
+ * short (a scrapped part). So when the cylinder is a band, the bbox extent (the
+ * full length the stock must cover) wins. Never under-sizes, never guesses.
  */
-export function cylPartDims(rbb: {
-  width: number;
-  depth: number;
-  height: number;
-}): { partOD: number; partLen: number } {
+export function cylPartDims(
+  rbb: { width: number; depth: number; height: number },
+  dominantCylinderOD?: number | null,
+  dominantCylinderLen?: number | null,
+): { partOD: number; partLen: number } {
   const x = rbb.width;
   const y = rbb.depth;
   const z = rbb.height;
@@ -395,15 +412,37 @@ export function cylPartDims(rbb: {
     { diff: Math.abs(x - z), diameter: (x + z) / 2, length: y },
   ];
   candidates.sort((a, b) => a.diff - b.diff);
-  return { partOD: candidates[0].diameter, partLen: candidates[0].length };
+  const bboxOD = candidates[0].diameter;
+  const bboxLen = candidates[0].length;
+
+  const useRealOD =
+    dominantCylinderOD != null &&
+    dominantCylinderOD <= bboxOD * 1.02 &&
+    dominantCylinderOD >= bboxOD * 0.5;
+
+  const useRealLen =
+    dominantCylinderLen != null &&
+    dominantCylinderLen >= bboxLen * 0.98 &&
+    dominantCylinderLen <= bboxLen * 1.02;
+
+  return {
+    partOD: useRealOD ? dominantCylinderOD : bboxOD,
+    partLen: useRealLen ? dominantCylinderLen : bboxLen,
+  };
 }
 
 /** DERIVED read-only cylindrical totals from part dims + offsets. */
 export function cylTotals(
   rbb: { width: number; depth: number; height: number },
   cyl: CylStock,
+  dominantCylinderOD?: number | null,
+  dominantCylinderLen?: number | null,
 ): { diameter: number; length: number } {
-  const { partOD, partLen } = cylPartDims(rbb);
+  const { partOD, partLen } = cylPartDims(
+    rbb,
+    dominantCylinderOD,
+    dominantCylinderLen,
+  );
   return {
     diameter: partOD + 2 * cyl.radial,
     length: partLen + cyl.axialMachining + cyl.axialSupport, // support locked at 0

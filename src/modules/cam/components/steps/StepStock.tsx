@@ -266,7 +266,11 @@ export const StepStock = () => {
   const partDimsDisplay = isRect
     ? `${formatMm(setup.rotatedBBox.width)} × ${formatMm(setup.rotatedBBox.depth)} × ${formatMm(setup.rotatedBBox.height)} mm`
     : (() => {
-        const { partOD, partLen } = cylPartDims(setup.rotatedBBox);
+        const { partOD, partLen } = cylPartDims(
+          setup.rotatedBBox,
+          setup.partCylinderOD,
+          setup.partCylinderLen,
+        );
         return `Ø${formatMm(partOD)} × ${formatMm(partLen)} mm`;
       })();
 
@@ -275,7 +279,12 @@ export const StepStock = () => {
         totalOnAxis(faces, setup, "y"),
       )} × ${formatMm(totalOnAxis(faces, setup, "z"))} mm`
     : (() => {
-        const { diameter, length } = cylTotals(setup.rotatedBBox, stockConfig.cyl);
+        const { diameter, length } = cylTotals(
+          setup.rotatedBBox,
+          stockConfig.cyl,
+          setup.partCylinderOD,
+          setup.partCylinderLen,
+        );
         return `Ø${formatMm(diameter)} × ${formatMm(length)} mm`;
       })();
 

@@ -99,6 +99,8 @@ export async function tessellateStep(
 export function buildStockPayload(
   stockConfig: StockConfig,
   partDims: { x: number; y: number; z: number },
+  partCylinderOD?: number | null,
+  partCylinderLen?: number | null,
 ): object {
   if (stockConfig.tipo === "rectangular") {
     const off = (dir: StockFaceDirection): number =>
@@ -125,11 +127,16 @@ export function buildStockPayload(
     };
   }
 
-  // Cilíndrico: derived Ø/length from part + region offsets. The engine computes
-  // radial removal per side = radial offset, axial removal = machining offset.
+  // Cilíndrico: derived Ø/length from part + region offsets. The Ø uses the REAL
+  // dominant cylinder (P8), not the inflated bbox, so the engine's radial removal
+  // (Ø_raw − Ø_final)/2 is correct — an inflated Ø_final would under-report the
+  // removal and eat the tool. The engine computes radial removal per side = radial
+  // offset, axial removal = machining offset.
   const { diameter, length } = cylTotals(
     { width: partDims.x, depth: partDims.y, height: partDims.z },
     stockConfig.cyl,
+    partCylinderOD,
+    partCylinderLen,
   );
   return {
     tipo: "bruto_medido",
@@ -150,6 +157,11 @@ export async function generateGcode(payload: {
   // Part's post-montaje bbox (setup.rotatedBBox width/depth/height). Required to
   // derive the stock totals the engine expects from the per-region offsets.
   partDims: { x: number; y: number; z: number };
+  // Dominant external cylinder Ø and axial length (setup.partCylinderOD /
+  // partCylinderLen) for cylindrical stock — the real Ø, not the inflated bbox
+  // (P8). Null/omitted for parts with no dominant cylinder (falls back to bbox).
+  partCylinderOD?: number | null;
+  partCylinderLen?: number | null;
   datumConfig: object;
   montajeConfig: object;
   ordenSetups?: string;
@@ -162,7 +174,12 @@ export async function generateGcode(payload: {
   form.append("herramientas_json", JSON.stringify(payload.herramientas));
   form.append("material_key", payload.materialKey);
   // Transform to engine's bruto_medido format
-  const stockPayload = buildStockPayload(payload.stockConfig, payload.partDims);
+  const stockPayload = buildStockPayload(
+    payload.stockConfig,
+    payload.partDims,
+    payload.partCylinderOD,
+    payload.partCylinderLen,
+  );
   form.append("stock_json", JSON.stringify(stockPayload));
   form.append("datum_json", JSON.stringify(payload.datumConfig));
   form.append("montaje_json", JSON.stringify(payload.montajeConfig));

@@ -20,7 +20,12 @@ export const StepResumen = () => {
       const tz = totalOnAxis(stockConfig.stockFaces, setup, "z");
       return `${formatMm(tx)} × ${formatMm(ty)} × ${formatMm(tz)} mm`;
     }
-    const { diameter, length } = cylTotals(setup.rotatedBBox, stockConfig.cyl);
+    const { diameter, length } = cylTotals(
+      setup.rotatedBBox,
+      stockConfig.cyl,
+      setup.partCylinderOD,
+      setup.partCylinderLen,
+    );
     return `Ø${formatMm(diameter)} × ${formatMm(length)} mm`;
   })();
 

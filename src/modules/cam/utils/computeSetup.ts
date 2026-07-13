@@ -51,6 +51,21 @@ export interface Setup {
     height: number; // Z extent (vertical, OCC up)
   };
 
+  // Diameter of the part's DOMINANT external cylinder (largest-diameter non-hole
+  // cylindrical face from the analysis), or null if the part has no clear
+  // dominant cylinder. A diameter is rotation-invariant, so this is frame-free.
+  // Used ONLY by cylindrical stock to derive the real part Ø instead of the
+  // bounding box (which is inflated by lips/torus/chamfers). Consumers apply a
+  // plausibility check vs the bbox before trusting it — see cylPartDims.
+  partCylinderOD: number | null;
+
+  // Axial length of that same dominant cylinder (profundidad_mm), or null. Used
+  // for the cylindrical stock length ONLY when it reliably spans the working
+  // axis (≈ bbox extent); otherwise the bbox extent wins — see cylPartDims. A
+  // dominant cylinder is often only a short band (phase_1: Ø100 spans just 11mm
+  // of a 35mm part), so trusting it blindly would under-size the stock.
+  partCylinderLen: number | null;
+
   // Setup coordinate frame: part local axes expressed in machine coords,
   // rooted at the provisional work origin.
   axisSystem: {
@@ -80,6 +95,39 @@ function makeId(): string {
 }
 
 const v3 = (v: THREE.Vector3): [number, number, number] => [v.x, v.y, v.z];
+
+/**
+ * The part's dominant EXTERNAL cylinder = the largest-diameter non-hole
+ * cylindrical face reported by the analysis (mirrors how the engine picks the
+ * outer profile: max diameter among external cylinders). Returns its diameter
+ * AND its axial length (profundidad_mm — the real UV-domain height of that
+ * cylindrical band, may be null if the analysis omits it). Returns null when the
+ * part has no external cylinder (e.g. a plain rectangular plate), so cylindrical
+ * stock falls back to the bounding box. General geometry — no special-casing, no
+ * branching on tipo_pieza. Plausibility/reliability of these values is decided by
+ * the consumer (cylPartDims), not here.
+ */
+function dominantExternalCylinder(
+  analisis: Record<string, any> | null,
+): { od: number; len: number | null } | null {
+  const cyls: any[] = analisis?.caras_cilindricas ?? [];
+  const externals = cyls.filter(
+    (c) =>
+      c &&
+      c.es_agujero === false &&
+      typeof c.diametro_mm === "number" &&
+      c.diametro_mm > 0,
+  );
+  if (!externals.length) return null;
+  const dom = externals.reduce((a, b) =>
+    b.diametro_mm > a.diametro_mm ? b : a,
+  );
+  const len =
+    typeof dom.profundidad_mm === "number" && dom.profundidad_mm > 0
+      ? dom.profundidad_mm
+      : null;
+  return { od: dom.diametro_mm as number, len };
+}
 
 /**
  * Resolve the authoritative support-face normal in the OCC frame.
@@ -274,6 +322,8 @@ export function computeSetup(
     analisis,
   );
 
+  const domCyl = dominantExternalCylinder(analisis);
+
   return {
     id: makeId(),
     createdAt: new Date().toISOString(),
@@ -288,6 +338,8 @@ export function computeSetup(
     position,
     zApoyoMm,
     rotatedBBox,
+    partCylinderOD: domCyl?.od ?? null,
+    partCylinderLen: domCyl?.len ?? null,
     axisSystem,
     provisionalWorkOrigin,
     sujecionConfigRef: sujecionConfig,

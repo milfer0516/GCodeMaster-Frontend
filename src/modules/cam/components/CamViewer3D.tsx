@@ -848,7 +848,12 @@ export function CamViewer3D({
       // 0=lateral/radial, 1=tapa mecanizado, 2=tapa apoyo) para resaltar y
       // picking — mismo mecanismo que la caja.
       const regions = stockFacesByBoxIndex; // 3 regiones en orden de materialIndex
-      const { diameter, length } = cylTotals(rbb, stockConfig.cyl);
+      const { diameter, length } = cylTotals(
+        rbb,
+        stockConfig.cyl,
+        setup.partCylinderOD,
+        setup.partCylinderLen,
+      );
 
       // CylinderGeometry tiene el eje en Y; lo giramos a Z (máquina) y lo
       // colocamos con la base (tapa de apoyo) en la mesa, centrado en el footprint.
