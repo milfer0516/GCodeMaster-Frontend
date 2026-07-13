@@ -777,10 +777,12 @@ export function CamViewer3D({
     // solo se lleva a display con VIEWER_BASE_Q (OCC/máquina → Three.js).
     if (!stockConfig || !setup) return;
 
-    // Don't render stock wireframe if operator hasn't entered raw dimensions yet
+    // Dibujar el wireframe en cuanto haya AL MENOS UNA dimensión válida — no
+    // esperar a que estén las tres. Los ejes aún sin medir hacen fallback a la
+    // dimensión de la pieza (abajo), así el box nunca queda degenerado.
     const hasRawDims = stockConfig.tipo === "rectangular"
-      ? stockConfig.ancho_bruto_mm > 0 && stockConfig.largo_bruto_mm > 0 && stockConfig.alto_bruto_mm > 0
-      : stockConfig.diametro_bruto_mm > 0 && stockConfig.longitud_bruta_mm > 0;
+      ? stockConfig.ancho_bruto_mm > 0 || stockConfig.largo_bruto_mm > 0 || stockConfig.alto_bruto_mm > 0
+      : stockConfig.diametro_bruto_mm > 0 || stockConfig.longitud_bruta_mm > 0;
     if (!hasRawDims) return;
 
     const rbb = setup.rotatedBBox; // { min, max, center, width, depth, height }
@@ -815,13 +817,21 @@ export function CamViewer3D({
         maxZ = rbb.max[2] + a(4);
         minZ = rbb.min[2] - a(5);
       } else {
-        // Overall raw dimensions only: centered on footprint, base on table
-        minX = rbb.center[0] - stockConfig.ancho_bruto_mm / 2;
-        maxX = rbb.center[0] + stockConfig.ancho_bruto_mm / 2;
-        minY = rbb.center[1] - stockConfig.largo_bruto_mm / 2;
-        maxY = rbb.center[1] + stockConfig.largo_bruto_mm / 2;
+        // Overall raw dimensions only: centered on footprint, base on table.
+        // Cada eje aún sin medir (0) cae de vuelta a la dimensión de la pieza,
+        // para que basta con UNA dimensión válida y el box no sea degenerado.
+        const anchoEff =
+          stockConfig.ancho_bruto_mm > 0 ? stockConfig.ancho_bruto_mm : rbb.width;
+        const largoEff =
+          stockConfig.largo_bruto_mm > 0 ? stockConfig.largo_bruto_mm : rbb.depth;
+        const altoEff =
+          stockConfig.alto_bruto_mm > 0 ? stockConfig.alto_bruto_mm : rbb.height;
+        minX = rbb.center[0] - anchoEff / 2;
+        maxX = rbb.center[0] + anchoEff / 2;
+        minY = rbb.center[1] - largoEff / 2;
+        maxY = rbb.center[1] + largoEff / 2;
         minZ = rbb.min[2];
-        maxZ = rbb.min[2] + stockConfig.alto_bruto_mm;
+        maxZ = rbb.min[2] + altoEff;
       }
 
       const totalX = maxX - minX;
@@ -878,9 +888,17 @@ export function CamViewer3D({
         opacity: 0.15,
         side: THREE.DoubleSide,
       });
-      // Cilíndrico: raw dimensions entered by operator
-      const stockDiameter = stockConfig.diametro_bruto_mm;
-      const stockLength = stockConfig.longitud_bruta_mm;
+      // Cilíndrico: raw dimensions entered by operator. El diámetro/longitud aún
+      // sin medir (0) cae de vuelta a la dimensión de la pieza, para que basta
+      // con UNA dimensión válida y el cilindro no sea degenerado.
+      const stockDiameter =
+        stockConfig.diametro_bruto_mm > 0
+          ? stockConfig.diametro_bruto_mm
+          : Math.max(rbb.width, rbb.depth);
+      const stockLength =
+        stockConfig.longitud_bruta_mm > 0
+          ? stockConfig.longitud_bruta_mm
+          : rbb.height;
 
       // CylinderGeometry tiene el eje en Y; lo giramos a Z (máquina) y lo
       // colocamos con la base en la mesa, centrado en el footprint.

@@ -158,10 +158,10 @@ export const StepStock = () => {
     const raw = getRawStockDims();
     if (!raw) return "";
     if (stockConfig.tipo === "rectangular" && 'x' in raw) {
-      return `${Math.round(raw.x)} × ${Math.round(raw.y)} × ${Math.round(raw.z)} mm`;
+      return `${raw.x} × ${raw.y} × ${raw.z} mm`;
     }
     if ('d' in raw) {
-      return `Ø${Math.round(raw.d)} × ${Math.round(raw.len)} mm`;
+      return `Ø${raw.d} × ${raw.len} mm`;
     }
     return "";
   };
@@ -170,10 +170,10 @@ export const StepStock = () => {
     const part = getFinalPartDims();
     if (!part) return "";
     if (stockConfig.tipo === "rectangular" && 'x' in part) {
-      return `${Math.round(part.x)} × ${Math.round(part.y)} × ${Math.round(part.z)} mm`;
+      return `${part.x} × ${part.y} × ${part.z} mm`;
     }
     if ('d' in part) {
-      return `Ø${Math.round(part.d)} × ${Math.round(part.len)} mm`;
+      return `Ø${part.d} × ${part.len} mm`;
     }
     return "";
   };
