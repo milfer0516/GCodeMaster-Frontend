@@ -303,10 +303,11 @@ export const StepStock = () => {
         </p>
       </div>
 
-      {/* Layout responsive: columna en móvil, 2 columnas en desktop */}
+      {/* Layout responsive: columna en móvil; en desktop visor 2/3, form 1/3
+          (el visor es donde el operador trabaja: picking + popover). */}
       <div className="flex flex-col lg:flex-row gap-4 md:gap-6">
         {/* Visor 3D + popover contextual + resumen por-región */}
-        <div className="flex-1 space-y-3">
+        <div className="flex-1 lg:flex-[2] min-w-0 space-y-3">
           <div className="relative h-[400px] lg:h-[600px]">
             <CamViewer3D
               dimensiones={{

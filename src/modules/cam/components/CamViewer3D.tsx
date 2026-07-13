@@ -347,19 +347,29 @@ export function CamViewer3D({
     };
     animate();
 
-    // Resize
+    // Resize — sincroniza renderer + cámara con el tamaño ACTUAL del contenedor.
     const onResize = () => {
       const W2 = el.clientWidth;
       const H2 = el.clientHeight;
+      if (W2 === 0 || H2 === 0) return; // ignora tamaños transitorios (evita aspect NaN)
       camera.aspect = W2 / H2;
       camera.updateProjectionMatrix();
       renderer.setSize(W2, H2);
     };
     window.addEventListener("resize", onResize);
 
+    // ResizeObserver sobre el contenedor del canvas: window.resize NO se dispara
+    // cuando cambia el layout CSS interno (p.ej. el reparto visor/formulario), y
+    // sin esto el renderer/cámara quedan con el tamaño viejo y el raycaster (que
+    // usa getBoundingClientRect en vivo) recibe un canvas de tamaño distinto → los
+    // clics caen fuera. Observar el contenedor mantiene todo sincronizado.
+    const resizeObserver = new ResizeObserver(() => onResize());
+    resizeObserver.observe(el);
+
     return () => {
       cancelAnimationFrame(animId);
       window.removeEventListener("resize", onResize);
+      resizeObserver.disconnect();
       controls.dispose();
       renderer.dispose();
       if (el.contains(renderer.domElement)) el.removeChild(renderer.domElement);
