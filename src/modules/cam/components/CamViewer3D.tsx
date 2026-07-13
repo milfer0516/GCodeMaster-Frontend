@@ -7,6 +7,7 @@ import { tessellateStep } from "../services/camService";
 import type { MeshData, FaceMetadata } from "../services/camService";
 import type { Operacion } from "../store/camStore";
 import { Loader2, AlertCircle } from "lucide-react";
+import { formatMm } from "../../../utils/format";
 import type { SujecionConfig, StockConfig } from "../store/camStore";
 import type { StockFace, StockFaceRole } from "../utils/stockFaces";
 
@@ -1112,7 +1113,7 @@ export function CamViewer3D({
         >
           {stockFacesByBoxIndex[stockHover].locked
             ? "Apoyo · bloqueado (0 mm)"
-            : `${stockFacesByBoxIndex[stockHover].allowance} mm`}
+            : `${formatMm(stockFacesByBoxIndex[stockHover].allowance)} mm`}
         </div>
       )}
     </div>

@@ -14,6 +14,7 @@ import {
   X,
 } from "lucide-react";
 import type { StockConfig } from "../../store/camStore";
+import { formatMm } from "../../../../utils/format";
 import {
   deriveStockFaces,
   resolveStockFace,
@@ -192,10 +193,10 @@ export const StepStock = () => {
     const raw = getRawStockDims();
     if (!raw) return "";
     if (stockConfig.tipo === "rectangular" && 'x' in raw) {
-      return `${raw.x} × ${raw.y} × ${raw.z} mm`;
+      return `${formatMm(raw.x)} × ${formatMm(raw.y)} × ${formatMm(raw.z)} mm`;
     }
     if ('d' in raw) {
-      return `Ø${raw.d} × ${raw.len} mm`;
+      return `Ø${formatMm(raw.d)} × ${formatMm(raw.len)} mm`;
     }
     return "";
   };
@@ -204,10 +205,10 @@ export const StepStock = () => {
     const part = getFinalPartDims();
     if (!part) return "";
     if (stockConfig.tipo === "rectangular" && 'x' in part) {
-      return `${part.x} × ${part.y} × ${part.z} mm`;
+      return `${formatMm(part.x)} × ${formatMm(part.y)} × ${formatMm(part.z)} mm`;
     }
     if ('d' in part) {
-      return `Ø${part.d} × ${part.len} mm`;
+      return `Ø${formatMm(part.d)} × ${formatMm(part.len)} mm`;
     }
     return "";
   };
@@ -376,7 +377,7 @@ export const StepStock = () => {
                   }`}
                 >
                   {f.locked && <Lock className="h-3 w-3" />}
-                  {faceSummaryLabel(f)} {f.allowance}mm
+                  {faceSummaryLabel(f)} {formatMm(f.allowance)}mm
                   {f.locked && " · bloqueado"}
                 </span>
               ))}
@@ -526,7 +527,7 @@ function InputField({
   // type="text" + inputMode="decimal" para que NO haya validación de step
   // nativa que bloquee decimales arbitrarios.
   // EMPTY STATE: cuando value es 0 (no entrado), mostramos string vacío.
-  const [text, setText] = useState(value === 0 ? "" : String(value));
+  const [text, setText] = useState(value === 0 ? "" : formatMm(value));
 
   // Re-sincronizar el texto cuando el value externo cambia (init, flechas)
   // y difiere numéricamente de lo que hay escrito.
@@ -538,7 +539,7 @@ function InputField({
       return;
     }
     if (parsed !== value && !(Number.isNaN(parsed) && value === 0)) {
-      setText(String(value));
+      setText(formatMm(value));
     }
     // Solo depende de value: no queremos re-sincronizar en cada tecla.
     // eslint-disable-next-line react-hooks/exhaustive-deps
