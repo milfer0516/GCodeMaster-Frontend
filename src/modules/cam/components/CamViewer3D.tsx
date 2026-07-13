@@ -57,11 +57,11 @@ function stockFaceColor(
       return { color: 0x22c55e, opacity: 0.2 }; // verde (objetivo primario)
     case "libre":
     default:
-      return { color: 0x88ccff, opacity: 0.14 }; // azul translúcido
+      return { color: 0x4ade80, opacity: 0.14 }; // verde translúcido — material bruto
   }
 }
 // ── Colores ────────────────────────────────────────────────────────────────
-const COLOR_BASE = new THREE.Color(0x4a90d9); // azul acero — cara sin feature
+const COLOR_BASE = new THREE.Color(0xb4b8bf); // gris/plata metálico — cara sin feature
 const COLOR_HOVER = new THREE.Color(0xfbbf24); // amarillo — hover
 const COLOR_SELECCIONADO = new THREE.Color(0xfbbf24); // amarillo — seleccionada
 const COLOR_PLANEADO = new THREE.Color(0x3b82f6); // azul
