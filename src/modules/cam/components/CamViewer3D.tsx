@@ -919,8 +919,15 @@ export function CamViewer3D({
   }, [stockConfig, meshData, setup, stockFacesByBoxIndex]);
 
   // ── 6a-fit. Auto-fit camera to frame both part and stock envelope ───────
+  // IMPORTANTE: solo debe encuadrar UNA VEZ por Setup (cuando aparece), NUNCA en
+  // cada edición del stock. Antes dependía de `stockConfig`, así que cada tecla
+  // del formulario/popover reencuadraba la cámara y la pieza "saltaba". La cámara
+  // solo debe moverse cuando el usuario orbita. Guard por setup.id.
+  const didFitSetupIdRef = useRef<string | null>(null);
   useEffect(() => {
     if (!setup || !stockConfig || !cameraRef.current || !controlsRef.current) return;
+    if (didFitSetupIdRef.current === setup.id) return;
+    didFitSetupIdRef.current = setup.id;
 
     const camera = cameraRef.current;
     const controls = controlsRef.current;
