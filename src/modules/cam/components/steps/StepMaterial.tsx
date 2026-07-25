@@ -234,8 +234,10 @@ export const StepMaterial = () => {
   );
 
   // Encontrar el material completo del catálogo para mostrar Vc en SelectedMaterialBar
+  // `find` puede devolver undefined (catálogo aún sin cargar) y SelectedMaterialBar
+  // solo acepta MaterialGlobal | null — se normaliza aquí.
   const materialCompleto = material
-    ? materiales.find((m) => m.id_material === material.id_material)
+    ? (materiales.find((m) => m.id_material === material.id_material) ?? null)
     : null;
 
   const handleSelectMaterial = (mat: MaterialGlobal) => {

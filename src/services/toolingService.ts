@@ -288,6 +288,13 @@ export interface Instancia {
   fecha_registro: string;
   notas: string | null;
   activo: boolean;
+  /**
+   * Costo de compra de ESTA pieza física (opcional). Vive en la instancia, no
+   * en la definición: dos fresas iguales compradas a proveedores distintos
+   * cuestan distinto, y lo que la empresa querrá imputar por trabajo es el
+   * costo real de la herramienta que se montó.
+   */
+  costo_compra?: number | null;
   // Definición efectiva que esta pieza física encarna
   familia: string | null;
   nombre: string | null;
@@ -304,6 +311,8 @@ export interface InstanciaCreatePayload {
   portaherramienta_real?: string;
   estado?: string;
   notas?: string;
+  /** Costo de compra de la pieza física (opcional). */
+  costo_compra?: number;
 }
 
 export interface InstanciaUpdatePayload {
@@ -314,6 +323,7 @@ export interface InstanciaUpdatePayload {
   estado?: string;
   horas_uso?: number;
   notas?: string;
+  costo_compra?: number;
 }
 
 export async function getInstancias(filtros?: {

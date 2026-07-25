@@ -35,6 +35,70 @@ src/modules/cam/
   store/camStore.ts          ✅
 ```
 
+## Reusable 3D architecture — THREE LAYERS (do not collapse them)
+
+Built for the tooling module, but designed so **Montaje** can reuse layers 1–2
+for the VMC table / spindle / workholding, and the simulator can reuse layer 2
+to animate the tools.
+
+```
+src/lib/viewer3d/            ← LAYER 1 · generic viewer (knows nothing of tools)
+  createViewer.ts            plain TS: canvas, camera, lights, PMREM env,
+                             OrbitControls, ResizeObserver, dispose.
+                             Contract: setContenido(Object3D) + encuadrar()
+  Viewer3D.tsx               thin React wrapper — lifecycle ONLY
+  dispose.ts                 liberarObjeto3D()
+
+src/lib/geometry/            ← LAYER 2 · PURE parametric builders
+  primitivas.ts              cilindro / revolucion / tubo / prisma / aro…
+  curvas.ts                  CurvaHelicoidal, CurvaFiloEsferico, CurvaRecta
+  materiales.ts              paleta metálica + tinte por material/recubrimiento
+  herramientas/
+    parametros.ts            resolverParametros(): cotas coherentes + defaults
+                             de taller; tabla de paso grueso ISO; lectura de
+                             designaciones (M10x1.5, APKT1604)
+    comunes.ts               mango, cuerpo acanalado, dientes, portaherramientas
+    <11 archivos>            un constructor por familia
+    index.ts                 construirHerramienta(familia, params)
+
+src/components/layout/VisorConPanel.tsx   ← LAYER 3 · layout
+  variante="dividido"        panel + visor lado a lado (herramientas)
+  variante="visorDominante"  visor completo + panel flotante (para Montaje)
+```
+
+**Reglas que no se pueden romper:**
+
+- Capa 2 es PURA: ni React, ni Zustand, ni props, ni fetch. Se puede llamar
+  desde un script plano de Node (`construirHerramienta("broca", {diametro_mm:8})`).
+  Si un constructor necesita estado, está mal y deja de ser reutilizable.
+- Convención de ejes de la capa 2: eje de la herramienta = **+Y**, punta en
+  **y = 0**, cuerpo hacia +Y. Es la orientación de husillo, para que Montaje y
+  el simulador coloquen el objeto sin recalcular nada.
+- El visor es DUEÑO del objeto que recibe: lo libera al reemplazarlo.
+- Materiales con `side: DoubleSide` a propósito (revoluciones y tubos son
+  superficies abiertas en los extremos).
+- `Viewer3D.claveEncuadre` evita que la cámara salte mientras el operador
+  teclea: solo reencuadra cuando cambia esa clave (p. ej. la familia).
+- CamViewer3D.tsx **no se tocó**: el wizard sigue con su visor propio. La capa 1
+  es nueva y limpia, no una extracción.
+
+## Tooling module (T3-bis)
+
+- Dos rutas de entrada, sin la palabra "manual": *Seleccionar del catálogo* /
+  *Crear nueva herramienta*.
+- `CoincidenciasCatalogo.tsx` — al crear, busca en el catálogo global por
+  familia + Ø ±5 % y ofrece adoptar: evita definiciones duplicadas.
+- `HerramientaForm.tsx` — UN componente, tres modos (`crear|editar|ver`).
+  `definicionEditable` separa además catálogo (definición bloqueada) de
+  herramienta nueva. En modo `ver` todo es solo lectura.
+- `src/modules/tools/domain/camposFamilia.ts` — dominio PURO: qué campos pide
+  cada familia. Una broca no muestra radio de esquina; un macho muestra paso.
+- `costo_compra` va en la INSTANCIA física (Tier 3), no en la definición.
+- Inventario agrupado por familia, plegable, con búsqueda en vivo insensible a
+  tildes y a Ø.
+- NO hay parámetros de corte (Vc, fz, RPM, avance) en ningún formulario de
+  herramienta: viven en el catálogo de materiales y en el motor CAM.
+
 ## Wizard step order (current)
 
 ```
