@@ -146,7 +146,7 @@ export function MachineStep() {
         type={tipo}
         value={form[key]}
         onChange={(e) => setForm((f) => ({ ...f, [key]: e.target.value }))}
-        className="w-full rounded-lg border border-border bg-bg-primary px-3 py-2 text-sm text-text-primary focus:border-accent-orange focus:outline-none"
+        className="w-full rounded-lg border border-border bg-bg-primary px-3 py-2 text-sm text-text-primary focus:border-accent-blue focus:outline-none"
       />
     </div>
   );
@@ -168,7 +168,7 @@ export function MachineStep() {
         <div className="mt-6 grid gap-4 sm:grid-cols-2">
           <button
             onClick={() => setModo("catalogo")}
-            className="rounded-xl border border-border bg-bg-primary p-5 text-left transition hover:border-accent-orange"
+            className="rounded-xl border border-border bg-bg-primary p-5 text-left transition hover:border-accent-blue"
           >
             <div className="text-2xl mb-2">📋</div>
             <p className="font-semibold text-text-primary">
@@ -182,7 +182,7 @@ export function MachineStep() {
 
           <button
             onClick={() => setModo("manual")}
-            className="rounded-xl border border-border bg-bg-primary p-5 text-left transition hover:border-accent-orange"
+            className="rounded-xl border border-border bg-bg-primary p-5 text-left transition hover:border-accent-blue"
           >
             <div className="text-2xl mb-2">✏️</div>
             <p className="font-semibold text-text-primary">
@@ -204,7 +204,7 @@ export function MachineStep() {
       <div>
         <button
           onClick={() => setModo("seleccion")}
-          className="mb-4 text-xs text-accent-orange hover:underline"
+          className="mb-4 text-xs text-accent-blue hover:underline"
         >
           ← Volver
         </button>
@@ -222,8 +222,8 @@ export function MachineStep() {
               onClick={() => setSeleccionada(m)}
               className={`w-full rounded-xl border p-4 text-left transition ${
                 seleccionada?.id_maquina_global === m.id_maquina_global
-                  ? "border-accent-orange bg-bg-elevated"
-                  : "border-border bg-bg-primary hover:border-accent-orange"
+                  ? "border-accent-blue bg-bg-elevated"
+                  : "border-border bg-bg-primary hover:border-accent-blue"
               }`}
             >
               <p className="font-semibold text-text-primary">{m.nombre}</p>
@@ -236,7 +236,7 @@ export function MachineStep() {
         </div>
 
         {seleccionada && (
-          <div className="mt-4 rounded-xl border border-accent-orange bg-bg-primary p-4 text-xs text-text-muted space-y-1">
+          <div className="mt-4 rounded-xl border border-accent-blue bg-bg-primary p-4 text-xs text-text-muted space-y-1">
             <p className="font-semibold text-text-primary mb-2">
               Especificaciones técnicas
             </p>
@@ -252,12 +252,12 @@ export function MachineStep() {
           </div>
         )}
 
-        {error && <p className="mt-3 text-sm text-red-400">{error}</p>}
+        {error && <p className="mt-3 text-sm text-accent-red">{error}</p>}
 
         <button
           onClick={handleCatalogoSubmit}
           disabled={!seleccionada || loading}
-          className="mt-6 w-full rounded-lg bg-accent-orange px-4 py-3 text-sm font-bold uppercase tracking-widest text-white disabled:opacity-50"
+          className="mt-6 w-full rounded-lg bg-accent-blue px-4 py-3 text-sm font-bold uppercase tracking-widest text-white disabled:opacity-50"
         >
           {loading ? "Registrando..." : "Confirmar máquina →"}
         </button>
@@ -270,7 +270,7 @@ export function MachineStep() {
     <div>
       <button
         onClick={() => setModo("seleccion")}
-        className="mb-4 text-xs text-accent-orange hover:underline"
+        className="mb-4 text-xs text-accent-blue hover:underline"
       >
         ← Volver
       </button>
@@ -283,7 +283,7 @@ export function MachineStep() {
       </p>
 
       <div className="space-y-4">
-        <p className="text-xs uppercase tracking-widest text-accent-orange">
+        <p className="text-xs uppercase tracking-widest text-accent-blue">
           Identificación
         </p>
         <div className="grid gap-4 sm:grid-cols-2">
@@ -299,7 +299,7 @@ export function MachineStep() {
               onChange={(e) =>
                 setForm((f) => ({ ...f, cono_husillo: e.target.value }))
               }
-              className="w-full rounded-lg border border-border bg-bg-primary px-3 py-2 text-sm text-text-primary focus:border-accent-orange focus:outline-none"
+              className="w-full rounded-lg border border-border bg-bg-primary px-3 py-2 text-sm text-text-primary focus:border-accent-blue focus:outline-none"
             >
               <option>BT30</option>
               <option>BT40</option>
@@ -311,7 +311,7 @@ export function MachineStep() {
           </div>
         </div>
 
-        <p className="text-xs uppercase tracking-widest text-accent-orange">
+        <p className="text-xs uppercase tracking-widest text-accent-blue">
           Husillo
         </p>
         <p className="text-[11px] text-text-muted">
@@ -323,7 +323,7 @@ export function MachineStep() {
           {field("potencia_husillo_kw", "Potencia (kW)", "number")}
         </div>
 
-        <p className="text-xs uppercase tracking-widest text-accent-orange">
+        <p className="text-xs uppercase tracking-widest text-accent-blue">
           Avances
         </p>
         <p className="text-[11px] text-text-muted">
@@ -336,7 +336,7 @@ export function MachineStep() {
           {field("rapido_z_mmmin", "Rápido Z (mm/min)", "number")}
         </div>
 
-        <p className="text-xs uppercase tracking-widest text-accent-orange">
+        <p className="text-xs uppercase tracking-widest text-accent-blue">
           Recorridos
         </p>
         <p className="text-[11px] text-text-muted">
@@ -348,7 +348,7 @@ export function MachineStep() {
           {field("recorrido_z_mm", "Recorrido Z (mm)", "number")}
         </div>
 
-        <p className="text-xs uppercase tracking-widest text-accent-orange">
+        <p className="text-xs uppercase tracking-widest text-accent-blue">
           Cambiador automático (ATC)
         </p>
         <p className="text-[11px] text-text-muted">
@@ -370,7 +370,7 @@ export function MachineStep() {
             onChange={(e) =>
               setForm((f) => ({ ...f, refrigeracion: e.target.value }))
             }
-            className="w-full rounded-lg border border-border bg-bg-primary px-3 py-2 text-sm text-text-primary focus:border-accent-orange focus:outline-none"
+            className="w-full rounded-lg border border-border bg-bg-primary px-3 py-2 text-sm text-text-primary focus:border-accent-blue focus:outline-none"
           >
             <option value="taladrinas">Taladrinas</option>
             <option value="aire">Aire</option>
@@ -380,12 +380,12 @@ export function MachineStep() {
         </div>
       </div>
 
-      {error && <p className="mt-3 text-sm text-red-400">{error}</p>}
+      {error && <p className="mt-3 text-sm text-accent-red">{error}</p>}
 
       <button
         onClick={handleManualSubmit}
         disabled={loading || !form.nombre || !form.rpm_max_husillo}
-        className="mt-6 w-full rounded-lg bg-accent-orange px-4 py-3 text-sm font-bold uppercase tracking-widest text-white disabled:opacity-50"
+        className="mt-6 w-full rounded-lg bg-accent-blue px-4 py-3 text-sm font-bold uppercase tracking-widest text-white disabled:opacity-50"
       >
         {loading ? "Registrando..." : "Confirmar máquina →"}
       </button>

@@ -17,15 +17,8 @@ export async function registrarMaquinaManual(payload: Record<string, unknown>) {
   return data;
 }
 
-export async function getTiposHerramienta() {
-  const { data } = await api.get("/herramientas/tipos");
-  return data.tipos;
-}
-
-export async function registrarHerramienta(payload: Record<string, unknown>) {
-  const { data } = await api.post("/herramientas/", payload);
-  return data;
-}
+// Las herramientas del onboarding se registran contra /tooling/* (ver
+// services/toolingService.ts). Aquí ya no queda nada del modelo legacy.
 
 export async function completarSetup() {
   const { data } = await api.post("/empresas/me/completar-setup");

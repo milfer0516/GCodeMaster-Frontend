@@ -20,13 +20,13 @@ export function BienvenidaStep() {
           Lo que haremos:
         </p>
         <div className="flex items-start gap-3">
-          <span className="text-accent-orange font-bold">1.</span>
+          <span className="text-accent-blue font-bold">1.</span>
           <p className="text-sm text-text-primary">
             Registrar tu máquina CNC — define los límites físicos del proceso.
           </p>
         </div>
         <div className="flex items-start gap-3">
-          <span className="text-accent-orange font-bold">2.</span>
+          <span className="text-accent-blue font-bold">2.</span>
           <p className="text-sm text-text-primary">
             Registrar tus herramientas reales — el motor CAM las usará para
             calcular avances, velocidades y profundidades.
@@ -41,7 +41,7 @@ export function BienvenidaStep() {
 
       <button
         onClick={() => setStep("maquina")}
-        className="mt-8 w-full rounded-lg bg-accent-orange px-4 py-3 text-sm font-bold uppercase tracking-widest text-white"
+        className="mt-8 w-full rounded-lg bg-accent-blue px-4 py-3 text-sm font-bold uppercase tracking-widest text-white"
       >
         Comenzar configuración
       </button>

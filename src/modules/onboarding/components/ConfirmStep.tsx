@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { useOnboardingStore } from "../store/onboardingStore";
 import { useAuthStore } from "../../auth/store/authStore";
 import { completarSetup } from "../../../services/onboardingService";
+import { familiaLabel } from "../../../services/toolingService";
 
 export function ConfirmStep() {
   const navigate = useNavigate();
@@ -40,7 +41,7 @@ export function ConfirmStep() {
 
       {/* Resumen máquina */}
       <div className="mt-6 rounded-xl border border-border bg-bg-primary p-4">
-        <p className="mb-3 text-xs uppercase tracking-widest text-accent-orange">
+        <p className="mb-3 text-xs uppercase tracking-widest text-accent-blue">
           Máquina registrada
         </p>
         {maquina ? (
@@ -57,30 +58,37 @@ export function ConfirmStep() {
 
       {/* Resumen herramientas */}
       <div className="mt-4 rounded-xl border border-border bg-bg-primary p-4">
-        <p className="mb-3 text-xs uppercase tracking-widest text-accent-orange">
+        <p className="mb-3 text-xs uppercase tracking-widest text-accent-blue">
           Herramientas registradas ({herramientas.length})
         </p>
         <div className="space-y-2 max-h-48 overflow-y-auto">
-          {herramientas.map((h, i) => (
-            <div key={i} className="flex items-center justify-between">
+          {herramientas.map((h) => (
+            <div
+              key={h.id_herramienta_instancia}
+              className="flex items-center justify-between"
+            >
               <div>
                 <p className="text-sm text-text-primary">{h.nombre}</p>
                 <p className="text-[11px] text-text-muted">
-                  {h.tipo} · ⌀{h.diametro_mm} mm
+                  {familiaLabel(h.familia)}
+                  {h.diametro_mm != null ? ` · ⌀${h.diametro_mm} mm` : ""}
+                  {h.longitud_util_real_mm != null
+                    ? ` · útil ${h.longitud_util_real_mm} mm`
+                    : ""}
                 </p>
               </div>
-              <span className="text-green-400 text-xs">✓</span>
+              <span className="text-accent-green text-xs">✓</span>
             </div>
           ))}
         </div>
       </div>
 
-      {error && <p className="mt-4 text-sm text-red-400">{error}</p>}
+      {error && <p className="mt-4 text-sm text-accent-red">{error}</p>}
 
       <button
         onClick={handleFinalizar}
         disabled={loading}
-        className="mt-6 w-full rounded-lg bg-accent-orange px-4 py-3 text-sm font-bold uppercase tracking-widest text-white disabled:opacity-50"
+        className="mt-6 w-full rounded-lg bg-accent-blue px-4 py-3 text-sm font-bold uppercase tracking-widest text-white disabled:opacity-50"
       >
         {loading ? "Finalizando..." : "Ir al Dashboard →"}
       </button>

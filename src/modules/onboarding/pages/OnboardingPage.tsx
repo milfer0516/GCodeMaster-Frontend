@@ -22,7 +22,7 @@ export function OnboardingPage() {
       {/* Header */}
       <div className="mx-auto max-w-2xl">
         <div className="mb-2 flex items-center gap-2">
-          <span className="text-lg text-accent-orange">⚙</span>
+          <span className="text-lg text-accent-blue">⚙</span>
           <span className="text-xs uppercase tracking-[0.2em] text-text-muted">
             GCodeMaster CNC — Configuración inicial
           </span>
@@ -36,9 +36,9 @@ export function OnboardingPage() {
                 <div
                   className={`flex h-7 w-7 items-center justify-center rounded-full text-xs font-bold transition-colors ${
                     i < pasoActual
-                      ? "bg-green-500 text-white"
+                      ? "bg-accent-green text-white"
                       : i === pasoActual
-                        ? "bg-accent-orange text-white"
+                        ? "bg-accent-blue text-white"
                         : "border border-border bg-bg-surface text-text-muted"
                   }`}
                 >
@@ -46,7 +46,7 @@ export function OnboardingPage() {
                 </div>
                 <span
                   className={`mt-1 text-[10px] ${
-                    i === pasoActual ? "text-accent-orange" : "text-text-muted"
+                    i === pasoActual ? "text-accent-blue" : "text-text-muted"
                   }`}
                 >
                   {nombre}
@@ -55,7 +55,7 @@ export function OnboardingPage() {
               {i < PASOS.length - 1 && (
                 <div
                   className={`mb-4 h-px w-8 flex-1 ${
-                    i < pasoActual ? "bg-green-500" : "bg-border"
+                    i < pasoActual ? "bg-accent-green" : "bg-border"
                   }`}
                 />
               )}

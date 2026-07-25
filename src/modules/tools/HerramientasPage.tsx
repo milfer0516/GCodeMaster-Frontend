@@ -1,88 +1,71 @@
-// src/modules/herramientas/pages/HerramientasPage.tsx
-import { useEffect, useState } from "react";
+// src/modules/tools/HerramientasPage.tsx
+// ─────────────────────────────────────────────────────────────────────────────
+// Inventario de herramientas FÍSICAS de la empresa (Tier 3 — /tooling/instancias).
+//
+// Cada fila es una pieza real del taller. Dos fresas Ø12 idénticas son dos filas
+// distintas, cada una con su longitud útil medida y su estado.
+//
+// Editable aquí: longitud útil (se re-mide con el desgaste), estado, posición de
+// carrusel, portaherramientas y notas. La definición (familia, Ø, filos,
+// material) NO se edita: pertenece al catálogo / a la librería.
+// ─────────────────────────────────────────────────────────────────────────────
+import { useEffect, useMemo, useState } from "react";
+import { Plus, Pencil, Trash2, Search, RefreshCw, Ruler } from "lucide-react";
+import { AgregarHerramientaModal } from "./components/AgregarHerramientaModal";
 import {
-  Plus,
-  Pencil,
-  PowerOff,
-  Search,
-  Filter,
-  RefreshCw,
-} from "lucide-react";
-import {
-  getHerramientas,
-  getTiposHerramienta,
-  crearHerramienta,
-  actualizarHerramienta,
-  desactivarHerramienta,
-  type Herramienta,
-  type TipoHerramienta,
-  type HerramientaCreatePayload,
-} from "../../services/herramientasService";
+  getInstancias,
+  actualizarInstancia,
+  eliminarInstancia,
+  familiaLabel,
+  mensajeError,
+  ESTADOS_INSTANCIA,
+  ESTADO_LABEL,
+  type Instancia,
+} from "../../services/toolingService";
 
 // ── HELPERS ───────────────────────────────────────────────────────────────
 
-const MATERIALES = ["HSS", "Carburo", "Inserto"];
-const ESTADOS = ["nuevo", "bueno", "desgastado", "fuera_de_servicio"];
-
 function estadoBadge(estado: string) {
   switch (estado) {
-    case "nuevo":
-      return "bg-green-500/10 text-green-400 border-green-500/20";
-    case "bueno":
-      return "bg-blue-500/10 text-blue-400 border-blue-500/20";
-    case "desgastado":
-      return "bg-yellow-500/10 text-yellow-400 border-yellow-500/20";
-    default:
-      return "bg-red-500/10 text-red-400 border-red-500/20";
+    case "disponible":
+      return "bg-accent-green/10 text-accent-green border-accent-green/20";
+    case "en_mantenimiento":
+      return "bg-accent-amber/10 text-accent-amber border-accent-amber/20";
+    default: // retirada
+      return "bg-accent-red/10 text-accent-red border-accent-red/20";
   }
 }
 
-function materialColor(m: string) {
-  switch (m.toLowerCase()) {
-    case "carburo":
-      return "text-accent-blue";
-    case "hss":
-      return "text-accent-amber";
-    case "inserto":
-      return "text-accent-green";
-    default:
-      return "text-text-muted";
-  }
-}
+const inputCls =
+  "w-full rounded-lg border border-border bg-bg-primary px-3 py-2 text-sm text-text-primary outline-none focus:border-accent-blue";
 
-// ── FORM VACÍO ────────────────────────────────────────────────────────────
+const labelCls = "mb-1 block text-xs font-medium text-text-muted";
 
-const FORM_VACIO: HerramientaCreatePayload = {
-  nombre: "",
-  tipo: "endmill",
-  diametro_mm: 10,
-  filos: 4,
-  material_herramienta: "Carburo",
-  largo_total: undefined,
-  recubrimiento: "",
-  vida_util_horas: undefined,
-  costo_unitario: undefined,
+const FORM_EDICION = {
+  longitud_util_real_mm: "",
+  posicion_carrusel: "",
+  portaherramienta_real: "",
+  estado: "disponible",
+  notas: "",
 };
 
 // ── COMPONENTE ────────────────────────────────────────────────────────────
 
 export function HerramientasPage() {
-  const [herramientas, setHerramientas] = useState<Herramienta[]>([]);
-  const [tipos, setTipos] = useState<TipoHerramienta[]>([]);
+  const [instancias, setInstancias] = useState<Instancia[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
   // Filtros
   const [busqueda, setBusqueda] = useState("");
-  const [filtroTipo, setFiltroTipo] = useState("");
+  const [filtroFamilia, setFiltroFamilia] = useState("");
+  const [filtroEstado, setFiltroEstado] = useState("");
 
-  // Modal
-  const [modal, setModal] = useState<"crear" | "editar" | "desactivar" | null>(
-    null,
-  );
-  const [seleccionada, setSeleccionada] = useState<Herramienta | null>(null);
-  const [form, setForm] = useState<HerramientaCreatePayload>(FORM_VACIO);
-  const [formEstado, setFormEstado] = useState("nuevo");
+  // Modales
+  const [modalAgregar, setModalAgregar] = useState(false);
+  const [modal, setModal] = useState<"editar" | "retirar" | null>(null);
+  const [seleccionada, setSeleccionada] = useState<Instancia | null>(null);
+  const [form, setForm] = useState(FORM_EDICION);
   const [guardando, setGuardando] = useState(false);
   const [errorModal, setErrorModal] = useState("");
 
@@ -90,14 +73,9 @@ export function HerramientasPage() {
     setLoading(true);
     setError("");
     try {
-      const [h, t] = await Promise.all([
-        getHerramientas(),
-        getTiposHerramienta(),
-      ]);
-      setHerramientas(h);
-      setTipos(t);
+      setInstancias(await getInstancias());
     } catch {
-      setError("No se pudo cargar el inventario.");
+      setError("No se pudo cargar el inventario de herramientas.");
     } finally {
       setLoading(false);
     }
@@ -107,101 +85,88 @@ export function HerramientasPage() {
     cargar();
   }, []);
 
-  // Filtrado local
-  const filtradas = herramientas.filter((h) => {
+  // Familias presentes en el inventario (para el filtro)
+  const familiasPresentes = useMemo(
+    () =>
+      [...new Set(instancias.map((i) => i.familia).filter(Boolean))] as string[],
+    [instancias],
+  );
+
+  const filtradas = instancias.filter((i) => {
+    const texto = busqueda.toLowerCase();
     const coincideBusqueda =
-      h.nombre.toLowerCase().includes(busqueda.toLowerCase()) ||
-      h.tipo.toLowerCase().includes(busqueda.toLowerCase());
-    const coincideTipo = filtroTipo ? h.tipo === filtroTipo : true;
-    return coincideBusqueda && coincideTipo;
+      !texto ||
+      (i.nombre ?? "").toLowerCase().includes(texto) ||
+      familiaLabel(i.familia).toLowerCase().includes(texto) ||
+      (i.codigo_interno ?? "").toLowerCase().includes(texto);
+    const coincideFamilia = filtroFamilia ? i.familia === filtroFamilia : true;
+    const coincideEstado = filtroEstado ? i.estado === filtroEstado : true;
+    return coincideBusqueda && coincideFamilia && coincideEstado;
   });
 
-  // ── ACCIONES ──────────────────────────────────────────────────────────────
+  // ── ACCIONES ────────────────────────────────────────────────────────────
 
-  const abrirCrear = () => {
-    setForm(FORM_VACIO);
-    setErrorModal("");
-    setModal("crear");
-  };
-
-  const abrirEditar = (h: Herramienta) => {
-    setSeleccionada(h);
+  const abrirEditar = (i: Instancia) => {
+    setSeleccionada(i);
     setForm({
-      nombre: h.nombre,
-      tipo: h.tipo,
-      diametro_mm: h.diametro_mm,
-      filos: h.filos,
-      material_herramienta: h.material_herramienta,
-      largo_total: h.largo_total ?? undefined,
-      recubrimiento: h.recubrimiento ?? "",
+      longitud_util_real_mm:
+        i.longitud_util_real_mm != null ? String(i.longitud_util_real_mm) : "",
+      posicion_carrusel:
+        i.posicion_carrusel != null ? String(i.posicion_carrusel) : "",
+      portaherramienta_real: i.portaherramienta_real ?? "",
+      estado: i.estado,
+      notas: i.notas ?? "",
     });
-    setFormEstado(h.estado);
     setErrorModal("");
     setModal("editar");
   };
 
-  const abrirDesactivar = (h: Herramienta) => {
-    setSeleccionada(h);
-    setModal("desactivar");
-  };
-
-  const guardarCrear = async () => {
-    if (!form.nombre.trim()) {
-      setErrorModal("El nombre es obligatorio");
+  const guardarEditar = async () => {
+    if (!seleccionada) return;
+    const longitud = Number(form.longitud_util_real_mm);
+    if (form.longitud_util_real_mm && !(longitud > 0)) {
+      setErrorModal("La longitud útil debe ser mayor que 0.");
       return;
     }
     setGuardando(true);
     setErrorModal("");
     try {
-      await crearHerramienta(form);
-      await cargar();
-      setModal(null);
-    } catch (e: any) {
-      setErrorModal(e?.response?.data?.detail ?? "Error al crear herramienta");
-    } finally {
-      setGuardando(false);
-    }
-  };
-
-  const guardarEditar = async () => {
-    if (!seleccionada) return;
-    setGuardando(true);
-    setErrorModal("");
-    try {
-      await actualizarHerramienta(seleccionada.id_herramienta, {
-        nombre: form.nombre,
-        tipo: form.tipo,
-        diametro_mm: form.diametro_mm,
-        filos: form.filos,
-        material_herramienta: form.material_herramienta,
-        largo_total: form.largo_total,
-        recubrimiento: form.recubrimiento || undefined,
-        estado: formEstado,
+      await actualizarInstancia(seleccionada.id_herramienta_instancia, {
+        longitud_util_real_mm: form.longitud_util_real_mm
+          ? longitud
+          : undefined,
+        posicion_carrusel: form.posicion_carrusel
+          ? Number(form.posicion_carrusel)
+          : undefined,
+        portaherramienta_real: form.portaherramienta_real || undefined,
+        estado: form.estado,
+        notas: form.notas || undefined,
       });
       await cargar();
       setModal(null);
     } catch (e: any) {
-      setErrorModal(e?.response?.data?.detail ?? "Error al actualizar");
+      setErrorModal(mensajeError(e, "Error al actualizar."));
     } finally {
       setGuardando(false);
     }
   };
 
-  const confirmarDesactivar = async () => {
+  const confirmarRetirar = async () => {
     if (!seleccionada) return;
     setGuardando(true);
+    setErrorModal("");
     try {
-      await desactivarHerramienta(seleccionada.id_herramienta);
+      await eliminarInstancia(seleccionada.id_herramienta_instancia);
       await cargar();
       setModal(null);
     } catch {
-      setErrorModal("Error al desactivar");
+      setErrorModal("Error al retirar la herramienta.");
     } finally {
       setGuardando(false);
     }
   };
 
-  // ── RENDER ────────────────────────────────────────────────────────────────
+  // ── RENDER ──────────────────────────────────────────────────────────────
 
   return (
     <div className="space-y-5">
@@ -212,13 +177,13 @@ export function HerramientasPage() {
             Inventario de Herramientas
           </h1>
           <p className="mt-0.5 text-sm text-text-muted">
-            {herramientas.length} herramienta
-            {herramientas.length !== 1 ? "s" : ""} registrada
-            {herramientas.length !== 1 ? "s" : ""}
+            {instancias.length} herramienta
+            {instancias.length !== 1 ? "s" : ""} física
+            {instancias.length !== 1 ? "s" : ""} en el taller
           </p>
         </div>
         <button
-          onClick={abrirCrear}
+          onClick={() => setModalAgregar(true)}
           className="flex items-center gap-2 rounded-xl bg-accent-blue px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-accent-blue/90 active:scale-[0.98]"
         >
           <Plus className="h-4 w-4" /> Agregar herramienta
@@ -226,32 +191,41 @@ export function HerramientasPage() {
       </div>
 
       {/* Filtros */}
-      <div className="flex gap-3">
-        <div className="relative flex-1">
+      <div className="flex flex-wrap gap-3">
+        <div className="relative min-w-[220px] flex-1">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-muted" />
           <input
             type="text"
-            placeholder="Buscar por nombre o tipo..."
+            placeholder="Buscar por nombre, familia o código..."
             value={busqueda}
             onChange={(e) => setBusqueda(e.target.value)}
-            className="w-full rounded-xl border border-border bg-bg-surface py-2.5 pl-9 pr-4 text-sm text-text-primary outline-none focus:border-accent-blue"
+            className={`${inputCls} py-2.5 pl-9`}
           />
         </div>
-        <div className="relative">
-          <Filter className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-muted" />
-          <select
-            value={filtroTipo}
-            onChange={(e) => setFiltroTipo(e.target.value)}
-            className="rounded-xl border border-border bg-bg-surface py-2.5 pl-9 pr-8 text-sm text-text-primary outline-none focus:border-accent-blue appearance-none"
-          >
-            <option value="">Todos los tipos</option>
-            {tipos.map((t) => (
-              <option key={t.tipo} value={t.tipo}>
-                {t.nombre}
-              </option>
-            ))}
-          </select>
-        </div>
+        <select
+          value={filtroFamilia}
+          onChange={(e) => setFiltroFamilia(e.target.value)}
+          className={`${inputCls} w-auto py-2.5`}
+        >
+          <option value="">Todas las familias</option>
+          {familiasPresentes.map((f) => (
+            <option key={f} value={f}>
+              {familiaLabel(f)}
+            </option>
+          ))}
+        </select>
+        <select
+          value={filtroEstado}
+          onChange={(e) => setFiltroEstado(e.target.value)}
+          className={`${inputCls} w-auto py-2.5`}
+        >
+          <option value="">Todos los estados</option>
+          {ESTADOS_INSTANCIA.map((e) => (
+            <option key={e} value={e}>
+              {ESTADO_LABEL[e]}
+            </option>
+          ))}
+        </select>
         <button
           onClick={cargar}
           className="rounded-xl border border-border p-2.5 text-text-muted transition hover:text-accent-blue"
@@ -267,42 +241,45 @@ export function HerramientasPage() {
           <div className="h-7 w-7 animate-spin rounded-full border-2 border-accent-blue border-t-transparent" />
         </div>
       ) : error ? (
-        <div className="rounded-xl border border-red-500/20 bg-red-500/5 p-4 text-sm text-red-400">
+        <div className="rounded-xl border border-accent-red/20 bg-accent-red/5 p-4 text-sm text-accent-red">
           {error}
         </div>
       ) : filtradas.length === 0 ? (
         <div className="flex h-48 flex-col items-center justify-center gap-2 text-text-muted">
           <p className="text-sm">
             No hay herramientas
-            {busqueda || filtroTipo ? " con esos filtros" : " registradas"}.
+            {busqueda || filtroFamilia || filtroEstado
+              ? " con esos filtros"
+              : " registradas"}
+            .
           </p>
-          {!busqueda && !filtroTipo && (
+          {!busqueda && !filtroFamilia && !filtroEstado && (
             <button
-              onClick={abrirCrear}
+              onClick={() => setModalAgregar(true)}
               className="text-sm text-accent-blue hover:underline"
             >
-              Agregar primera herramienta
+              Agregar la primera herramienta
             </button>
           )}
         </div>
       ) : (
-        <div className="overflow-hidden rounded-xl border border-border bg-bg-surface">
+        <div className="overflow-x-auto rounded-xl border border-border bg-bg-surface">
           <table className="w-full text-sm">
             <thead className="border-b border-border bg-bg-elevated">
               <tr>
                 {[
-                  "Nombre",
-                  "Tipo",
+                  "Herramienta",
+                  "Familia",
                   "Ø mm",
-                  "Filos",
-                  "Largo",
-                  "Material",
+                  "Long. útil",
+                  "Carrusel",
+                  "Portaherr.",
                   "Estado",
                   "",
                 ].map((h) => (
                   <th
                     key={h}
-                    className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-text-muted"
+                    className="whitespace-nowrap px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-text-muted"
                   >
                     {h}
                   </th>
@@ -310,53 +287,67 @@ export function HerramientasPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
-              {filtradas.map((h) => (
+              {filtradas.map((i) => (
                 <tr
-                  key={h.id_herramienta}
-                  className="hover:bg-bg-elevated/50 transition"
+                  key={i.id_herramienta_instancia}
+                  className="transition hover:bg-bg-elevated/50"
                 >
                   <td className="px-4 py-3 font-medium text-text-primary">
-                    {h.nombre}
+                    {i.nombre ?? "—"}
+                    {i.codigo_interno && (
+                      <span className="ml-2 text-xs text-text-muted">
+                        {i.codigo_interno}
+                      </span>
+                    )}
                   </td>
-                  <td className="px-4 py-3 text-text-muted">
-                    {tipos.find((t) => t.tipo === h.tipo)?.nombre ?? h.tipo}
+                  <td className="whitespace-nowrap px-4 py-3 text-text-muted">
+                    {familiaLabel(i.familia)}
                   </td>
                   <td className="px-4 py-3 text-text-primary">
-                    Ø{h.diametro_mm}
+                    {i.diametro_mm != null ? `Ø${i.diametro_mm}` : "—"}
+                  </td>
+                  <td className="whitespace-nowrap px-4 py-3">
+                    {i.longitud_util_real_mm != null ? (
+                      <span className="inline-flex items-center gap-1 text-text-primary">
+                        <Ruler className="h-3 w-3 text-accent-blue" />
+                        {i.longitud_util_real_mm} mm
+                      </span>
+                    ) : (
+                      <span className="text-accent-amber">sin medir</span>
+                    )}
                   </td>
                   <td className="px-4 py-3 text-center text-text-muted">
-                    {h.filos}
+                    {i.posicion_carrusel ?? "—"}
                   </td>
                   <td className="px-4 py-3 text-text-muted">
-                    {h.largo_total ? `${h.largo_total} mm` : "—"}
-                  </td>
-                  <td
-                    className={`px-4 py-3 font-medium ${materialColor(h.material_herramienta)}`}
-                  >
-                    {h.material_herramienta}
+                    {i.portaherramienta_real ?? "—"}
                   </td>
                   <td className="px-4 py-3">
                     <span
-                      className={`rounded-full border px-2.5 py-0.5 text-xs font-medium capitalize ${estadoBadge(h.estado)}`}
+                      className={`whitespace-nowrap rounded-full border px-2.5 py-0.5 text-xs font-medium ${estadoBadge(i.estado)}`}
                     >
-                      {h.estado}
+                      {ESTADO_LABEL[i.estado] ?? i.estado}
                     </span>
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-2">
                       <button
-                        onClick={() => abrirEditar(h)}
+                        onClick={() => abrirEditar(i)}
                         className="rounded-lg p-1.5 text-text-muted transition hover:bg-bg-elevated hover:text-accent-blue"
                         title="Editar"
                       >
                         <Pencil className="h-4 w-4" />
                       </button>
                       <button
-                        onClick={() => abrirDesactivar(h)}
-                        className="rounded-lg p-1.5 text-text-muted transition hover:bg-bg-elevated hover:text-red-400"
-                        title="Desactivar"
+                        onClick={() => {
+                          setSeleccionada(i);
+                          setErrorModal("");
+                          setModal("retirar");
+                        }}
+                        className="rounded-lg p-1.5 text-text-muted transition hover:bg-bg-elevated hover:text-accent-red"
+                        title="Retirar del inventario"
                       >
-                        <PowerOff className="h-4 w-4" />
+                        <Trash2 className="h-4 w-4" />
                       </button>
                     </div>
                   </td>
@@ -367,217 +358,138 @@ export function HerramientasPage() {
         </div>
       )}
 
-      {/* ── MODAL CREAR / EDITAR ── */}
-      {(modal === "crear" || modal === "editar") && (
+      {/* ── MODAL AGREGAR (componente reutilizable) ── */}
+      <AgregarHerramientaModal
+        abierto={modalAgregar}
+        onCerrar={() => setModalAgregar(false)}
+        onRegistrada={() => cargar()}
+        permitirEncadenar
+      />
+
+      {/* ── MODAL EDITAR ── */}
+      {modal === "editar" && seleccionada && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
           <div className="w-full max-w-lg rounded-2xl border border-border bg-bg-surface shadow-2xl">
             <div className="flex items-center justify-between border-b border-border px-6 py-4">
-              <h2 className="font-semibold text-text-primary">
-                {modal === "crear"
-                  ? "Agregar herramienta"
-                  : "Editar herramienta"}
-              </h2>
+              <div>
+                <h2 className="font-semibold text-text-primary">
+                  Editar herramienta física
+                </h2>
+                <p className="mt-0.5 text-xs text-text-muted">
+                  {seleccionada.nombre} ·{" "}
+                  {familiaLabel(seleccionada.familia)}
+                  {seleccionada.diametro_mm != null
+                    ? ` · Ø${seleccionada.diametro_mm} mm`
+                    : ""}
+                </p>
+              </div>
               <button
                 onClick={() => setModal(null)}
-                className="text-text-muted hover:text-text-primary text-xl leading-none"
+                className="text-xl leading-none text-text-muted hover:text-text-primary"
               >
                 ×
               </button>
             </div>
 
-            <div className="grid grid-cols-2 gap-4 p-6">
-              {/* Nombre */}
-              <div className="col-span-2">
-                <label className="mb-1 block text-xs font-medium text-text-muted">
-                  Nombre *
-                </label>
-                <input
-                  type="text"
-                  value={form.nombre}
-                  onChange={(e) =>
-                    setForm((p) => ({ ...p, nombre: e.target.value }))
-                  }
-                  placeholder="Ej: Fresa Carburo Ø10 4F"
-                  className="w-full rounded-lg border border-border bg-bg-primary px-3 py-2 text-sm outline-none focus:border-accent-blue"
-                />
-              </div>
-
-              {/* Tipo */}
+            <div className="space-y-4 p-6">
               <div>
-                <label className="mb-1 block text-xs font-medium text-text-muted">
-                  Tipo *
+                <label className="mb-1 flex items-center gap-1.5 text-sm font-semibold text-text-primary">
+                  <Ruler className="h-4 w-4 text-accent-blue" />
+                  Longitud útil medida (mm)
                 </label>
-                <select
-                  value={form.tipo}
-                  onChange={(e) =>
-                    setForm((p) => ({ ...p, tipo: e.target.value }))
-                  }
-                  className="w-full rounded-lg border border-border bg-bg-primary px-3 py-2 text-sm outline-none focus:border-accent-blue"
-                >
-                  {tipos.map((t) => (
-                    <option key={t.tipo} value={t.tipo}>
-                      {t.nombre}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              {/* Material */}
-              <div>
-                <label className="mb-1 block text-xs font-medium text-text-muted">
-                  Material *
-                </label>
-                <select
-                  value={form.material_herramienta}
-                  onChange={(e) =>
-                    setForm((p) => ({
-                      ...p,
-                      material_herramienta: e.target.value,
-                    }))
-                  }
-                  className="w-full rounded-lg border border-border bg-bg-primary px-3 py-2 text-sm outline-none focus:border-accent-blue"
-                >
-                  {MATERIALES.map((m) => (
-                    <option key={m}>{m}</option>
-                  ))}
-                </select>
-              </div>
-
-              {/* Diámetro */}
-              <div>
-                <label className="mb-1 block text-xs font-medium text-text-muted">
-                  Diámetro (mm) *
-                </label>
+                <p className="mb-2 text-xs text-text-muted">
+                  Actualízala cuando vuelvas a montar o reafilar la herramienta.
+                </p>
                 <input
                   type="number"
                   min={0.1}
                   step={0.1}
-                  value={form.diametro_mm}
+                  value={form.longitud_util_real_mm}
                   onChange={(e) =>
                     setForm((p) => ({
                       ...p,
-                      diametro_mm: Number(e.target.value),
+                      longitud_util_real_mm: e.target.value,
                     }))
                   }
-                  className="w-full rounded-lg border border-border bg-bg-primary px-3 py-2 text-sm outline-none focus:border-accent-blue"
+                  className={inputCls}
                 />
               </div>
 
-              {/* Filos */}
-              <div>
-                <label className="mb-1 block text-xs font-medium text-text-muted">
-                  Filos *
-                </label>
-                <input
-                  type="number"
-                  min={1}
-                  max={12}
-                  value={form.filos}
-                  onChange={(e) =>
-                    setForm((p) => ({ ...p, filos: Number(e.target.value) }))
-                  }
-                  className="w-full rounded-lg border border-border bg-bg-primary px-3 py-2 text-sm outline-none focus:border-accent-blue"
-                />
-              </div>
-
-              {/* Largo */}
-              <div>
-                <label className="mb-1 block text-xs font-medium text-text-muted">
-                  Largo total (mm)
-                </label>
-                <input
-                  type="number"
-                  min={0}
-                  value={form.largo_total ?? ""}
-                  onChange={(e) =>
-                    setForm((p) => ({
-                      ...p,
-                      largo_total: e.target.value
-                        ? Number(e.target.value)
-                        : undefined,
-                    }))
-                  }
-                  placeholder="Opcional"
-                  className="w-full rounded-lg border border-border bg-bg-primary px-3 py-2 text-sm outline-none focus:border-accent-blue"
-                />
-              </div>
-
-              {/* Recubrimiento */}
-              <div>
-                <label className="mb-1 block text-xs font-medium text-text-muted">
-                  Recubrimiento
-                </label>
-                <input
-                  type="text"
-                  value={form.recubrimiento ?? ""}
-                  onChange={(e) =>
-                    setForm((p) => ({ ...p, recubrimiento: e.target.value }))
-                  }
-                  placeholder="TiAlN, TiN, AlTiN..."
-                  className="w-full rounded-lg border border-border bg-bg-primary px-3 py-2 text-sm outline-none focus:border-accent-blue"
-                />
-              </div>
-
-              {/* Costo */}
-              <div>
-                <label className="mb-1 block text-xs font-medium text-text-muted">
-                  Costo unitario (COP)
-                </label>
-                <input
-                  type="number"
-                  min={0}
-                  value={form.costo_unitario ?? ""}
-                  onChange={(e) =>
-                    setForm((p) => ({
-                      ...p,
-                      costo_unitario: e.target.value
-                        ? Number(e.target.value)
-                        : undefined,
-                    }))
-                  }
-                  placeholder="Opcional"
-                  className="w-full rounded-lg border border-border bg-bg-primary px-3 py-2 text-sm outline-none focus:border-accent-blue"
-                />
-              </div>
-
-              {/* Estado — solo en editar */}
-              {modal === "editar" && (
+              <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="mb-1 block text-xs font-medium text-text-muted">
-                    Estado
-                  </label>
+                  <label className={labelCls}>Estado</label>
                   <select
-                    value={formEstado}
-                    onChange={(e) => setFormEstado(e.target.value)}
-                    className="w-full rounded-lg border border-border bg-bg-primary px-3 py-2 text-sm outline-none focus:border-accent-blue"
+                    value={form.estado}
+                    onChange={(e) =>
+                      setForm((p) => ({ ...p, estado: e.target.value }))
+                    }
+                    className={inputCls}
                   >
-                    {ESTADOS.map((e) => (
-                      <option key={e} value={e} className="capitalize">
-                        {e}
+                    {ESTADOS_INSTANCIA.map((e) => (
+                      <option key={e} value={e}>
+                        {ESTADO_LABEL[e]}
                       </option>
                     ))}
                   </select>
                 </div>
-              )}
+                <div>
+                  <label className={labelCls}>Posición en carrusel</label>
+                  <input
+                    type="number"
+                    min={0}
+                    value={form.posicion_carrusel}
+                    onChange={(e) =>
+                      setForm((p) => ({
+                        ...p,
+                        posicion_carrusel: e.target.value,
+                      }))
+                    }
+                    className={inputCls}
+                  />
+                </div>
+                <div className="col-span-2">
+                  <label className={labelCls}>Portaherramientas</label>
+                  <input
+                    type="text"
+                    value={form.portaherramienta_real}
+                    onChange={(e) =>
+                      setForm((p) => ({
+                        ...p,
+                        portaherramienta_real: e.target.value,
+                      }))
+                    }
+                    placeholder="Ej: BT40 ER32"
+                    className={inputCls}
+                  />
+                </div>
+                <div className="col-span-2">
+                  <label className={labelCls}>Notas</label>
+                  <input
+                    type="text"
+                    value={form.notas}
+                    onChange={(e) =>
+                      setForm((p) => ({ ...p, notas: e.target.value }))
+                    }
+                    placeholder="Opcional"
+                    className={inputCls}
+                  />
+                </div>
+              </div>
             </div>
 
             {errorModal && (
-              <div className="mx-6 mb-4 rounded-lg border border-red-500/20 bg-red-500/10 px-4 py-2 text-sm text-red-400">
+              <div className="mx-6 mb-4 rounded-lg border border-accent-red/20 bg-accent-red/10 px-4 py-2 text-sm text-accent-red">
                 {errorModal}
               </div>
             )}
 
             <div className="flex gap-3 border-t border-border px-6 py-4">
               <button
-                onClick={modal === "crear" ? guardarCrear : guardarEditar}
+                onClick={guardarEditar}
                 disabled={guardando}
                 className="flex-1 rounded-xl bg-accent-blue py-2.5 text-sm font-semibold text-white transition hover:bg-accent-blue/90 disabled:opacity-50"
               >
-                {guardando
-                  ? "Guardando..."
-                  : modal === "crear"
-                    ? "Crear herramienta"
-                    : "Guardar cambios"}
+                {guardando ? "Guardando..." : "Guardar cambios"}
               </button>
               <button
                 onClick={() => setModal(null)}
@@ -590,30 +502,34 @@ export function HerramientasPage() {
         </div>
       )}
 
-      {/* ── MODAL DESACTIVAR ── */}
-      {modal === "desactivar" && seleccionada && (
+      {/* ── MODAL RETIRAR ── */}
+      {modal === "retirar" && seleccionada && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
           <div className="w-full max-w-sm rounded-2xl border border-border bg-bg-surface p-6 shadow-2xl">
-            <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-red-500/10">
-              <PowerOff className="h-5 w-5 text-red-400" />
+            <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-accent-red/10">
+              <Trash2 className="h-5 w-5 text-accent-red" />
             </div>
             <h2 className="font-semibold text-text-primary">
-              ¿Desactivar herramienta?
+              ¿Retirar esta herramienta?
             </h2>
             <p className="mt-2 text-sm text-text-muted">
               <span className="font-medium text-text-primary">
                 {seleccionada.nombre}
               </span>{" "}
-              quedará inactiva. El historial de jobs se conserva. Puedes volver
-              a activarla editando su estado.
+              saldrá del inventario y dejará de contar para el mínimo de
+              herramientas. La definición se conserva en tu librería, así que
+              puedes volver a registrar una pieza igual cuando la compres.
             </p>
+            {errorModal && (
+              <p className="mt-3 text-sm text-accent-red">{errorModal}</p>
+            )}
             <div className="mt-6 flex gap-3">
               <button
-                onClick={confirmarDesactivar}
+                onClick={confirmarRetirar}
                 disabled={guardando}
-                className="flex-1 rounded-xl bg-red-500 py-2.5 text-sm font-semibold text-white transition hover:bg-red-600 disabled:opacity-50"
+                className="flex-1 rounded-xl bg-accent-red py-2.5 text-sm font-semibold text-white transition hover:bg-accent-red/90 disabled:opacity-50"
               >
-                {guardando ? "Desactivando..." : "Sí, desactivar"}
+                {guardando ? "Retirando..." : "Sí, retirar"}
               </button>
               <button
                 onClick={() => setModal(null)}
