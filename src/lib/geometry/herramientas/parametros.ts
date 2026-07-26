@@ -43,6 +43,8 @@ export interface ParametrosResueltos {
   Lt: number;
   /** Diámetro del mango (mm). */
   dMango: number;
+  /** Diámetro del agujero de árbol (mm) — fresas de acoplamiento. */
+  agujero: number;
   /** Número de filos / labios / canales. */
   filos: number;
   /** Radio de esquina (mm) — solo fresa_radio. */
@@ -120,11 +122,62 @@ export function tamanoInsertoDesdeDesignacion(
 
 // ── Defaults por familia ────────────────────────────────────────────────────
 
+// ── Fresas planeadoras de plaquitas (tipo BAP400R / CoroMill 245) ───────────
+
+/**
+ * Altura del cuerpo de una fresa planeadora. NO es proporcional al diámetro:
+ * en el catálogo real la altura se mantiene casi constante mientras el Ø crece,
+ * así que una Ø40 es un tejo achaparrado y una Ø125 un disco ancho y plano.
+ *
+ * Referencias medidas (Sandvik CoroMill 245, misma familia constructiva):
+ *   R245-050Q22 → Ø50  · H 40 mm   (relación 1.25)
+ *   R245-080Q27 → Ø80  · H 50 mm   (relación 1.6)
+ *   RA245-102R38 → Ø102 · H 50 mm  (relación 2.0)
+ * El Ø se dobla y la altura solo pasa de 40 a 50: función MUY tendida.
+ */
+export function alturaCuerpoPlaneadora(diametro: number): number {
+  return acotar(30 + 0.16 * diametro, 32, 63);
+}
+
+/**
+ * Diámetro del agujero de árbol (bore). Un cabezal de planear se monta sobre
+ * un árbol FMB: el cuerpo es un disco CON AGUJERO, no un cilindro macizo.
+ * Tabla tomada de las referencias comerciales BAP400R D-d-nT:
+ *   50-22 · 63-22 · 80-27 · 100-32 · 125-40 · 160-40
+ */
+export function agujeroArbolPlaneadora(diametro: number): number {
+  if (diametro <= 36) return 16;
+  if (diametro <= 63) return 22; // FMB22
+  if (diametro <= 90) return 27; // FMB27
+  if (diametro <= 110) return 32; // FMB32
+  return 40; // FMB40
+}
+
+/**
+ * Número de plaquitas por defecto. NUNCA 1: no existe comercialmente una
+ * planeadora monodiente. Configuraciones reales: Ø40→4, Ø50→4/5, Ø63→4/5,
+ * Ø80→5/6, Ø100→6/8, Ø125→6/8.
+ */
+export function insertosPorDefecto(diametro: number): number {
+  return diametro <= 63 ? 4 : 6;
+}
+
+/** Familias que cortan con plaquita intercambiable, no con filo integral. */
+export function esIndexable(familia: string): boolean {
+  return (
+    familia === "fresa_planeadora" ||
+    familia === "barra_mandrinar" ||
+    familia === "cabezal_mandrinado"
+  );
+}
+
 /** Longitud de filo por defecto, en múltiplos de diámetro. */
 function factorFilo(familia: string): number {
   switch (familia) {
     case "broca":
-      return 5;
+      // DIN 338 serie normal (jobber): Ø8.5 → 75 mm de canal (8.8·D),
+      // Ø8.75 → 81 mm. Con 5·D la broca salía notablemente achaparrada.
+      return 8.5;
     case "escariador":
       return 3;
     case "macho_roscar":
@@ -198,13 +251,30 @@ export function resolverParametros(
     D * 25,
   );
 
-  // La total tiene que superar al filo: si no, la herramienta no tendría mango.
+  // Longitud total. En una fresa planeadora NO es "filo + mango": el cuerpo se
+  // monta sobre un árbol y su altura apenas crece con el Ø (ver
+  // alturaCuerpoPlaneadora). Aplicar aquí la regla de las fresas de mango daba
+  // un cuerpo de 126 mm para una Ø63 — tres veces lo real.
   const LtPedida = num(p.largo_total_mm);
-  const LtMinima = Lc + Math.max(D * 1.5, 12);
-  const Lt = LtPedida && LtPedida > Lc * 1.05 ? LtPedida : LtMinima;
+  const esPlaneadora = familia === "fresa_planeadora";
+  const LtPorDefecto = esPlaneadora
+    ? alturaCuerpoPlaneadora(D)
+    : familia === "broca_centros"
+      ? D * 6.5 // DIN 333: d2 = 8 mm → L = 50 mm
+      : familia === "broca"
+        ? Lc + Math.max(D * 5, 25) // DIN 338: L − l ≈ 5·D (Ø8.75 → 81/125)
+        : Lc + Math.max(D * 1.5, 12);
+  const Lt = esPlaneadora
+    ? (LtPedida ?? LtPorDefecto)
+    : LtPedida && LtPedida > Lc * 1.05
+      ? LtPedida
+      : LtPorDefecto;
 
   // Mangos normalizados: por debajo de Ø6 el mango es mayor que el corte.
   const dMango = acotar(Math.max(D, Math.min(6, D * 2)), 0.5, 60);
+
+  // Agujero de árbol — solo tiene sentido en las fresas de acoplamiento.
+  const agujero = agujeroArbolPlaneadora(D);
 
   const filos = acotar(
     Math.round(num(p.numero_filos) ?? filosPorDefecto(familia)),
@@ -224,9 +294,17 @@ export function resolverParametros(
     179,
   );
 
+  // Nº de plaquitas. Antes de caer en el valor por defecto se acepta
+  // `numero_filos`: muchos catálogos guardan ahí las plaquitas de una
+  // herramienta indexable (BAP400R 80-27-6T se lista como "6 flutes"). Es una
+  // regla de interpretación del DATO, no un parche del render.
   const insertos = acotar(
-    Math.round(num(p.numero_insertos) ?? Math.round(D / 12) + 1),
-    2,
+    Math.round(
+      num(p.numero_insertos) ??
+        (esIndexable(familia) ? num(p.numero_filos) : null) ??
+        insertosPorDefecto(D),
+    ),
+    2, // nunca 1: no existe una planeadora monodiente
     16,
   );
 
@@ -257,6 +335,7 @@ export function resolverParametros(
     Lc,
     Lt,
     dMango,
+    agujero,
     filos,
     radioEsquina,
     angulo,

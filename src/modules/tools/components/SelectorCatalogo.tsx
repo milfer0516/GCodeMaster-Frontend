@@ -10,7 +10,9 @@ import { useEffect, useMemo, useState } from "react";
 import { Search } from "lucide-react";
 import {
   getCatalogo,
+  getDefinicion,
   familiaLabel,
+  type DefinicionDetalle,
   type DefinicionResumen,
   type FiltrosCatalogo,
 } from "../../../services/toolingService";
@@ -49,6 +51,35 @@ export function SelectorCatalogo({
 
   const [enfocada, setEnfocada] = useState<DefinicionResumen | null>(null);
 
+  // El LISTADO del catálogo no trae toda la geometría (longitudes, ángulos,
+  // nº de plaquitas): sin el detalle, una planeadora se previsualizaría con el
+  // número de plaquitas por defecto en vez del suyo. Se pide el detalle de la
+  // ficha enfocada y se cachea, para no repetir la petición al recorrer la lista.
+  const [detalles, setDetalles] = useState<Map<number, DefinicionDetalle>>(
+    new Map(),
+  );
+
+  useEffect(() => {
+    if (!enfocada) return;
+    const id = enfocada.id_herramienta_global;
+    if (detalles.has(id)) return;
+    let cancelado = false;
+    const timer = setTimeout(() => {
+      getDefinicion(id)
+        .then((det) => {
+          if (cancelado) return;
+          setDetalles((prev) => new Map(prev).set(id, det));
+        })
+        .catch(() => {
+          /* el resumen ya alcanza para elegir; el detalle solo afina el render */
+        });
+    }, 180);
+    return () => {
+      cancelado = true;
+      clearTimeout(timer);
+    };
+  }, [enfocada, detalles]);
+
   useEffect(() => {
     setCargando(true);
     const timer = setTimeout(() => {
@@ -81,50 +112,50 @@ export function SelectorCatalogo({
 
   const panel = (
     <div className="flex h-full min-h-0 flex-col gap-3">
-      <div className="space-y-2">
-        <div className="relative">
+      {/* Filtros en UNA fila compacta: el buscador se queda con el espacio
+          sobrante y los Ø ocupan lo que ocupa un número de 4 cifras. */}
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="relative min-w-[180px] flex-1">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-muted" />
           <input
             autoFocus
             type="text"
             value={q}
             onChange={(e) => setQ(e.target.value)}
-            placeholder="Buscar por nombre... (ej: fresa plana, broca)"
+            placeholder="Buscar... (ej: fresa plana, broca)"
             className={`${inputCls} pl-9`}
           />
         </div>
-        <div className="grid grid-cols-3 gap-2">
-          <select
-            value={familia}
-            onChange={(e) => setFamilia(e.target.value)}
-            className={inputCls}
-          >
-            <option value="">Todas las familias</option>
-            {familias.map((f) => (
-              <option key={f} value={f}>
-                {familiaLabel(f)}
-              </option>
-            ))}
-          </select>
-          <input
-            type="number"
-            min={0}
-            step={0.1}
-            value={dMin}
-            onChange={(e) => setDMin(e.target.value)}
-            placeholder="Ø mín"
-            className={inputCls}
-          />
-          <input
-            type="number"
-            min={0}
-            step={0.1}
-            value={dMax}
-            onChange={(e) => setDMax(e.target.value)}
-            placeholder="Ø máx"
-            className={inputCls}
-          />
-        </div>
+        <select
+          value={familia}
+          onChange={(e) => setFamilia(e.target.value)}
+          className={`${inputCls} w-auto`}
+        >
+          <option value="">Todas las familias</option>
+          {familias.map((f) => (
+            <option key={f} value={f}>
+              {familiaLabel(f)}
+            </option>
+          ))}
+        </select>
+        <input
+          type="number"
+          min={0}
+          step={0.1}
+          value={dMin}
+          onChange={(e) => setDMin(e.target.value)}
+          placeholder="Ø mín"
+          className={`${inputCls} w-[5.5rem]`}
+        />
+        <input
+          type="number"
+          min={0}
+          step={0.1}
+          value={dMax}
+          onChange={(e) => setDMax(e.target.value)}
+          placeholder="Ø máx"
+          className={`${inputCls} w-[5.5rem]`}
+        />
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto pr-1">
@@ -203,7 +234,9 @@ export function SelectorCatalogo({
     // Cada definición del catálogo es otra herramienta (una Ø6 y una Ø63 son
     // de la misma familia), así que el encuadre se rehace por id, no por familia.
     <HerramientaPreview3D
-      valores={desdeDefinicion(enfocada)}
+      valores={desdeDefinicion(
+        detalles.get(enfocada.id_herramienta_global) ?? enfocada,
+      )}
       claveEncuadre={enfocada.id_herramienta_global}
     />
   ) : (

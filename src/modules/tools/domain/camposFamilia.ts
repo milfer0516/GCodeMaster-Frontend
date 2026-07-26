@@ -28,10 +28,19 @@ export interface OpcionCampo {
   etiqueta: string;
 }
 
+/**
+ * Anchura natural del campo en el formulario. Un diámetro son 4 caracteres:
+ * estirarlo de lado a lado de un panel de 24" no lo hace más legible, lo hace
+ * más difícil de escanear. "corto" = 3 por fila, "medio" = 2, "largo" = 1 con
+ * ancho máximo legible.
+ */
+export type AnchoCampo = "corto" | "medio" | "largo";
+
 export interface DefinicionCampo {
   clave: ClaveCampo;
   etiqueta: string;
   tipo: "numero" | "texto" | "opciones";
+  ancho?: AnchoCampo;
   /** Opciones cerradas (ángulos normalizados). */
   opciones?: OpcionCampo[];
   requerido?: boolean;
@@ -82,6 +91,7 @@ const BASE: Record<ClaveCampo, DefinicionCampo> = {
   diametro_mm: {
     clave: "diametro_mm",
     etiqueta: "Diámetro (mm)",
+    ancho: "corto",
     tipo: "numero",
     requerido: true,
     paso: 0.1,
@@ -90,6 +100,7 @@ const BASE: Record<ClaveCampo, DefinicionCampo> = {
   largo_filo_mm: {
     clave: "largo_filo_mm",
     etiqueta: "Longitud de filo (mm)",
+    ancho: "corto",
     tipo: "numero",
     paso: 0.5,
     min: 0.1,
@@ -98,6 +109,7 @@ const BASE: Record<ClaveCampo, DefinicionCampo> = {
   largo_total_mm: {
     clave: "largo_total_mm",
     etiqueta: "Longitud total (mm)",
+    ancho: "corto",
     tipo: "numero",
     paso: 0.5,
     min: 0.1,
@@ -105,6 +117,7 @@ const BASE: Record<ClaveCampo, DefinicionCampo> = {
   numero_filos: {
     clave: "numero_filos",
     etiqueta: "Número de filos",
+    ancho: "corto",
     tipo: "numero",
     paso: 1,
     min: 1,
@@ -112,6 +125,7 @@ const BASE: Record<ClaveCampo, DefinicionCampo> = {
   radio_esquina_mm: {
     clave: "radio_esquina_mm",
     etiqueta: "Radio de esquina (mm)",
+    ancho: "corto",
     tipo: "numero",
     paso: 0.1,
     min: 0.05,
@@ -119,11 +133,13 @@ const BASE: Record<ClaveCampo, DefinicionCampo> = {
   angulo_grados: {
     clave: "angulo_grados",
     etiqueta: "Ángulo (°)",
+    ancho: "medio",
     tipo: "opciones",
   },
   numero_insertos: {
     clave: "numero_insertos",
     etiqueta: "Número de plaquitas",
+    ancho: "corto",
     tipo: "numero",
     paso: 1,
     min: 1,
@@ -131,6 +147,7 @@ const BASE: Record<ClaveCampo, DefinicionCampo> = {
   designacion_inserto: {
     clave: "designacion_inserto",
     etiqueta: "Designación de plaquita",
+    ancho: "medio",
     tipo: "texto",
     marcador: "Ej: APKT1604PDR",
     ayuda: "El tamaño se deduce de la designación ISO.",
@@ -138,6 +155,7 @@ const BASE: Record<ClaveCampo, DefinicionCampo> = {
   designacion_rosca: {
     clave: "designacion_rosca",
     etiqueta: "Designación de rosca",
+    ancho: "medio",
     tipo: "texto",
     requerido: true,
     marcador: "Ej: M10x1.5",
@@ -145,6 +163,7 @@ const BASE: Record<ClaveCampo, DefinicionCampo> = {
   paso_rosca_mm: {
     clave: "paso_rosca_mm",
     etiqueta: "Paso (mm)",
+    ancho: "corto",
     tipo: "numero",
     paso: 0.05,
     min: 0.1,

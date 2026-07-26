@@ -204,8 +204,12 @@ export function aDefinicionPersonalizada(
     radio_esquina_mm: incluir("radio_esquina_mm", n(v.radio_esquina_mm)),
     angulo_grados: incluir("angulo_grados", n(v.angulo_grados)),
     paso_rosca_mm: incluir("paso_rosca_mm", n(v.paso_rosca_mm)),
+    numero_insertos: incluir("numero_insertos", n(v.numero_insertos)),
     designacion_rosca: campoAplica(v.familia, "designacion_rosca")
       ? v.designacion_rosca || undefined
+      : undefined,
+    designacion_inserto: campoAplica(v.familia, "designacion_inserto")
+      ? v.designacion_inserto || undefined
       : undefined,
     recubrimiento: v.recubrimiento || undefined,
     norma: v.norma || undefined,

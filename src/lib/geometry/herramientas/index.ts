@@ -54,6 +54,9 @@ export const CONSTRUCTORES: Record<string, ConstructorHerramienta> = {
 
 export const FAMILIAS_CON_GEOMETRIA = Object.keys(CONSTRUCTORES);
 
+/** Familias de ACOPLAMIENTO: no se sujetan con pinza, traen su propio amarre. */
+const SIN_PINZA = new Set(["fresa_planeadora", "cabezal_mandrinado"]);
+
 export function tieneGeometria(familia?: string | null): boolean {
   return !!familia && familia in CONSTRUCTORES;
 }
@@ -89,8 +92,18 @@ export function construirHerramienta(
 
   // El portaherramientas hace visible la longitud útil MEDIDA: una Ø12 con
   // 8 mm fuera del cono se ve achaparrada, y ese es todo el punto del preview.
+  //
+  // Solo se dibuja en herramientas DE MANGO. Las de acoplamiento traen su
+  // propio amarre en el constructor (la planeadora va sobre árbol FMB, el
+  // cabezal de mandrinado lleva vástago) y encajarles una pinza ER encima
+  // sería inventar una herramienta que no existe.
   const r = resolverParametros(p);
-  if (opciones.conPortaherramientas !== false && r.tieneLongitudUtil) {
+  const esDeMango = !SIN_PINZA.has(familia);
+  if (
+    opciones.conPortaherramientas !== false &&
+    r.tieneLongitudUtil &&
+    esDeMango
+  ) {
     grupo.add(portaherramientas(materiales, r.longitudExpuesta, r.dMango / 2));
   }
 

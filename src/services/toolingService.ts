@@ -105,6 +105,14 @@ export interface DefinicionResumen {
   material: string;
   recubrimiento: string | null;
   serie: string | null;
+  /**
+   * Datos de plaquita. El listado del catálogo puede no enviarlos (el detalle
+   * sí), pero se declaran opcionales para que NO se pierdan cuando vienen: sin
+   * ellos una fresa planeadora se previsualiza con el número de plaquitas por
+   * defecto en vez de con el suyo. Ver getDefinicion() para el dato completo.
+   */
+  numero_insertos?: number | null;
+  designacion_inserto?: string | null;
 }
 
 export interface DefinicionDetalle extends DefinicionResumen {
@@ -205,6 +213,16 @@ export interface DefinicionPersonalizadaPayload {
   tipo_portaherramienta?: string;
   designacion_rosca?: string;
   paso_rosca_mm?: number;
+  /**
+   * Plaquitas — OBLIGATORIO que viajen para las familias indexables
+   * (planeadora, barra y cabezal de mandrinar). Faltaban en este payload, así
+   * que al crear una planeadora personalizada el número y la designación de
+   * plaquita se descartaban en silencio: la definición se guardaba sin ellos y
+   * al reabrirla el render caía en los valores por defecto. Era el origen de
+   * "el número de plaquitas no se respeta".
+   */
+  numero_insertos?: number;
+  designacion_inserto?: string;
   descripcion?: string;
   alias?: string;
   notas?: string;

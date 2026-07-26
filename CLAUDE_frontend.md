@@ -123,6 +123,15 @@ src/components/layout/VisorConPanel.tsx   ← LAYER 3 · layout
 - `src/modules/tools/domain/camposFamilia.ts` — dominio PURO: qué campos pide
   cada familia. Una broca no muestra radio de esquina; un macho muestra paso.
 - `costo_compra` va en la INSTANCIA física (Tier 3), no en la definición.
+- **Plaquitas — flujo de datos (no parchear en el render):** `numero_insertos` y
+  `designacion_inserto` viven en `DefinicionDetalle` y en `LibreriaEntrada`, pero
+  FALTABAN en `DefinicionPersonalizadaPayload` (se descartaban al crear) y en
+  `DefinicionResumen` (el listado no los trae, así que el preview del catálogo
+  caía en los valores por defecto). Ambos corregidos; `SelectorCatalogo` pide
+  además el DETALLE de la ficha enfocada y lo cachea.
+- Cotas de taller verificadas contra catálogo real (ver comentarios en
+  `parametros.ts`): altura de planeadora, agujero de árbol FMB, DIN 338 (brocas),
+  DIN 333 (brocas de centros).
 - Inventario agrupado por familia, plegable, con búsqueda en vivo insensible a
   tildes y a Ø.
 - NO hay parámetros de corte (Vc, fz, RPM, avance) en ningún formulario de

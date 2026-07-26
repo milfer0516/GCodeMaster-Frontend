@@ -24,10 +24,12 @@ export function construirBrocaCentros(
   const g = new THREE.Group();
   g.name = "broca_centros";
 
-  // Piloto: Ø ≈ 0.3·D, con punta de 118° y longitud ≈ 3·d (DIN 333).
-  const rPiloto = Math.max(r.R * 0.3, 0.25);
+  // Piloto DIN 333 forma A. Proporciones de la tabla real, no inventadas:
+  // d1/d2 ≈ 0.4 (p. ej. d1 3.15 con d2 8.00) y longitud de piloto ≈ 1.25·d1.
+  // El Ø declarado en el catálogo es el del CUERPO (d2).
+  const rPiloto = Math.max(r.R * 0.4, 0.25);
   const hPuntaPiloto = rPiloto / Math.tan(grados(59));
-  const lPiloto = rPiloto * 6;
+  const lPiloto = rPiloto * 2.5; // = 1.25 · d1
 
   // Avellanado: el ángulo declarado es el INCLUIDO (60° forma A).
   const semiAvellanado = grados(r.angulo / 2);

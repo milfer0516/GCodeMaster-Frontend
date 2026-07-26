@@ -24,7 +24,11 @@ import {
   ESTADOS_INSTANCIA,
   ESTADO_LABEL,
 } from "../../../services/toolingService";
-import { camposDeFamilia, type DefinicionCampo } from "../domain/camposFamilia";
+import {
+  camposDeFamilia,
+  type AnchoCampo,
+  type DefinicionCampo,
+} from "../domain/camposFamilia";
 import type { ValoresHerramienta } from "../domain/valoresHerramienta";
 
 export type ModoFormulario = "crear" | "editar" | "ver";
@@ -46,6 +50,21 @@ const inputCls =
   "w-full rounded-lg border border-border bg-bg-primary px-3 py-2 text-sm text-text-primary outline-none transition focus:border-accent-blue disabled:cursor-default disabled:opacity-70";
 const labelCls = "mb-1 block text-xs font-medium text-text-muted";
 const errorCls = "border-accent-red focus:border-accent-red";
+
+/**
+ * Rejilla de 6 columnas. Los campos ocupan su anchura NATURAL en vez de
+ * estirarse de lado a lado: un Ø son 4 caracteres y un nombre no se lee mejor
+ * por medir 600 px. En móvil la rejilla cae a 2 columnas.
+ */
+const REJILLA = "grid grid-cols-2 gap-x-3 gap-y-3 sm:grid-cols-6";
+
+const TRAMO: Record<AnchoCampo, string> = {
+  corto: "col-span-1 sm:col-span-2", // 3 por fila
+  medio: "col-span-2 sm:col-span-3", // 2 por fila
+  largo: "col-span-2 sm:col-span-6 max-w-md", // 1 por fila, tope legible
+};
+
+const tramo = (ancho: AnchoCampo = "corto") => TRAMO[ancho];
 
 function Seccion({
   titulo,
@@ -105,7 +124,7 @@ export function HerramientaForm({
     };
 
     return (
-      <div key={campo.clave}>
+      <div key={campo.clave} className={tramo(campo.ancho)}>
         <label className={labelCls}>
           {campo.etiqueta}
           {campo.requerido && !defBloqueada && " *"}
@@ -153,8 +172,8 @@ export function HerramientaForm({
             : "Describe la herramienta una sola vez: quedará en la librería de tu empresa."
         }
       >
-        <div className="grid gap-3 sm:grid-cols-2">
-          <div>
+        <div className={REJILLA}>
+          <div className={tramo("medio")}>
             <label className={labelCls}>Familia {!defBloqueada && "*"}</label>
             {defBloqueada ? (
               <input
@@ -178,7 +197,7 @@ export function HerramientaForm({
             )}
           </div>
 
-          <div>
+          <div className={tramo("medio")}>
             <label className={labelCls}>Material {!defBloqueada && "*"}</label>
             <select
               className={clsDe("material")}
@@ -195,7 +214,7 @@ export function HerramientaForm({
             </select>
           </div>
 
-          <div className="sm:col-span-2">
+          <div className={tramo("largo")}>
             <label className={labelCls}>Nombre {!defBloqueada && "*"}</label>
             <input
               className={clsDe("nombre")}
@@ -208,7 +227,7 @@ export function HerramientaForm({
 
           {camposDeFamilia(valores.familia).map(renderCampoTecnico)}
 
-          <div>
+          <div className={tramo("medio")}>
             <label className={labelCls}>Recubrimiento</label>
             <input
               className={inputCls}
@@ -243,7 +262,7 @@ export function HerramientaForm({
               </p>
             )}
             <input
-              className={clsDe("longitud_util_real_mm")}
+              className={`${clsDe("longitud_util_real_mm")} max-w-[11rem]`}
               disabled={soloLectura}
               type="number"
               min={0.1}
@@ -256,8 +275,8 @@ export function HerramientaForm({
             />
           </div>
 
-          <div className="grid gap-3 sm:grid-cols-2">
-            <div>
+          <div className={REJILLA}>
+            <div className={tramo("medio")}>
               <label className={labelCls}>Código interno</label>
               <input
                 className={inputCls}
@@ -267,8 +286,8 @@ export function HerramientaForm({
                 onChange={(e) => set({ codigo_interno: e.target.value })}
               />
             </div>
-            <div>
-              <label className={labelCls}>Posición en carrusel</label>
+            <div className={tramo("corto")}>
+              <label className={labelCls}>Carrusel</label>
               <input
                 className={inputCls}
                 disabled={soloLectura}
@@ -279,7 +298,7 @@ export function HerramientaForm({
                 onChange={(e) => set({ posicion_carrusel: e.target.value })}
               />
             </div>
-            <div>
+            <div className={tramo("medio")}>
               <label className={labelCls}>Portaherramientas</label>
               <input
                 className={inputCls}
@@ -289,7 +308,7 @@ export function HerramientaForm({
                 onChange={(e) => set({ portaherramienta_real: e.target.value })}
               />
             </div>
-            <div>
+            <div className={tramo("corto")}>
               <label className={labelCls}>Costo de compra</label>
               <input
                 className={clsDe("costo_compra")}
@@ -310,7 +329,7 @@ export function HerramientaForm({
             </div>
 
             {modo !== "crear" && (
-              <div>
+              <div className={tramo("medio")}>
                 <label className={labelCls}>Estado</label>
                 <select
                   className={inputCls}
@@ -327,7 +346,7 @@ export function HerramientaForm({
               </div>
             )}
 
-            <div className="sm:col-span-2">
+            <div className={tramo("largo")}>
               <label className={labelCls}>Notas</label>
               <input
                 className={inputCls}
