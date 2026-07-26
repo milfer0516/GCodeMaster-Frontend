@@ -52,7 +52,7 @@ export function construirFresaChaflan(
     // perpendicular a la generatriz, y a ras de y = 0 asomaría por debajo.
     const curva = new CurvaHelicoidal(
       rPunta * 0.7,
-      r.R * 0.94,
+      r.R - rRanura,
       rRanura,
       hCono,
       0.08,

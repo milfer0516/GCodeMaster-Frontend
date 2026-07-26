@@ -47,6 +47,22 @@ export function revolucion(
   return new THREE.LatheGeometry(puntos, segmentos);
 }
 
+/**
+ * Revolución PARCIAL: solo un sector angular. Sirve para marcar una ranura que
+ * debe abrazar una superficie curva (la salida de viruta sobre la bola de una
+ * fresa esférica): un tubo recto no puede seguir una esfera sin salirse de
+ * ella o quedar enterrado, un sector del mismo perfil sí.
+ */
+export function revolucionParcial(
+  perfil: Array<[number, number]>,
+  segmentos: number,
+  faseInicio: number,
+  arco: number,
+): THREE.BufferGeometry {
+  const puntos = perfil.map(([r, y]) => new THREE.Vector2(Math.max(r, 0), y));
+  return new THREE.LatheGeometry(puntos, segmentos, faseInicio, arco);
+}
+
 /** Arco de circunferencia como lista de puntos de perfil (para `revolucion`). */
 export function arcoPerfil(
   centroR: number,
@@ -123,6 +139,41 @@ export function prisma(
   return geo;
 }
 
+/**
+ * Plaquita RÓMBICA de 80° (tipo C — CCMT/CCGT), tumbada en el plano XZ con su
+ * punta de corte hacia +X. Es la plaquita de las barras de mandrinar SCLCR,
+ * las más comunes del taller; una triangular (T) sería otra referencia.
+ * `anguloPunta` en radianes: 80° para C, 55° para D, 35° para V.
+ */
+export function plaquitaRombica(
+  lado: number,
+  espesor: number,
+  posicion: [number, number, number],
+  anguloPunta = (80 * Math.PI) / 180,
+  giroY = 0,
+): THREE.BufferGeometry {
+  const semi = anguloPunta / 2;
+  // Rombo con la punta afilada en +X y la diagonal larga sobre X.
+  const dLarga = lado * Math.cos(semi) * 2;
+  const dCorta = lado * Math.sin(semi) * 2;
+  const forma = new THREE.Shape();
+  forma.moveTo(dLarga / 2, 0);
+  forma.lineTo(0, dCorta / 2);
+  forma.lineTo(-dLarga / 2, 0);
+  forma.lineTo(0, -dCorta / 2);
+  forma.closePath();
+
+  const geo = new THREE.ExtrudeGeometry(forma, {
+    depth: espesor,
+    bevelEnabled: false,
+  });
+  geo.translate(0, 0, -espesor / 2);
+  geo.rotateX(-Math.PI / 2); // la plaquita queda tumbada, espesor sobre Y
+  if (giroY) geo.rotateY(giroY);
+  geo.translate(posicion[0], posicion[1], posicion[2]);
+  return geo;
+}
+
 /** Prisma triangular (inserto de barra de mandrinar / plaquita triangular). */
 export function prismaTriangular(
   lado: number,
@@ -146,6 +197,41 @@ export function prismaTriangular(
   });
   geo.translate(0, 0, -espesor / 2);
   geo.rotateX(-Math.PI / 2); // plano de la plaquita perpendicular al eje
+  if (giroY) geo.rotateY(giroY);
+  geo.translate(posicion[0], posicion[1], posicion[2]);
+  return geo;
+}
+
+/**
+ * Guía en COLA DE MILANO: prisma de sección trapezoidal que corre a lo largo
+ * de X. Es la seña de identidad de una corredera de cabezal de mandrinado —
+ * una caja rectangular no se distingue de un tope cualquiera.
+ */
+export function colaMilano(
+  anchoSuperior: number,
+  anchoInferior: number,
+  alto: number,
+  largo: number,
+  posicion: [number, number, number],
+  giroY = 0,
+): THREE.BufferGeometry {
+  const aS = Math.max(anchoSuperior, 1e-3) / 2;
+  const aI = Math.max(anchoInferior, 1e-3) / 2;
+  const h = Math.max(alto, 1e-3);
+
+  const forma = new THREE.Shape();
+  forma.moveTo(-aI, 0);
+  forma.lineTo(aI, 0);
+  forma.lineTo(aS, h);
+  forma.lineTo(-aS, h);
+  forma.closePath();
+
+  const geo = new THREE.ExtrudeGeometry(forma, {
+    depth: Math.max(largo, 1e-3),
+    bevelEnabled: false,
+  });
+  geo.translate(0, -h / 2, -Math.max(largo, 1e-3) / 2);
+  geo.rotateY(Math.PI / 2); // la extrusión pasa a correr sobre X
   if (giroY) geo.rotateY(giroY);
   geo.translate(posicion[0], posicion[1], posicion[2]);
   return geo;

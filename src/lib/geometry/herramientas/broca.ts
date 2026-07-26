@@ -8,7 +8,8 @@
 // que es justo lo que el operador debe reconocer.
 // ─────────────────────────────────────────────────────────────────────────────
 import * as THREE from "three";
-import { revolucion, prisma, grados, angulosUniformes } from "../primitivas";
+import { revolucion, prisma, tubo, grados, angulosUniformes } from "../primitivas";
+import { CurvaHelicoidal, vueltasPorAnguloHelice } from "../curvas";
 import { crearMaterialesHerramienta, type MaterialesHerramienta } from "../materiales";
 import { resolverParametros, type ParametrosHerramienta } from "./parametros";
 import { cuerpoAcanalado, mangoCilindrico, malla } from "./comunes";
@@ -69,16 +70,47 @@ export function construirBroca(
   }
 
   // Cuerpo acanalado — SIEMPRE 2 canales salvo que se declare otra cosa.
+  const yFinCanales = Math.max(r.Lc, hPunta * 1.5);
   g.add(
     cuerpoAcanalado(m, {
       radio: r.R,
       yInicio: hPunta * 0.98,
-      yFin: Math.max(r.Lc, hPunta * 1.5),
+      yFin: yFinCanales,
       filos: r.filos,
       anguloHelice: HELICE_GRADOS,
       anchoRel: ANCHO_FILO,
     }),
   );
+
+  // MARGEN (listón de guía): la cinta estrecha que va a Ø nominal por el borde
+  // de cada labio y guía la broca dentro del agujero. El resto del dorso está
+  // rebajado — sin margen, una broca se lee como una fresa de 2 filos.
+  const rMargen = r.R * 0.055;
+  const vueltas = vueltasPorAnguloHelice(
+    r.D,
+    yFinCanales - hPunta,
+    HELICE_GRADOS,
+  );
+  for (const fase of angulosUniformes(r.filos, grados(20))) {
+    g.add(
+      malla(
+        tubo(
+          new CurvaHelicoidal(
+            r.R - rMargen,
+            r.R - rMargen,
+            hPunta,
+            yFinCanales,
+            vueltas,
+            fase,
+          ),
+          rMargen,
+          Math.max(28, Math.round(vueltas * 40)),
+          8,
+        ),
+        m.mango,
+      ),
+    );
+  }
 
   g.add(
     mangoCilindrico(

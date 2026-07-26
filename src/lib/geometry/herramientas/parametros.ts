@@ -263,7 +263,11 @@ export function resolverParametros(
       ? D * 6.5 // DIN 333: d2 = 8 mm → L = 50 mm
       : familia === "broca"
         ? Lc + Math.max(D * 5, 25) // DIN 338: L − l ≈ 5·D (Ø8.75 → 81/125)
-        : Lc + Math.max(D * 1.5, 12);
+        : familia === "escariador"
+          ? D * 13 // DIN 212: Ø10 → L 133 mm
+          : // Fresas de mango: DIN 6527 / referencia real Ø12 4F → 26 de filo y
+            // 83 de total. Con 1.5·D de mango salía una fresa achaparrada.
+            Lc + Math.max(D * 4, 22);
   const Lt = esPlaneadora
     ? (LtPedida ?? LtPorDefecto)
     : LtPedida && LtPedida > Lc * 1.05

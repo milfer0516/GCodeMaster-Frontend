@@ -2,16 +2,19 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // CAPA 3 · Puente entre el formulario y las capas 1 y 2.
 //
-// Toda su lógica es: valores del formulario → números (dominio puro) →
-// construirHerramienta (capa 2) → <Viewer3D> (capa 1). No hay geometría en
-// este archivo, y no hay React en la que construye la geometría.
+// valores del formulario → números (dominio puro) → construirHerramienta
+// (capa 2) → <Viewer3D> (capa 1). No hay geometría en este archivo, y no hay
+// React en la que construye la geometría.
 //
-// El render se rehace en cada tecla: los sólidos rondan los 2–6 k triángulos,
-// así que reconstruir es más barato y más simple que mutar la escena.
+// Cuando hay longitud útil medida se añade la COTA DEL VOLADIZO: el operador
+// entiende qué se le está pidiendo mirando el dibujo, no leyendo un párrafo.
 // ─────────────────────────────────────────────────────────────────────────────
 import { useMemo } from "react";
+import * as THREE from "three";
 import { Viewer3D } from "../../../lib/viewer3d/Viewer3D";
 import { construirHerramienta } from "../../../lib/geometry/herramientas";
+import { resolverParametros } from "../../../lib/geometry/herramientas/parametros";
+import { cotaVertical } from "../../../lib/geometry/anotaciones";
 import {
   aParametrosGeometria,
   type ValoresHerramienta,
@@ -22,12 +25,6 @@ interface Props {
   valores: ValoresHerramienta;
   /** Oculta la barra de cotas bajo el visor. */
   sinCotas?: boolean;
-  /**
-   * Cuándo REENCUADRAR la cámara. Por defecto la familia: mientras el operador
-   * teclea cotas la cámara no se mueve (solo se recentra). Al navegar el
-   * catálogo conviene pasar el id de la definición, porque cada ficha es otra
-   * herramienta y sí merece encuadre propio.
-   */
   claveEncuadre?: string | number;
   className?: string;
 }
@@ -39,6 +36,15 @@ const OPCIONES_VISOR = {
   direccionCamara: [0.9, 0.35, 1] as [number, number, number],
 };
 
+/** Rigidez por relación voladizo/diámetro — regla de taller. */
+function evaluarEsbeltez(ld: number): { texto: string; clase: string } {
+  if (ld <= 3)
+    return { texto: "rígida", clase: "bg-accent-green/20 text-accent-green" };
+  if (ld <= 5)
+    return { texto: "vigilar vibración", clase: "bg-accent-amber/20 text-accent-amber" };
+  return { texto: "muy esbelta", clase: "bg-accent-red/20 text-accent-red" };
+}
+
 export function HerramientaPreview3D({
   valores,
   sinCotas,
@@ -46,22 +52,44 @@ export function HerramientaPreview3D({
   className,
 }: Props) {
   const parametros = aParametrosGeometria(valores);
+  const familia = valores.familia || "fresa_plana";
 
   // Se reconstruye cuando cambia CUALQUIER cota. La clave serializa solo los
-  // números que entran a la capa 2: escribir en "notas" no rehace la geometría.
-  const clave = JSON.stringify([valores.familia, parametros]);
+  // números que entran a la capa 2: escribir en "marca" no rehace la geometría.
+  const clave = JSON.stringify([familia, parametros]);
 
-  const objeto = useMemo(
-    () => construirHerramienta(valores.familia || "fresa_plana", parametros),
+  const objeto = useMemo(() => {
+    const raiz = new THREE.Group();
+    raiz.add(construirHerramienta(familia, parametros));
+
+    // Cota del voladizo: de la punta (y = 0) a donde empieza el cono.
+    const r = resolverParametros({ ...parametros, familia });
+    if (r.tieneLongitudUtil) {
+      raiz.add(
+        cotaVertical({
+          desde: 0,
+          hasta: r.longitudExpuesta,
+          radio: Math.max(r.R * 2.4, r.R + 6),
+        }),
+      );
+    }
+    return raiz;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [clave],
-  );
+  }, [clave]);
+
+  const voladizo = Number(valores.longitud_util_real_mm);
+  const diametro = Number(valores.diametro_mm);
+  const hayVoladizo = Number.isFinite(voladizo) && voladizo > 0;
+  const ld =
+    hayVoladizo && Number.isFinite(diametro) && diametro > 0
+      ? voladizo / diametro
+      : null;
+  const esbeltez = ld !== null ? evaluarEsbeltez(ld) : null;
 
   const cotas = [
     valores.diametro_mm && `Ø${valores.diametro_mm}`,
     valores.largo_filo_mm && `filo ${valores.largo_filo_mm}`,
     valores.largo_total_mm && `total ${valores.largo_total_mm}`,
-    valores.longitud_util_real_mm && `útil ${valores.longitud_util_real_mm}`,
   ].filter(Boolean) as string[];
 
   return (
@@ -69,14 +97,31 @@ export function HerramientaPreview3D({
       <Viewer3D
         objeto={objeto}
         opciones={OPCIONES_VISOR}
-        claveEncuadre={claveEncuadre ?? valores.familia}
+        claveEncuadre={claveEncuadre ?? familia}
         className="h-full w-full"
       >
-        <div
-          className="pointer-events-none absolute left-3 top-3 rounded-lg bg-black/55 px-2.5 py-1 text-[11px] font-medium uppercase tracking-wider text-white/90 backdrop-blur-sm"
-        >
+        <div className="pointer-events-none absolute left-3 top-3 rounded-lg bg-black/55 px-2.5 py-1 text-[11px] font-medium uppercase tracking-wider text-white/90 backdrop-blur-sm">
           {valores.familia ? familiaLabel(valores.familia) : "Vista previa"}
         </div>
+
+        {/* La cota del voladizo, en números, junto a la flecha del dibujo. */}
+        {hayVoladizo && (
+          <div className="pointer-events-none absolute right-3 top-3 rounded-lg bg-black/65 px-2.5 py-1.5 text-right backdrop-blur-sm">
+            <p className="text-[10px] uppercase tracking-wider text-white/60">
+              Sobresale
+            </p>
+            <p className="text-sm font-semibold tabular-nums text-[#4ea1ff]">
+              {voladizo} mm
+            </p>
+            {ld !== null && esbeltez && (
+              <p
+                className={`mt-1 rounded px-1.5 py-0.5 text-[10px] font-medium ${esbeltez.clase}`}
+              >
+                L/D {ld.toFixed(1)} · {esbeltez.texto}
+              </p>
+            )}
+          </div>
+        )}
 
         {!sinCotas && cotas.length > 0 && (
           <div className="pointer-events-none absolute bottom-3 left-3 right-3 flex flex-wrap gap-1.5">
@@ -90,10 +135,6 @@ export function HerramientaPreview3D({
             ))}
           </div>
         )}
-
-        <div className="pointer-events-none absolute right-3 top-3 rounded-lg bg-black/40 px-2 py-1 text-[10px] text-white/60">
-          arrastra para girar
-        </div>
       </Viewer3D>
     </div>
   );

@@ -27,8 +27,10 @@ interface Props {
   onCrearNueva: () => void;
 }
 
+// Sin anchura: `w-full` en la clase compartida anulaba los `w-auto`/`w-[...]`
+// de cada uso (en el CSS compilado `.w-full` va después). Se declara aparte.
 const inputCls =
-  "w-full rounded-lg border border-border bg-bg-primary px-3 py-2 text-sm text-text-primary outline-none focus:border-accent-blue";
+  "rounded-lg border border-border bg-bg-primary px-3 py-2 text-sm text-text-primary outline-none focus:border-accent-blue";
 
 export function SelectorCatalogo({
   familias,
@@ -123,13 +125,13 @@ export function SelectorCatalogo({
             value={q}
             onChange={(e) => setQ(e.target.value)}
             placeholder="Buscar... (ej: fresa plana, broca)"
-            className={`${inputCls} pl-9`}
+            className={`${inputCls} w-full pl-9`}
           />
         </div>
         <select
           value={familia}
           onChange={(e) => setFamilia(e.target.value)}
-          className={`${inputCls} w-auto`}
+          className={`${inputCls} w-full sm:w-auto`}
         >
           <option value="">Todas las familias</option>
           {familias.map((f) => (
@@ -145,7 +147,7 @@ export function SelectorCatalogo({
           value={dMin}
           onChange={(e) => setDMin(e.target.value)}
           placeholder="Ø mín"
-          className={`${inputCls} w-[5.5rem]`}
+          className={`${inputCls} w-24`}
         />
         <input
           type="number"
@@ -154,7 +156,7 @@ export function SelectorCatalogo({
           value={dMax}
           onChange={(e) => setDMax(e.target.value)}
           placeholder="Ø máx"
-          className={`${inputCls} w-[5.5rem]`}
+          className={`${inputCls} w-24`}
         />
       </div>
 

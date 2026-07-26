@@ -65,6 +65,8 @@ interface Props {
 
 type Paso = "entrada" | "catalogo" | "ficha" | "nueva";
 
+// Textos cortos y en lenguaje de taller. La ficha técnica y el dibujo ya
+// explican lo suyo: el encabezado no lo repite.
 const TITULOS: Record<Paso, { titulo: string; sub: string }> = {
   entrada: {
     titulo: "Agregar herramienta",
@@ -72,15 +74,15 @@ const TITULOS: Record<Paso, { titulo: string; sub: string }> = {
   },
   catalogo: {
     titulo: "Seleccionar del catálogo",
-    sub: "Reconoce tu herramienta por la forma y selecciónala.",
+    sub: "Búscala por la forma, no por el nombre.",
   },
   ficha: {
-    titulo: "Mide tu herramienta física",
-    sub: "Los datos técnicos vienen del catálogo. Tú solo mides tu pieza.",
+    titulo: "Mide tu herramienta",
+    sub: "Solo falta lo que hay que ver y medir en tu pieza.",
   },
   nueva: {
     titulo: "Crear nueva herramienta",
-    sub: "Define la herramienta y compruébala en el render mientras escribes.",
+    sub: "Compruébala en el dibujo mientras la describes.",
   },
 };
 
@@ -207,7 +209,8 @@ export function AgregarHerramientaModal({
         posicion_carrusel: aNumero(valores.posicion_carrusel),
         portaherramienta_real: valores.portaherramienta_real || undefined,
         costo_compra: aNumero(valores.costo_compra),
-        notas: valores.notas || undefined,
+        marca: valores.marca || undefined,
+        referencia_fabricante: valores.referencia_fabricante || undefined,
       });
 
       onRegistrada?.(instancia);
@@ -271,8 +274,8 @@ export function AgregarHerramientaModal({
                   Seleccionar del catálogo
                 </p>
                 <p className="mt-1 text-sm text-text-muted">
-                  95 definiciones curadas con su geometría ya cargada. Solo mides
-                  la longitud útil de tu pieza.
+                  Ya traen las medidas cargadas. Tú solo mides cuánto sobresale
+                  la tuya.
                 </p>
                 <p className="mt-3 text-xs font-medium text-accent-blue">
                   Lo más rápido →
@@ -288,8 +291,8 @@ export function AgregarHerramientaModal({
                   Crear nueva herramienta
                 </p>
                 <p className="mt-1 text-sm text-text-muted">
-                  Para lo que no está en el catálogo. Te mostramos coincidencias
-                  mientras escribes, para que no la definas dos veces.
+                  Para lo que no está en el catálogo. Mientras escribes te
+                  avisamos si ya existe, para no repetirla.
                 </p>
                 <p className="mt-3 text-xs font-medium text-accent-blue">
                   Definir yo mismo →
@@ -409,6 +412,7 @@ function instanciaDe(v: ValoresHerramienta) {
     portaherramienta_real: v.portaherramienta_real,
     estado: v.estado,
     costo_compra: v.costo_compra,
-    notas: v.notas,
+    marca: v.marca,
+    referencia_fabricante: v.referencia_fabricante,
   };
 }

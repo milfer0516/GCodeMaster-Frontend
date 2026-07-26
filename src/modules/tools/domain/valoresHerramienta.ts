@@ -41,6 +41,8 @@ export interface ValoresHerramienta {
   portaherramienta_real: string;
   estado: string;
   costo_compra: string;
+  marca: string;
+  referencia_fabricante: string;
   notas: string;
 }
 
@@ -71,6 +73,8 @@ export function valoresVacios(familia = ""): ValoresHerramienta {
     portaherramienta_real: "",
     estado: "disponible",
     costo_compra: "",
+    marca: "",
+    referencia_fabricante: "",
     notas: "",
   };
 }
@@ -147,6 +151,8 @@ export function desdeInstancia(
     portaherramienta_real: s(inst.portaherramienta_real),
     estado: s(inst.estado) || "disponible",
     costo_compra: s(inst.costo_compra),
+    marca: s(inst.marca),
+    referencia_fabricante: s(inst.referencia_fabricante),
     notas: s(inst.notas),
   };
 }

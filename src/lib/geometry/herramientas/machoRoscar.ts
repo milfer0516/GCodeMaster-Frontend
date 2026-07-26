@@ -94,8 +94,8 @@ export function construirMachoRoscar(
   const rCanal = r.R * 0.26;
   for (const fase of angulosUniformes(r.filos)) {
     const curva = new CurvaHelicoidal(
-      r.R - rCanal * 0.9,
-      r.R - rCanal * 0.9,
+      r.R - rCanal * 0.97,
+      r.R - rCanal * 0.97,
       0,
       lRosca * 1.02,
       0,

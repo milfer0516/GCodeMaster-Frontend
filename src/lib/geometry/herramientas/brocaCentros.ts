@@ -56,9 +56,10 @@ export function construirBrocaCentros(
   // Canales: cortos y poco torsionados, como en una broca de centros real.
   const rCanal = rPiloto * 0.55;
   for (const fase of angulosUniformes(2)) {
+    // El canal termina a R − su propio radio: así roza el Ø nominal sin pasarse.
     const curva = new CurvaHelicoidal(
       rPiloto * 0.75,
-      r.R * 0.85,
+      r.R - rCanal,
       hPuntaPiloto * 0.6,
       yFinAvellanado * 0.98,
       0.12,

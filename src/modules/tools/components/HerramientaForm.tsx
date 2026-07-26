@@ -6,18 +6,19 @@
 //   modo="editar" → re-medida / cambio de estado de una pieza ya registrada
 //   modo="ver"    → ficha en solo lectura
 //
-// No hay tres componentes: hay uno que cambia de modo. `definicionEditable`
-// separa además las dos rutas de alta — desde el catálogo la definición es
-// intocable (viene del catálogo global), en una herramienta nueva la escribe
-// el operador. En modo "ver" TODO es solo lectura, sin excepción.
+// DOS BLOQUES, SEPARADOS A PROPÓSITO:
+//   1. Lo que YA SABE el sistema  → ficha técnica de solo lectura (catálogo).
+//      Al crear una herramienta que NO está en el catálogo, ese bloque pasa a
+//      ser editable: es el único caso en que el operador describe geometría.
+//   2. Lo que SOLO SABE EL OPERADOR → los datos de su pieza física.
 //
-// Los campos técnicos NO están escritos a mano: salen de camposDeFamilia(), así
-// que una broca no muestra radio de esquina y un macho sí muestra paso.
+// Los textos están en lenguaje de taller, no de sistema: el operador tiene que
+// saber qué poner sin leer documentación.
 //
 // Aquí no hay ni un parámetro de corte (Vc, fz, RPM, avance): esos viven en el
 // catálogo de materiales y en el motor CAM.
 // ─────────────────────────────────────────────────────────────────────────────
-import { Ruler, Wrench, Package, Info } from "lucide-react";
+import { Ruler, Wrench, Package } from "lucide-react";
 import {
   familiaLabel,
   MATERIALES_HERRAMIENTA,
@@ -30,6 +31,35 @@ import {
   type DefinicionCampo,
 } from "../domain/camposFamilia";
 import type { ValoresHerramienta } from "../domain/valoresHerramienta";
+import { FichaTecnica } from "./FichaTecnica";
+import { ListaDatos, type FilaDato } from "./ListaDatos";
+import { formatMm } from "../../../utils/format";
+
+/** Miles con separador local — un costo en crudo (1234567) no se lee. */
+const miles = (v: string): string => {
+  const n = Number(v);
+  return Number.isFinite(n) ? new Intl.NumberFormat("es-CO").format(n) : v;
+};
+
+/** Los datos de la pieza física, en el MISMO lenguaje visual que la ficha. */
+function filasPieza(v: ValoresHerramienta): FilaDato[] {
+  const voladizo = Number(v.longitud_util_real_mm);
+  return [
+    {
+      etiqueta: "Sobresale",
+      valor: Number.isFinite(voladizo) && voladizo > 0
+        ? `${formatMm(voladizo)} mm`
+        : "",
+    },
+    { etiqueta: "Código", valor: v.codigo_interno },
+    { etiqueta: "Carrusel", valor: v.posicion_carrusel },
+    { etiqueta: "Portaherramientas", valor: v.portaherramienta_real },
+    { etiqueta: "Costo", valor: v.costo_compra ? `${miles(v.costo_compra)} COP` : "" },
+    { etiqueta: "Marca", valor: v.marca },
+    { etiqueta: "Referencia", valor: v.referencia_fabricante },
+    { etiqueta: "Estado", valor: ESTADO_LABEL[v.estado] ?? v.estado },
+  ];
+}
 
 export type ModoFormulario = "crear" | "editar" | "ver";
 
@@ -40,7 +70,6 @@ interface Props {
   /** true solo cuando el operador está definiendo una herramienta nueva. */
   definicionEditable?: boolean;
   familias: string[];
-  /** Campo señalado por la validación. */
   campoConError?: keyof ValoresHerramienta | null;
   /** Ranura bajo la definición — la usa la búsqueda previa en el catálogo. */
   slotDefinicion?: React.ReactNode;
@@ -48,20 +77,17 @@ interface Props {
 
 const inputCls =
   "w-full rounded-lg border border-border bg-bg-primary px-3 py-2 text-sm text-text-primary outline-none transition focus:border-accent-blue disabled:cursor-default disabled:opacity-70";
-const labelCls = "mb-1 block text-xs font-medium text-text-muted";
+const labelCls = "mb-1 block text-xs font-medium text-text-primary";
+const ayudaCls = "mt-1 text-[11px] leading-snug text-text-muted";
 const errorCls = "border-accent-red focus:border-accent-red";
 
-/**
- * Rejilla de 6 columnas. Los campos ocupan su anchura NATURAL en vez de
- * estirarse de lado a lado: un Ø son 4 caracteres y un nombre no se lee mejor
- * por medir 600 px. En móvil la rejilla cae a 2 columnas.
- */
-const REJILLA = "grid grid-cols-2 gap-x-3 gap-y-3 sm:grid-cols-6";
+/** Rejilla de 6 columnas; cada campo ocupa su anchura natural. */
+const REJILLA = "grid grid-cols-2 gap-x-3 gap-y-3.5 sm:grid-cols-6";
 
 const TRAMO: Record<AnchoCampo, string> = {
-  corto: "col-span-1 sm:col-span-2", // 3 por fila
-  medio: "col-span-2 sm:col-span-3", // 2 por fila
-  largo: "col-span-2 sm:col-span-6 max-w-md", // 1 por fila, tope legible
+  corto: "col-span-1 sm:col-span-2",
+  medio: "col-span-2 sm:col-span-3",
+  largo: "col-span-2 sm:col-span-6 max-w-md",
 };
 
 const tramo = (ancho: AnchoCampo = "corto") => TRAMO[ancho];
@@ -70,23 +96,30 @@ function Seccion({
   titulo,
   icono,
   descripcion,
+  insignia,
   children,
 }: {
   titulo: string;
   icono: React.ReactNode;
   descripcion?: string;
+  insignia?: string;
   children: React.ReactNode;
 }) {
   return (
     <section className="rounded-xl border border-border bg-bg-surface p-4">
       <header className="mb-3">
-        <h3 className="flex items-center gap-2 text-sm font-semibold text-text-primary">
-          {icono}
-          {titulo}
-        </h3>
-        {descripcion && (
-          <p className="mt-0.5 text-xs text-text-muted">{descripcion}</p>
-        )}
+        <div className="flex items-center gap-2">
+          <h3 className="flex items-center gap-2 text-sm font-semibold text-text-primary">
+            {icono}
+            {titulo}
+          </h3>
+          {insignia && (
+            <span className="ml-auto rounded-full border border-border px-2 py-0.5 text-[10px] uppercase tracking-wider text-text-muted">
+              {insignia}
+            </span>
+          )}
+        </div>
+        {descripcion && <p className="mt-0.5 text-xs text-text-muted">{descripcion}</p>}
       </header>
       {children}
     </section>
@@ -103,10 +136,6 @@ export function HerramientaForm({
   slotDefinicion,
 }: Props) {
   const soloLectura = modo === "ver";
-  // La definición pertenece al catálogo / a la librería: solo se escribe al
-  // crear una herramienta nueva, nunca al editar una pieza física.
-  const defBloqueada = soloLectura || !definicionEditable;
-
   const set = (parcial: Partial<ValoresHerramienta>) => {
     if (soloLectura) return;
     onCambiar(parcial);
@@ -115,73 +144,52 @@ export function HerramientaForm({
   const clsDe = (campo: keyof ValoresHerramienta) =>
     `${inputCls} ${campoConError === campo ? errorCls : ""}`;
 
-  const renderCampoTecnico = (campo: DefinicionCampo) => {
-    const valor = valores[campo.clave];
-    const comun = {
-      className: clsDe(campo.clave),
-      disabled: defBloqueada,
-      value: valor,
-    };
-
-    return (
-      <div key={campo.clave} className={tramo(campo.ancho)}>
-        <label className={labelCls}>
-          {campo.etiqueta}
-          {campo.requerido && !defBloqueada && " *"}
-        </label>
-
-        {campo.tipo === "opciones" && campo.opciones ? (
-          <select
-            {...comun}
-            onChange={(e) => set({ [campo.clave]: e.target.value } as any)}
-          >
-            <option value="">—</option>
-            {campo.opciones.map((o) => (
-              <option key={o.valor} value={o.valor}>
-                {o.etiqueta}
-              </option>
-            ))}
-          </select>
-        ) : (
-          <input
-            {...comun}
-            type={campo.tipo === "numero" ? "number" : "text"}
-            step={campo.paso}
-            min={campo.min}
-            placeholder={campo.marcador}
-            onChange={(e) => set({ [campo.clave]: e.target.value } as any)}
-          />
-        )}
-
-        {campo.ayuda && !defBloqueada && (
-          <p className="mt-1 text-[11px] text-text-muted">{campo.ayuda}</p>
-        )}
-      </div>
-    );
-  };
+  const renderCampoTecnico = (campo: DefinicionCampo) => (
+    <div key={campo.clave} className={tramo(campo.ancho)}>
+      <label className={labelCls}>
+        {campo.etiqueta}
+        {campo.requerido && " *"}
+      </label>
+      {campo.tipo === "opciones" && campo.opciones ? (
+        <select
+          className={clsDe(campo.clave)}
+          value={valores[campo.clave]}
+          onChange={(e) => set({ [campo.clave]: e.target.value } as any)}
+        >
+          <option value="">—</option>
+          {campo.opciones.map((o) => (
+            <option key={o.valor} value={o.valor}>
+              {o.etiqueta}
+            </option>
+          ))}
+        </select>
+      ) : (
+        <input
+          className={clsDe(campo.clave)}
+          type={campo.tipo === "numero" ? "number" : "text"}
+          step={campo.paso}
+          min={campo.min}
+          placeholder={campo.marcador}
+          value={valores[campo.clave]}
+          onChange={(e) => set({ [campo.clave]: e.target.value } as any)}
+        />
+      )}
+      {campo.ayuda && <p className={ayudaCls}>{campo.ayuda}</p>}
+    </div>
+  );
 
   return (
     <div className="space-y-4">
-      {/* ── DEFINICIÓN ───────────────────────────────────────────────── */}
-      <Seccion
-        titulo="Definición"
-        icono={<Wrench className="h-4 w-4 text-accent-blue" />}
-        descripcion={
-          defBloqueada
-            ? "Datos técnicos de la definición. No se editan aquí."
-            : "Describe la herramienta una sola vez: quedará en la librería de tu empresa."
-        }
-      >
-        <div className={REJILLA}>
-          <div className={tramo("medio")}>
-            <label className={labelCls}>Familia {!defBloqueada && "*"}</label>
-            {defBloqueada ? (
-              <input
-                className={inputCls}
-                disabled
-                value={familiaLabel(valores.familia)}
-              />
-            ) : (
+      {/* ── 1 · LO QUE YA SABE EL SISTEMA ───────────────────────────────── */}
+      {definicionEditable ? (
+        <Seccion
+          titulo="¿Qué herramienta es?"
+          icono={<Wrench className="h-4 w-4 text-accent-blue" />}
+          descripcion="No está en el catálogo, así que la describes una vez y queda en la librería de tu empresa."
+        >
+          <div className={REJILLA}>
+            <div className={tramo("medio")}>
+              <label className={labelCls}>Familia *</label>
               <select
                 className={clsDe("familia")}
                 value={valores.familia}
@@ -194,103 +202,111 @@ export function HerramientaForm({
                   </option>
                 ))}
               </select>
-            )}
+            </div>
+
+            <div className={tramo("medio")}>
+              <label className={labelCls}>Material *</label>
+              <select
+                className={clsDe("material")}
+                value={valores.material}
+                onChange={(e) => set({ material: e.target.value })}
+              >
+                <option value="">Selecciona...</option>
+                {MATERIALES_HERRAMIENTA.map((m) => (
+                  <option key={m} value={m}>
+                    {m}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className={tramo("largo")}>
+              <label className={labelCls}>Nombre *</label>
+              <input
+                className={clsDe("nombre")}
+                value={valores.nombre}
+                placeholder="Ej: Fresa plana Ø14 3F carburo"
+                onChange={(e) => set({ nombre: e.target.value })}
+              />
+            </div>
+
+            {camposDeFamilia(valores.familia).map(renderCampoTecnico)}
+
+            <div className={tramo("medio")}>
+              <label className={labelCls}>Recubrimiento</label>
+              <input
+                className={inputCls}
+                value={valores.recubrimiento}
+                placeholder="TiAlN, TiN... (opcional)"
+                onChange={(e) => set({ recubrimiento: e.target.value })}
+              />
+            </div>
           </div>
 
-          <div className={tramo("medio")}>
-            <label className={labelCls}>Material {!defBloqueada && "*"}</label>
-            <select
-              className={clsDe("material")}
-              disabled={defBloqueada}
-              value={valores.material}
-              onChange={(e) => set({ material: e.target.value })}
-            >
-              <option value="">Selecciona...</option>
-              {MATERIALES_HERRAMIENTA.map((m) => (
-                <option key={m} value={m}>
-                  {m}
-                </option>
-              ))}
-            </select>
-          </div>
+          {slotDefinicion}
+        </Seccion>
+      ) : (
+        <FichaTecnica
+          valores={valores}
+          origen={modo === "crear" ? "catalogo" : "libreria"}
+        />
+      )}
 
-          <div className={tramo("largo")}>
-            <label className={labelCls}>Nombre {!defBloqueada && "*"}</label>
-            <input
-              className={clsDe("nombre")}
-              disabled={defBloqueada}
-              value={valores.nombre}
-              placeholder="Ej: Fresa plana Ø14 3F carburo"
-              onChange={(e) => set({ nombre: e.target.value })}
-            />
-          </div>
-
-          {camposDeFamilia(valores.familia).map(renderCampoTecnico)}
-
-          <div className={tramo("medio")}>
-            <label className={labelCls}>Recubrimiento</label>
-            <input
-              className={inputCls}
-              disabled={defBloqueada}
-              value={valores.recubrimiento}
-              placeholder="TiAlN, TiN... (opcional)"
-              onChange={(e) => set({ recubrimiento: e.target.value })}
-            />
-          </div>
-        </div>
-
-        {slotDefinicion}
-      </Seccion>
-
-      {/* ── PIEZA FÍSICA ─────────────────────────────────────────────── */}
+      {/* ── 2 · LO QUE SOLO SABE EL OPERADOR ────────────────────────────── */}
+      {soloLectura ? (
+        // En modo ver NO se pintan inputs deshabilitados: mismo lenguaje
+        // visual que la ficha del catálogo, pares etiqueta/valor.
+        <Seccion
+          titulo="Tu herramienta"
+          icono={<Package className="h-4 w-4 text-accent-blue" />}
+          insignia="Solo lectura"
+        >
+          <ListaDatos filas={filasPieza(valores)} />
+        </Seccion>
+      ) : (
       <Seccion
-        titulo="Tu herramienta física"
+        titulo="Tu herramienta"
         icono={<Package className="h-4 w-4 text-accent-blue" />}
-        descripcion="Datos de ESTA pieza concreta del taller, no de la definición."
+        descripcion="Lo que el sistema no puede saber: hay que mirarla y medirla."
       >
-        <div className="space-y-3">
+        <div className="space-y-4">
+          {/* EL campo. La explicación la da el dibujo de al lado. */}
           <div>
             <label className="mb-1 flex items-center gap-1.5 text-sm font-semibold text-text-primary">
               <Ruler className="h-4 w-4 text-accent-blue" />
-              Longitud útil medida (mm) {modo !== "ver" && "*"}
+              ¿Cuánto sobresale del portaherramientas? (mm) *
             </label>
-            {modo !== "ver" && (
-              <p className="mb-2 text-xs text-text-muted">
-                Es el largo que queda fuera del portaherramientas. Varía en cada
-                pieza según cómo esté montada y el desgaste, por eso nadie puede
-                calcularla por ti. El render de al lado usa este valor.
-              </p>
-            )}
             <input
-              className={`${clsDe("longitud_util_real_mm")} max-w-[11rem]`}
-              disabled={soloLectura}
+              className={`${clsDe("longitud_util_real_mm")} max-w-[11rem] text-base`}
               type="number"
               min={0.1}
               step={0.1}
               value={valores.longitud_util_real_mm}
               placeholder="Ej: 42.5"
-              onChange={(e) =>
-                set({ longitud_util_real_mm: e.target.value })
-              }
+              onChange={(e) => set({ longitud_util_real_mm: e.target.value })}
             />
+            <p className={ayudaCls}>
+              Míralo en el dibujo: es la cota azul.
+            </p>
           </div>
 
           <div className={REJILLA}>
             <div className={tramo("medio")}>
-              <label className={labelCls}>Código interno</label>
+              <label className={labelCls}>
+                ¿La tienen marcada con algún código?
+              </label>
               <input
                 className={inputCls}
-                disabled={soloLectura}
                 value={valores.codigo_interno}
-                placeholder="Opcional — ej: H-014"
+                placeholder="Ej: H-014 (opcional)"
                 onChange={(e) => set({ codigo_interno: e.target.value })}
               />
             </div>
+
             <div className={tramo("corto")}>
-              <label className={labelCls}>Carrusel</label>
+              <label className={labelCls}>¿En qué posición del carrusel?</label>
               <input
                 className={inputCls}
-                disabled={soloLectura}
                 type="number"
                 min={0}
                 value={valores.posicion_carrusel}
@@ -298,42 +314,60 @@ export function HerramientaForm({
                 onChange={(e) => set({ posicion_carrusel: e.target.value })}
               />
             </div>
-            <div className={tramo("medio")}>
+
+            <div className={tramo("corto")}>
               <label className={labelCls}>Portaherramientas</label>
               <input
                 className={inputCls}
-                disabled={soloLectura}
                 value={valores.portaherramienta_real}
-                placeholder="Opcional — ej: BT40 ER32"
+                placeholder="BT40 ER32"
                 onChange={(e) => set({ portaherramienta_real: e.target.value })}
               />
             </div>
+
             <div className={tramo("corto")}>
-              <label className={labelCls}>Costo de compra</label>
+              <label className={labelCls}>¿Cuánto costó?</label>
               <input
                 className={clsDe("costo_compra")}
-                disabled={soloLectura}
                 type="number"
                 min={0}
                 step={1000}
                 value={valores.costo_compra}
-                placeholder="Opcional — COP"
+                placeholder="COP (opcional)"
                 onChange={(e) => set({ costo_compra: e.target.value })}
               />
-              {modo !== "ver" && (
-                <p className="mt-1 text-[11px] text-text-muted">
-                  Lo que pagaste por esta pieza. Permitirá imputar el gasto real
-                  de herramienta por trabajo.
-                </p>
-              )}
             </div>
 
+            <div className={tramo("corto")}>
+              <label className={labelCls}>Marca</label>
+              <input
+                className={inputCls}
+                value={valores.marca}
+                placeholder="Ej: Iscar (opcional)"
+                onChange={(e) => set({ marca: e.target.value })}
+              />
+            </div>
+
+            <div className={tramo("medio")}>
+              <label className={labelCls}>Referencia del fabricante</label>
+              <input
+                className={inputCls}
+                value={valores.referencia_fabricante}
+                placeholder="Ej: EC-A4 12-26C12 (opcional)"
+                onChange={(e) =>
+                  set({ referencia_fabricante: e.target.value })
+                }
+              />
+              <p className={ayudaCls}>Para volver a pedir la misma.</p>
+            </div>
+
+            {/* El estado es control de vida de la pieza, no alta de datos:
+                solo aparece cuando la herramienta YA existe. */}
             {modo !== "crear" && (
               <div className={tramo("medio")}>
                 <label className={labelCls}>Estado</label>
                 <select
                   className={inputCls}
-                  disabled={soloLectura}
                   value={valores.estado}
                   onChange={(e) => set({ estado: e.target.value })}
                 >
@@ -345,28 +379,10 @@ export function HerramientaForm({
                 </select>
               </div>
             )}
-
-            <div className={tramo("largo")}>
-              <label className={labelCls}>Notas</label>
-              <input
-                className={inputCls}
-                disabled={soloLectura}
-                value={valores.notas}
-                placeholder="Opcional"
-                onChange={(e) => set({ notas: e.target.value })}
-              />
-            </div>
           </div>
-
-          {modo === "crear" && (
-            <p className="flex items-start gap-2 rounded-lg border border-border bg-bg-primary px-3 py-2 text-xs text-text-muted">
-              <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-              ¿Tienes dos herramientas iguales? Regístralas por separado: cada
-              pieza física lleva su propia longitud medida y su propio costo.
-            </p>
-          )}
         </div>
       </Seccion>
+      )}
     </div>
   );
 }

@@ -313,6 +313,10 @@ export interface Instancia {
    * costo real de la herramienta que se montó.
    */
   costo_compra?: number | null;
+  /** Marca comercial de ESTA pieza (opcional). */
+  marca?: string | null;
+  /** Referencia del fabricante de ESTA pieza (opcional) — para recomprarla. */
+  referencia_fabricante?: string | null;
   // Definición efectiva que esta pieza física encarna
   familia: string | null;
   nombre: string | null;
@@ -331,6 +335,8 @@ export interface InstanciaCreatePayload {
   notas?: string;
   /** Costo de compra de la pieza física (opcional). */
   costo_compra?: number;
+  marca?: string;
+  referencia_fabricante?: string;
 }
 
 export interface InstanciaUpdatePayload {
@@ -342,6 +348,8 @@ export interface InstanciaUpdatePayload {
   horas_uso?: number;
   notas?: string;
   costo_compra?: number;
+  marca?: string;
+  referencia_fabricante?: string;
 }
 
 export async function getInstancias(filtros?: {

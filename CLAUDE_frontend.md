@@ -131,7 +131,20 @@ src/components/layout/VisorConPanel.tsx   ← LAYER 3 · layout
   además el DETALLE de la ficha enfocada y lo cachea.
 - Cotas de taller verificadas contra catálogo real (ver comentarios en
   `parametros.ts`): altura de planeadora, agujero de árbol FMB, DIN 338 (brocas),
-  DIN 333 (brocas de centros).
+  DIN 333 (brocas de centros), DIN 6527 (fresas de mango), DIN 212 (escariador),
+  S16Q-SCLCR09 (barra), BIG KAISER EWN (cabezal).
+- **Separación catálogo / pieza física en la UI:** los datos del catálogo se
+  muestran en `FichaTecnica.tsx` (tabla de solo lectura), NUNCA como `<input
+  disabled>` — un input deshabilitado parece editable y el operador se queda
+  esperando poder escribir. Los inputs editables son solo los de la pieza.
+- La longitud útil se explica con la COTA 3D (`lib/geometry/anotaciones.ts`)
+  más el indicador L/D, no con párrafos de ayuda.
+- **Trampa de Tailwind — no repetirla:** una clase compartida que empiece por
+  `w-full` NO se puede anular con `w-auto` en el punto de uso; en el CSS
+  compilado `.w-full` va después (byte 8325 vs 45096 para `.sm\:w-auto`), así
+  que gana siempre. Fue la causa real de que los filtros del inventario
+  salieran a lo ancho y apilados pese a tener el markup en una fila. Las clases
+  compartidas de input NO llevan anchura; se declara en cada uso.
 - Inventario agrupado por familia, plegable, con búsqueda en vivo insensible a
   tildes y a Ø.
 - NO hay parámetros de corte (Vc, fz, RPM, avance) en ningún formulario de

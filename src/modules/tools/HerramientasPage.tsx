@@ -62,8 +62,15 @@ function estadoBadge(estado: string) {
   }
 }
 
+/**
+ * SIN anchura. Antes empezaba por `w-full` y los filtros intentaban anularlo
+ * con `w-auto` — pero en el CSS compilado `.w-full` va DESPUÉS de `.w-auto`,
+ * así que ganaba siempre y los tres filtros salían a lo ancho, apilados por el
+ * flex-wrap. El markup parecía correcto; el conflicto estaba en las clases.
+ * La anchura se declara ahora en cada uso.
+ */
 const inputCls =
-  "w-full rounded-lg border border-border bg-bg-primary px-3 py-2 text-sm text-text-primary outline-none focus:border-accent-blue";
+  "rounded-lg border border-border bg-bg-primary px-3 py-2 text-sm text-text-primary outline-none focus:border-accent-blue";
 
 /**
  * Normaliza para buscar: minúsculas, sin tildes y sin el símbolo Ø. Así
@@ -220,7 +227,8 @@ export function HerramientasPage() {
         portaherramienta_real: valores.portaherramienta_real || undefined,
         estado: valores.estado,
         costo_compra: aNumero(valores.costo_compra),
-        notas: valores.notas || undefined,
+        marca: valores.marca || undefined,
+        referencia_fabricante: valores.referencia_fabricante || undefined,
       });
       await cargar();
       setModal(null);
@@ -251,7 +259,9 @@ export function HerramientasPage() {
   // ── RENDER ──────────────────────────────────────────────────────────────
 
   return (
-    <div className="space-y-5">
+    // Ancho máximo legible y centrado: en un monitor de 24" una tabla de
+    // extremo a extremo obliga a barrer la cabeza para leer una fila.
+    <div className="mx-auto w-full max-w-[1400px] space-y-5">
       {/* Encabezado */}
       <div className="flex items-center justify-between">
         <div>
@@ -273,16 +283,18 @@ export function HerramientasPage() {
         </button>
       </div>
 
-      {/* Filtros — una sola fila compacta */}
-      <div className="flex flex-wrap items-center gap-2 rounded-xl border border-border bg-bg-surface p-2">
-        <div className="relative min-w-[200px] flex-1">
+      {/* Filtros — UNA fila: el buscador se come el espacio sobrante, los
+          selectores ocupan lo suyo y las acciones se alinean a la derecha.
+          Solo se apila en pantallas estrechas (flex-col → sm:flex-row). */}
+      <div className="flex flex-col gap-2 rounded-xl border border-border bg-bg-surface p-2 sm:flex-row sm:items-center">
+        <div className="relative w-full min-w-[200px] sm:flex-1">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-muted" />
           <input
             type="text"
             placeholder="Buscar por nombre, familia, Ø o código..."
             value={busqueda}
             onChange={(e) => setBusqueda(e.target.value)}
-            className={`${inputCls} pl-9 pr-8`}
+            className={`${inputCls} w-full pl-9 pr-8`}
           />
           {busqueda && (
             <button
@@ -298,7 +310,7 @@ export function HerramientasPage() {
         <select
           value={filtroFamilia}
           onChange={(e) => setFiltroFamilia(e.target.value)}
-          className={`${inputCls} w-auto`}
+          className={`${inputCls} w-full sm:w-auto`}
         >
           <option value="">Todas las familias</option>
           {familiasPresentes.map((f) => (
@@ -311,7 +323,7 @@ export function HerramientasPage() {
         <select
           value={filtroEstado}
           onChange={(e) => setFiltroEstado(e.target.value)}
-          className={`${inputCls} w-auto`}
+          className={`${inputCls} w-full sm:w-auto`}
         >
           <option value="">Todos los estados</option>
           {ESTADOS_INSTANCIA.map((e) => (
@@ -325,7 +337,7 @@ export function HerramientasPage() {
           onClick={() =>
             setPlegadas(todosPlegados ? new Set() : new Set(grupos.map(([f]) => f)))
           }
-          className="rounded-lg border border-border px-3 py-2 text-xs text-text-muted transition hover:text-accent-blue"
+          className="shrink-0 rounded-lg border border-border px-3 py-2 text-xs text-text-muted transition hover:text-accent-blue sm:ml-auto"
         >
           {todosPlegados ? "Expandir todo" : "Plegar todo"}
         </button>
