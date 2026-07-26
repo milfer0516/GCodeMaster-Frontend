@@ -77,8 +77,37 @@ src/components/layout/VisorConPanel.tsx   ← LAYER 3 · layout
 - El visor es DUEÑO del objeto que recibe: lo libera al reemplazarlo.
 - Materiales con `side: DoubleSide` a propósito (revoluciones y tubos son
   superficies abiertas en los extremos).
-- `Viewer3D.claveEncuadre` evita que la cámara salte mientras el operador
-  teclea: solo reencuadra cuando cambia esa clave (p. ej. la familia).
+- **Encuadre — dos operaciones distintas, no confundirlas:**
+  - `encuadrar()` = cámara + target + distancia desde el CENTRO de la caja
+    envolvente (nunca desde el origen del mundo). Solo cuando cambia
+    `Viewer3D.claveEncuadre` (la familia al teclear; el id de la definición al
+    navegar el catálogo). Ajusta la distancia al FOV **horizontal Y vertical**:
+    en un panel estrecho el limitante es el horizontal.
+  - `recentrar()` = en CADA cambio de contenido, y hace DOS cosas:
+    1. **Sigue el centro** — siempre. Traslada target + cámara por el mismo
+       delta, conservando ángulo y distancia. Hace falta porque con la
+       convención "punta en y = 0, cuerpo hacia +Y" el centro de la caja SE
+       MUEVE al editar cotas (filo 26 → 90 lo sube 42 mm), y sin esto la pieza
+       se descuadra ~80 % de media pantalla aunque el encuadre inicial fuera
+       correcto.
+    2. **Prueba de encaje** — solo si hace falta. La distancia únicamente se
+       toca si la pieza ya no cabe (`MARGEN_DESBORDE`) o quedó diminuta
+       (`MARGEN_DIMINUTA`). Entre ambos umbrales hay ZONA MUERTA: teclear
+       cotas pequeñas no mueve la cámara. Tras un ajuste la distancia cae
+       dentro de la zona muerta ⇒ no puede oscilar.
+  - La prueba de encaje solo se evalúa si cambió **el tamaño de la pieza o el
+    del panel**. Con geometría idéntica la distancia es del operador y no se
+    toca: acercarse a mirar la punta es deliberado. La referencia
+    (`radioAjustado`) se actualiza SOLO al mover la cámara, así una cadena de
+    ediciones pequeñas se mide desde el último ajuste y no puede colar un
+    desborde a base de incrementos por debajo del umbral.
+  - `controls.minDistance/maxDistance` se refrescan en cada `recentrar()`: si
+    no, `update()` volvería a clampar la distancia recién calculada contra los
+    límites del encuadre anterior y la pieza seguiría desbordando.
+  - `alRedimensionar()` también llama a `recentrar()`: estrechar el panel
+    reduce el FOV útil y puede sacar la pieza de cuadro sin que cambie nada.
+  - Si el contenedor mide 0×0 (modal recién montado) el encuadre se APLAZA al
+    primer resize real; si no, se calcularía con el aspecto de reserva.
 - CamViewer3D.tsx **no se tocó**: el wizard sigue con su visor propio. La capa 1
   es nueva y limpia, no una extracción.
 

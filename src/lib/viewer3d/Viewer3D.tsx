@@ -57,13 +57,17 @@ export function Viewer3D({
 
     visor.setContenido(objeto);
 
-    // Primer contenido o cambio de clave → reencuadrar. En los demás cambios se
-    // respeta la órbita que el operador haya puesto.
+    // Primer contenido o cambio de clave → reencuadrar (cámara, distancia y
+    // target). En los demás cambios se respeta la órbita que el operador haya
+    // puesto: solo se RECENTRA, porque al editar cotas el centro de la caja
+    // envolvente se mueve y sin esto la pieza se descuadra del canvas.
     const debeEncuadrar =
       objeto !== null && claveEncuadradaRef.current !== claveEncuadre;
     if (debeEncuadrar) {
       visor.encuadrar();
       claveEncuadradaRef.current = claveEncuadre;
+    } else {
+      visor.recentrar();
     }
   }, [objeto, claveEncuadre]);
 

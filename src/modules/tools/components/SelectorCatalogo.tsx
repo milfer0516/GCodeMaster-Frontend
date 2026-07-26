@@ -200,7 +200,12 @@ export function SelectorCatalogo({
   );
 
   const visor = enfocada ? (
-    <HerramientaPreview3D valores={desdeDefinicion(enfocada)} />
+    // Cada definición del catálogo es otra herramienta (una Ø6 y una Ø63 son
+    // de la misma familia), así que el encuadre se rehace por id, no por familia.
+    <HerramientaPreview3D
+      valores={desdeDefinicion(enfocada)}
+      claveEncuadre={enfocada.id_herramienta_global}
+    />
   ) : (
     <div className="flex h-full items-center justify-center px-6 text-center text-sm text-text-muted">
       Pasa el cursor por una herramienta del catálogo para verla en 3D.

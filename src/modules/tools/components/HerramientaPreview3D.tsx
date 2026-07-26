@@ -22,6 +22,13 @@ interface Props {
   valores: ValoresHerramienta;
   /** Oculta la barra de cotas bajo el visor. */
   sinCotas?: boolean;
+  /**
+   * Cuándo REENCUADRAR la cámara. Por defecto la familia: mientras el operador
+   * teclea cotas la cámara no se mueve (solo se recentra). Al navegar el
+   * catálogo conviene pasar el id de la definición, porque cada ficha es otra
+   * herramienta y sí merece encuadre propio.
+   */
+  claveEncuadre?: string | number;
   className?: string;
 }
 
@@ -32,7 +39,12 @@ const OPCIONES_VISOR = {
   direccionCamara: [0.9, 0.35, 1] as [number, number, number],
 };
 
-export function HerramientaPreview3D({ valores, sinCotas, className }: Props) {
+export function HerramientaPreview3D({
+  valores,
+  sinCotas,
+  claveEncuadre,
+  className,
+}: Props) {
   const parametros = aParametrosGeometria(valores);
 
   // Se reconstruye cuando cambia CUALQUIER cota. La clave serializa solo los
@@ -57,7 +69,7 @@ export function HerramientaPreview3D({ valores, sinCotas, className }: Props) {
       <Viewer3D
         objeto={objeto}
         opciones={OPCIONES_VISOR}
-        claveEncuadre={valores.familia}
+        claveEncuadre={claveEncuadre ?? valores.familia}
         className="h-full w-full"
       >
         <div

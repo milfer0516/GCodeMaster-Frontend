@@ -56,8 +56,14 @@ export interface VisorHandle {
   readonly controls: OrbitControls;
   /** Reemplaza el contenido. El visor libera el anterior. */
   setContenido(objeto: THREE.Object3D | null): void;
-  /** Encuadra el contenido actual (mueve cámara y target). */
+  /** Encuadra el contenido actual: mueve cámara, target y distancia. */
   encuadrar(margen?: number): void;
+  /**
+   * Recentra el target (y arrastra la cámara) sobre el centro actual del
+   * contenido, SIN cambiar distancia ni ángulo. Para cuando el objeto cambia
+   * de cotas y su centro se desplaza.
+   */
+  recentrar(): void;
   /** Recalcula tamaño de renderer/cámara desde el contenedor. */
   redimensionar(): void;
   /** Destruye todo (RAF, listeners, GPU, canvas). */
@@ -187,37 +193,163 @@ export function createViewer(
     if (objeto) scene.add(objeto);
   };
 
-  const encuadrar = (margen = 1.35) => {
-    if (!contenido) return;
+  /** Caja envolvente del contenido en coordenadas de mundo, o null si no hay. */
+  const cajaContenido = (): THREE.Box3 | null => {
+    if (!contenido) return null;
     const caja = new THREE.Box3().setFromObject(contenido);
-    if (caja.isEmpty()) return;
+    return caja.isEmpty() ? null : caja;
+  };
 
-    const esfera = caja.getBoundingSphere(new THREE.Sphere());
-    const radio = Math.max(esfera.radius, 1e-3);
+  const radioDe = (caja: THREE.Box3): number =>
+    Math.max(caja.getBoundingSphere(new THREE.Sphere()).radius, 1e-3);
 
-    const fovRad = THREE.MathUtils.degToRad(camera.fov);
-    let distancia = (radio / Math.sin(fovRad / 2)) * margen;
-    // Contenedores estrechos: el FOV horizontal es el limitante.
-    const aspecto = camera.aspect || 1;
-    if (aspecto < 1) distancia /= aspecto;
-
-    const dir = new THREE.Vector3(...cfg.direccionCamara).normalize();
-    camera.position.copy(esfera.center).addScaledVector(dir, distancia);
+  const ajustarPlanos = (distancia: number, radio: number) => {
     camera.near = Math.max(distancia / 800, 0.01);
-    camera.far = distancia * 24;
+    camera.far = Math.max((distancia + radio * 4) * 8, distancia * 4);
     camera.updateProjectionMatrix();
+  };
 
-    controls.target.copy(esfera.center);
+  /**
+   * Distancia a la que la ESFERA envolvente cabe entera, con el margen dado
+   * (1 = justa en el borde). Se usa la esfera y no la caja porque el operador
+   * puede orbitar libremente: lo que cabe como esfera cabe desde cualquier
+   * ángulo. Se contempla el FOV horizontal además del vertical — en un panel
+   * estrecho el limitante es el horizontal.
+   */
+  const distanciaParaCaber = (radio: number, margen: number): number => {
+    const fovV = THREE.MathUtils.degToRad(camera.fov);
+    const fovH = 2 * Math.atan(Math.tan(fovV / 2) * (camera.aspect || 1));
+    return (radio / Math.sin(Math.min(fovV, fovH) / 2)) * margen;
+  };
+
+  /** Holgura del encuadre normal. */
+  const MARGEN_ENCUADRE = 1.35;
+  /** Por debajo de esta holgura la pieza se sale del canvas. */
+  const MARGEN_DESBORDE = 1.02;
+  /** Por encima de esta holgura la pieza se ve como un punto. */
+  const MARGEN_DIMINUTA = 3.2;
+
+  /**
+   * La rejilla se apoya BAJO el contenido y lo sigue en XZ. No se ancla al
+   * origen del mundo a propósito: en Montaje el contenido (mesa + pieza) no
+   * estará centrado en (0,0,0).
+   */
+  const colocarGrid = (caja: THREE.Box3) => {
+    if (!grid) return;
+    const centro = caja.getCenter(new THREE.Vector3());
+    grid.position.set(centro.x, caja.min.y, centro.z);
+  };
+
+  // Si el contenedor aún no tiene tamaño (modal recién montado), el encuadre
+  // se calcularía contra el aspecto de reserva. Se aplaza al primer resize real.
+  let encuadrePendiente = false;
+
+  // Estado con el que se fijó la distancia actual. Sirve para distinguir "la
+  // pieza cambió de tamaño" de "el operador acercó la cámara": la prueba de
+  // encaje solo debe reaccionar a lo primero, nunca pelearse con el zoom manual.
+  let radioAjustado = 0;
+  let aspectoAjustado = 0;
+
+  const encuadrar = (margen = MARGEN_ENCUADRE) => {
+    const caja = cajaContenido();
+    if (!caja) return;
+
+    // El aspecto tiene que ser el REAL antes de calcular la distancia.
+    redimensionar();
+    if (contenedor.clientWidth === 0 || contenedor.clientHeight === 0) {
+      encuadrePendiente = true;
+      return;
+    }
+    encuadrePendiente = false;
+
+    const centro = caja.getCenter(new THREE.Vector3());
+    const radio = radioDe(caja);
+
+    const distancia = distanciaParaCaber(radio, margen);
+    const dir = new THREE.Vector3(...cfg.direccionCamara).normalize();
+    camera.position.copy(centro).addScaledVector(dir, distancia);
+    ajustarPlanos(distancia, radio);
+
+    controls.target.copy(centro);
     controls.minDistance = radio * 0.25;
     controls.maxDistance = distancia * 8;
     controls.update();
 
-    if (gridAutomatica) {
-      const lado = Math.max(radio * 4, 1);
-      crearGrid(lado, 20, 0x1e293b);
-      grid!.position.y = caja.min.y;
-    }
+    radioAjustado = radio;
+    aspectoAjustado = camera.aspect;
+
+    if (gridAutomatica) crearGrid(Math.max(radio * 4, 1), 20, 0x1e293b);
+    colocarGrid(caja);
     if (ejesAutomaticos) crearEjes(radio * 0.9);
+  };
+
+  /**
+   * Mantiene el contenido CENTRADO y COMPLETAMENTE VISIBLE cuando cambian sus
+   * cotas, sin reencuadrar en cada tecla. Dos pasos:
+   *
+   *   1. Seguir el centro — siempre. Traslada target y cámara por el mismo
+   *      delta, así el ángulo y la distancia de la órbita quedan intactos.
+   *      Hace falta porque con la convención "punta en y = 0, cuerpo hacia +Y"
+   *      el centro de la caja SE MUEVE al editar: pasar el filo de 26 a 90
+   *      sube el centro 42 mm y la pieza se iría del canvas.
+   *
+   *   2. Prueba de encaje — solo si hace falta. La distancia únicamente se
+   *      toca si la pieza YA NO CABE (una validación visual a medias no sirve
+   *      de nada) o si quedó tan pequeña que no se aprecia. Entre ambos
+   *      umbrales hay ZONA MUERTA: teclear cotas pequeñas no mueve la cámara.
+   *      Tras un ajuste la distancia queda dentro de la zona muerta, así que
+   *      no puede oscilar.
+   */
+  const recentrar = () => {
+    const caja = cajaContenido();
+    if (!caja) return;
+
+    const centro = caja.getCenter(new THREE.Vector3());
+    const radio = radioDe(caja);
+
+    // 1 · Seguir el centro.
+    const delta = centro.clone().sub(controls.target);
+    if (delta.lengthSq() > 1e-10) {
+      controls.target.add(delta);
+      camera.position.add(delta);
+    }
+
+    // 2 · Prueba de encaje. Solo se evalúa si cambió lo que puede sacar la
+    //     pieza de cuadro por sí solo — su tamaño o el del panel. Si la
+    //     geometría es la misma, la distancia es cosa del operador y no se
+    //     toca: acercarse a mirar la punta es una acción deliberada.
+    let distancia = camera.position.distanceTo(controls.target);
+    const cambioTamano = Math.abs(radio - radioAjustado) > radioAjustado * 1e-6;
+    const cambioPanel = Math.abs(camera.aspect - aspectoAjustado) > 1e-9;
+
+    if (cambioTamano || cambioPanel) {
+      const noCabe = distancia < distanciaParaCaber(radio, MARGEN_DESBORDE);
+      const diminuta = distancia > distanciaParaCaber(radio, MARGEN_DIMINUTA);
+
+      if (noCabe || diminuta) {
+        distancia = distanciaParaCaber(radio, MARGEN_ENCUADRE);
+        // Se conserva el ÁNGULO de órbita: solo cambia el alejamiento.
+        const dir = camera.position.clone().sub(controls.target);
+        if (dir.lengthSq() < 1e-12) dir.set(...cfg.direccionCamara);
+        dir.normalize();
+        camera.position.copy(controls.target).addScaledVector(dir, distancia);
+
+        // La referencia se actualiza SOLO al mover la cámara: así una cadena
+        // de ediciones pequeñas se mide desde el último ajuste y no se puede
+        // colar un desborde a base de incrementos por debajo del umbral.
+        radioAjustado = radio;
+        aspectoAjustado = camera.aspect;
+      }
+    }
+
+    // Los límites de OrbitControls se refrescan SIEMPRE: si no, update()
+    // volvería a clampar la distancia recién calculada contra el maxDistance
+    // del encuadre anterior y la pieza seguiría desbordando.
+    controls.minDistance = radio * 0.25;
+    controls.maxDistance = distanciaParaCaber(radio, MARGEN_ENCUADRE) * 8;
+    ajustarPlanos(distancia, radio);
+    colocarGrid(caja);
+    controls.update();
   };
 
   // ── Resize ────────────────────────────────────────────────────────────────
@@ -230,8 +362,18 @@ export function createViewer(
     renderer.setSize(w, h, false);
   };
 
-  window.addEventListener("resize", redimensionar);
-  const observador = new ResizeObserver(() => redimensionar());
+  // Al cambiar el tamaño se recalcula el aspecto y, si el encuadre se había
+  // aplazado por un contenedor de 0×0 (modal recién montado), se hace ahora.
+  // Si ya estaba encuadrado se repasa el encaje: estrechar el panel reduce el
+  // FOV útil y puede dejar la pieza fuera de cuadro sin que cambie el contenido.
+  const alRedimensionar = () => {
+    redimensionar();
+    if (encuadrePendiente) encuadrar();
+    else recentrar();
+  };
+
+  window.addEventListener("resize", alRedimensionar);
+  const observador = new ResizeObserver(alRedimensionar);
   observador.observe(contenedor);
 
   // ── Bucle ─────────────────────────────────────────────────────────────────
@@ -249,7 +391,7 @@ export function createViewer(
   const destruir = () => {
     vivo = false;
     cancelAnimationFrame(rafId);
-    window.removeEventListener("resize", redimensionar);
+    window.removeEventListener("resize", alRedimensionar);
     observador.disconnect();
     setContenido(null);
     if (grid) liberarObjeto3D(grid);
@@ -270,6 +412,7 @@ export function createViewer(
     controls,
     setContenido,
     encuadrar,
+    recentrar,
     redimensionar,
     destruir,
   };
