@@ -270,24 +270,35 @@ export function HerramientaForm({
         descripcion="Lo que el sistema no puede saber: hay que mirarla y medirla."
       >
         <div className="space-y-4">
-          {/* EL campo. La explicación la da el dibujo de al lado. */}
-          <div>
-            <label className="mb-1 flex items-center gap-1.5 text-sm font-semibold text-text-primary">
+          {/* EL campo: el único obligatorio y el único que el sistema no puede
+              deducir. Va destacado a propósito — antes era el control más
+              estrecho y apagado de la pantalla y se leía como un hueco, no
+              como una casilla donde hay que escribir. */}
+          <div className="rounded-xl border border-accent-blue/40 bg-accent-blue/5 p-3">
+            <label
+              htmlFor="campo-voladizo"
+              className="mb-2 flex items-center gap-1.5 text-sm font-semibold text-text-primary"
+            >
               <Ruler className="h-4 w-4 text-accent-blue" />
-              ¿Cuánto sobresale del portaherramientas? (mm) *
+              ¿Cuánto sobresale del portaherramientas? *
             </label>
-            <input
-              className={`${clsDe("longitud_util_real_mm")} max-w-[11rem] text-base`}
-              type="number"
-              min={0.1}
-              step={0.1}
-              value={valores.longitud_util_real_mm}
-              placeholder="Ej: 42.5"
-              onChange={(e) => set({ longitud_util_real_mm: e.target.value })}
-            />
-            <p className={ayudaCls}>
-              Míralo en el dibujo: es la cota azul.
-            </p>
+            <div className="relative w-52">
+              <input
+                id="campo-voladizo"
+                autoFocus
+                className={`${clsDe("longitud_util_real_mm")} border-accent-blue/50 pr-11 text-base font-semibold`}
+                type="number"
+                min={0.1}
+                step={0.1}
+                value={valores.longitud_util_real_mm}
+                placeholder="42.5"
+                onChange={(e) => set({ longitud_util_real_mm: e.target.value })}
+              />
+              <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-sm text-text-muted">
+                mm
+              </span>
+            </div>
+            <p className={ayudaCls}>Míralo en el dibujo: es la cota azul.</p>
           </div>
 
           <div className={REJILLA}>
