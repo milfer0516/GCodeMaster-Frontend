@@ -1,4 +1,15 @@
 {
   "autoApprove": ["Edit", "Write"],
-  "disableAutoApprove": ["Bash", "Read"]
+  "disableAutoApprove": [
+    "Bash",
+    "Read",
+    "Bash(grep -n *)",
+    "Bash(grep -rn *)",
+    "Bash(grep -c *)",
+    "Bash(npx tsc *)",
+    "Bash(npx vite *)",
+    "Bash(npm run build)",
+    "Bash(cd * && npm run build)",
+    "Bash(cd * && npx *)"
+  ]
 }

@@ -14,6 +14,11 @@ import {
   type EstadoPieza,
   type ProcessOrigin,
 } from "../domain/contextoFabricacion";
+import {
+  indexarRecomendaciones,
+  recomendacionDe,
+  type RespuestaMDESetup,
+} from "../domain/mdeRecomendaciones";
 
 export type { Setup };
 export type { StockFace, CylStock };
@@ -41,6 +46,14 @@ export interface Operacion {
   herramienta_sugerida?: string;
   face_indices?: number[];
 }
+
+/**
+ * Estado de la consulta asesora al MDE, tal como la vive la pantalla.
+ * `sin_analisis` NO es un error: es "todavía no se ha pedido". Se distingue de
+ * `error` a propósito, porque decir "no hay herramienta ideal" cuando en
+ * realidad no se ha consultado sería mentirle al operador.
+ */
+export type EstadoAnalisisMDE = "sin_analisis" | "analizando" | "listo" | "error";
 
 export interface MaterialSeleccionado {
   id_material: number;
@@ -160,6 +173,19 @@ interface CamState {
   // Paso 3 — Operaciones
   operaciones: Operacion[];
 
+  // ── Asesoría del MDE (paso Operaciones) ────────────────────────────────
+  // `mdeRecomendaciones` es la respuesta del motor GUARDADA TAL CUAL. El
+  // frontend no la resume ni la recompone: la renderiza.
+  mdeRecomendaciones: RespuestaMDESetup[] | null;
+  mdeEstado: EstadoAnalisisMDE;
+  mdeError: string | null;
+
+  // Herramienta que el operador ELIGIÓ para una operación, cuando decidió no
+  // usar la que el MDE puso primero. Solo guarda ANULACIONES: la asignación por
+  // defecto se deriva de la recomendación, así que no hay dos copias del mismo
+  // dato que se puedan desincronizar. Clave = id de operación.
+  herramientaPorOperacion: Record<string, number>;
+
   // Paso 3 — Mesh OCC real (teselación)
   meshData: MeshData | null;
   meshLoading: boolean;
@@ -197,6 +223,9 @@ interface CamState {
   invalidateSetup: () => void;
   setOperaciones: (ops: Operacion[]) => void;
   toggleOperacion: (id: string) => void;
+  setMdeEstado: (estado: EstadoAnalisisMDE, error?: string | null) => void;
+  setMdeRecomendaciones: (respuesta: RespuestaMDESetup[] | null) => void;
+  asignarHerramienta: (idOperacion: string, idInstancia: number) => void;
   setMaterial: (material: MaterialSeleccionado) => void;
   setMaquina: (maquina: Maquina) => void;
   setStockConfig: (config: StockConfig) => void;
@@ -255,6 +284,10 @@ export const useCamStore = create<CamState>((set) => ({
   idJob: null,
   analisis: null,
   operaciones: [],
+  mdeRecomendaciones: null,
+  mdeEstado: "sin_analisis",
+  mdeError: null,
+  herramientaPorOperacion: {},
   meshData: null,
   meshLoading: false,
   meshError: null,
@@ -277,6 +310,13 @@ export const useCamStore = create<CamState>((set) => ({
       idJob,
       analisis,
       operaciones: ops,
+      // Cascade: otra geometría son otras operaciones. La asesoría del MDE y las
+      // herramientas asignadas se referían a las anteriores; arrastrarlas
+      // mostraría una recomendación de una pieza que ya no está en la máquina.
+      mdeRecomendaciones: null,
+      mdeEstado: "sin_analisis" as EstadoAnalisisMDE,
+      mdeError: null,
+      herramientaPorOperacion: {},
       meshData: null,
       meshError: null,
       setup: null,
@@ -291,6 +331,44 @@ export const useCamStore = create<CamState>((set) => ({
         op.id === id ? { ...op, seleccionada: !op.seleccionada } : op,
       ),
     })),
+  setMdeEstado: (mdeEstado, mdeError = null) => set({ mdeEstado, mdeError }),
+
+  // Guarda la respuesta del MDE y REFLEJA en las casillas lo que el motor
+  // decidió — ni un paso más allá. `default_checked` es del contrato
+  // (mde/recommendation.py: solo REQUIRED viene marcada; todo lo demás se
+  // propone pero la decisión queda en el operador), así que aplicarlo no es
+  // decidir por él: es no ocultarle lo que el MDE dijo.
+  //
+  // LIKELY_ALREADY_DONE llega DESMARCADA pero sigue en la lista y se puede
+  // volver a marcar. Una operación no se esconde nunca: la recomendación del
+  // motor es por TIPO de feature, no por operación, así que ocultar por
+  // `presented` borraría de la pantalla todos los taladrados de un setup por un
+  // veredicto que no se emitió operación a operación.
+  //
+  // Un tipo sin recomendación conserva la casilla que tuviera: no hay
+  // información nueva sobre él, y ausencia de dato no es una orden de desmarcar.
+  setMdeRecomendaciones: (mdeRecomendaciones) =>
+    set((state) => {
+      const indice = indexarRecomendaciones(mdeRecomendaciones, state.ordenSetups);
+      return {
+        mdeRecomendaciones,
+        mdeEstado: mdeRecomendaciones ? "listo" : "sin_analisis",
+        mdeError: null,
+        operaciones: state.operaciones.map((op) => {
+          const rec = recomendacionDe(indice, op);
+          return rec ? { ...op, seleccionada: rec.default_checked } : op;
+        }),
+      };
+    }),
+
+  asignarHerramienta: (idOperacion, idInstancia) =>
+    set((state) => ({
+      herramientaPorOperacion: {
+        ...state.herramientaPorOperacion,
+        [idOperacion]: idInstancia,
+      },
+    })),
+
   setMontajeConfig: (config) =>
     set((state) => {
       // Cambiar la cara de apoyo o la sujeción invalida el Setup confirmado:
@@ -386,6 +464,10 @@ export const useCamStore = create<CamState>((set) => ({
       idJob: null,
       analisis: null,
       operaciones: [],
+      mdeRecomendaciones: null,
+      mdeEstado: "sin_analisis",
+      mdeError: null,
+      herramientaPorOperacion: {},
       meshData: null,
       meshLoading: false,
       meshError: null,

@@ -1,344 +1,462 @@
 // src/modules/cam/components/steps/StepOperaciones.tsx
-import { useEffect, useState } from "react";
+// ─────────────────────────────────────────────────────────────────────────────
+// PANTALLA DE TRABAJO CAM — visor dominante entre dos paneles plegables.
+//
+//   ┌──────────────────────────────────────────────────────────┐
+//   │ Cabecera: título + contadores                            │
+//   ├──────────────────────────────────────────────────────────┤
+//   │ [Operaciones] ←   V I S O R   3 D   → [Asistente MDE]    │
+//   ├──────────────────────────────────────────────────────────┤
+//   │ Pie: totales                                             │
+//   └──────────────────────────────────────────────────────────┘
+//
+// EL CANVAS NO CAMBIA DE TAMAÑO NUNCA. Los dos paneles laterales están en
+// `position:absolute` DENTRO del contenedor del visor y se pliegan con
+// `transform` (ver PanelDeslizante). El contenedor del canvas no comparte fila
+// con ellos, así que abrir o cerrar un panel no toca un solo píxel del visor y
+// el raycaster nunca se desincroniza. No convertir esto en un grid de tres
+// columnas: ese cambio reintroduce el bug de picking del paso Stock.
+//
+// SELECCIÓN BIDIRECCIONAL — dos conceptos distintos que no se deben mezclar:
+//   · ENFOCAR (clic en la fila / doble clic en una cara): elige qué operación se
+//     mira. Resalta su región en la pieza y llena el panel del MDE.
+//   · MARCAR (la casilla): decide si la operación se mecaniza. Solo la casilla
+//     la cambia; enfocar no marca nada.
+// ─────────────────────────────────────────────────────────────────────────────
+import { useEffect, useMemo, useState } from "react";
 import { useCamStore } from "../../store/camStore";
 import { CamViewer3D } from "../CamViewer3D";
 import { WizardNavButtons } from "./WizardNavButtons";
+import { PanelDeslizante } from "../operaciones/PanelDeslizante";
+import { ListaOperaciones } from "../operaciones/ListaOperaciones";
+import { PanelMDE } from "../operaciones/PanelMDE";
+import { AgregarHerramientaModal } from "../../../tools/components/AgregarHerramientaModal";
 import {
-  Layers,
-  Drill,
-  Box,
-  CircleDot,
-  Wrench,
-} from "lucide-react";
+  getInstancias,
+  mensajeError,
+  type Instancia,
+} from "../../../../services/toolingService";
+import {
+  solicitarRecomendacionesMDE,
+  normalizarRecomendaciones,
+} from "../../services/mdeService";
+import {
+  consultaFallida,
+  estadoFila,
+  familiaDeToolType,
+  herramientaIdeal,
+  indexarRecomendaciones,
+  recomendacionDe,
+} from "../../domain/mdeRecomendaciones";
+import {
+  buscarHerramientaFisica,
+  cambiosDeHerramienta,
+  porId,
+  TOLERANCIA_DIAMETRO_MM,
+} from "../../domain/herramientasOperacion";
+import { formatMm } from "../../../../utils/format";
 
-function tipoIcono(tipo: string) {
-  switch (tipo) {
-    case "planeado":
-      return <Layers className="h-3.5 w-3.5" />;
-    case "taladrado":
-      return <Drill className="h-3.5 w-3.5" />;
-    case "cajera":
-      return <Box className="h-3.5 w-3.5" />;
-    case "contorneado_exterior":
-      return <CircleDot className="h-3.5 w-3.5" />;
-    default:
-      return <Wrench className="h-3.5 w-3.5" />;
-  }
-}
-
-function tipoColor(tipo: string) {
-  switch (tipo) {
-    case "planeado":
-      return "border-blue-500/30 bg-blue-500/10 text-blue-400";
-    case "taladrado":
-      return "border-green-500/30 bg-green-500/10 text-green-400";
-    case "cajera":
-      return "border-purple-500/30 bg-purple-500/10 text-purple-400";
-    case "contorneado_exterior":
-      return "border-orange-500/30 bg-orange-500/10 text-orange-400";
-    default:
-      return "border-border bg-bg-elevated text-text-muted";
-  }
-}
+const ANCHO_PANEL_IZQUIERDO = 280;
+const ANCHO_PANEL_DERECHO = 340;
 
 export const StepOperaciones = () => {
-  const {
-    analisis,
-    operaciones,
-    setOperaciones,
-    toggleOperacion,
-    ordenSetups,
-    setOrdenSetups,
-    setStep,
-    idJob,
-    montajeConfig,
-  } = useCamStore();
+  const analisis = useCamStore((s) => s.analisis);
+  const operaciones = useCamStore((s) => s.operaciones);
+  const setOperaciones = useCamStore((s) => s.setOperaciones);
+  const toggleOperacion = useCamStore((s) => s.toggleOperacion);
+  const montajeConfig = useCamStore((s) => s.montajeConfig);
+  const ordenSetups = useCamStore((s) => s.ordenSetups);
+  const setOrdenSetups = useCamStore((s) => s.setOrdenSetups);
+  const idJob = useCamStore((s) => s.idJob);
+  const engineResponse = useCamStore((s) => s.engineResponse);
 
-  const seleccionarTodas = () =>
-    setOperaciones(operaciones.map((op) => ({ ...op, seleccionada: true })));
+  const mdeRecomendaciones = useCamStore((s) => s.mdeRecomendaciones);
+  const mdeEstado = useCamStore((s) => s.mdeEstado);
+  const mdeError = useCamStore((s) => s.mdeError);
+  const setMdeEstado = useCamStore((s) => s.setMdeEstado);
+  const setMdeRecomendaciones = useCamStore((s) => s.setMdeRecomendaciones);
+  const herramientaPorOperacion = useCamStore((s) => s.herramientaPorOperacion);
+  const asignarHerramienta = useCamStore((s) => s.asignarHerramienta);
 
-  const deseleccionarTodas = () =>
-    setOperaciones(operaciones.map((op) => ({ ...op, seleccionada: false })));
+  const [panelIzquierdo, setPanelIzquierdo] = useState(true);
+  const [panelDerecho, setPanelDerecho] = useState(true);
+  const [opEnfocada, setOpEnfocada] = useState<string | null>(null);
+  const [inventario, setInventario] = useState<Instancia[]>([]);
+  const [modalHerramienta, setModalHerramienta] = useState<{
+    familia?: string;
+    diametro?: number | null;
+    contexto: string;
+  } | null>(null);
 
-  const [archivoAbierto, setArchivoAbierto] = useState(false);
+  // ── Inventario del taller ────────────────────────────────────────────────
+  // El MDE razona con familia y diámetro; el alojamiento del carrusel y el
+  // estado físico viven aquí. Se cargan para poder ENSEÑARLOS, no para deducir
+  // nada con ellos.
+  const cargarInventario = async () => {
+    try {
+      setInventario(await getInstancias());
+    } catch {
+      setInventario([]);
+    }
+  };
 
-  // ── ABRIR ARCHIVO AUTOMÁTICAMENTE AL MONTAR ──────────────────────────
   useEffect(() => {
-    if (!idJob || archivoAbierto) return;
+    cargarInventario();
+  }, []);
 
-    const abrir = async () => {
-      try {
-        const token = localStorage.getItem("token");
-        const formData = new FormData();
-        formData.append("id_job", String(idJob));
+  // ── Análisis del MDE ─────────────────────────────────────────────────────
+  // Si el motor ya respondió en esta sesión, su `mde_recommendations` es la
+  // fuente: llega dentro de la respuesta del motor y se adopta tal cual.
+  useEffect(() => {
+    if (mdeRecomendaciones) return;
+    const delMotor = normalizarRecomendaciones(
+      (engineResponse as any)?.mde_recommendations,
+    );
+    if (delMotor) setMdeRecomendaciones(delMotor);
+  }, [engineResponse, mdeRecomendaciones, setMdeRecomendaciones]);
 
-        await fetch("http://20.237.194.126:8000/cam/open-in-freecad", {
-          method: "POST",
-          headers: { Authorization: `Bearer ${token}` },
-          body: formData,
-        });
-        setArchivoAbierto(true);
-      } catch (err) {
-        console.error("Error al abrir archivo en FreeCAD:", err);
-      }
+  /**
+   * Pide el análisis COMPLETO. Nunca una re-evaluación parcial de la operación
+   * afectada: el razonamiento del MDE es global (una herramienta nueva puede
+   * cambiar la alternativa de otra operación o resolver un conflicto entre
+   * reglas), así que reevaluar una sola daría un resultado que el motor jamás
+   * habría emitido.
+   */
+  const solicitarAnalisis = async () => {
+    if (!idJob) {
+      setMdeEstado("error", "El trabajo aún no tiene análisis geométrico.");
+      return;
+    }
+    setMdeEstado("analizando");
+    try {
+      setMdeRecomendaciones(await solicitarRecomendacionesMDE(idJob));
+    } catch (e: any) {
+      setMdeEstado(
+        "error",
+        mensajeError(e, "No se pudo obtener el análisis del MDE."),
+      );
+    }
+  };
+
+  const indiceMDE = useMemo(
+    () => indexarRecomendaciones(mdeRecomendaciones, ordenSetups),
+    [mdeRecomendaciones, ordenSetups],
+  );
+
+  const fallo = useMemo(
+    () => consultaFallida(mdeRecomendaciones),
+    [mdeRecomendaciones],
+  );
+
+  // ── Herramienta de cada operación ────────────────────────────────────────
+  // Por defecto la que el MDE emparejó; si el operador eligió otra, la suya.
+  // Solo se guarda la ANULACIÓN, así que las dos no se pueden desincronizar.
+  const herramientaDe = useMemo(() => {
+    return (op: { id: string; tipo: string; setup: number }) => {
+      const elegida = porId(inventario, herramientaPorOperacion[op.id]);
+      if (elegida) return elegida;
+      const ideal = herramientaIdeal(recomendacionDe(indiceMDE, op));
+      return buscarHerramientaFisica(inventario, ideal?.tipo, ideal?.diametro_mm);
     };
+  }, [inventario, herramientaPorOperacion, indiceMDE]);
 
-    abrir();
-  }, [idJob, archivoAbierto]);
-  // ─────────────────────────────────────────────────────────────────────
+  // ── Contadores de la cabecera ────────────────────────────────────────────
+  const contadores = useMemo(() => {
+    let listas = 0;
+    let revision = 0;
+    let sinHerramienta = 0;
+    for (const op of operaciones) {
+      const estado = estadoFila(recomendacionDe(indiceMDE, op));
+      if (estado === "lista") listas++;
+      else if (estado === "revisar") revision++;
+      else if (estado === "sin_herramienta") sinHerramienta++;
+    }
+    return { listas, revision, sinHerramienta };
+  }, [operaciones, indiceMDE]);
+
+  // ── Totales del pie ──────────────────────────────────────────────────────
+  const seleccionadas = useMemo(
+    () => operaciones.filter((op) => op.seleccionada),
+    [operaciones],
+  );
+
+  const cambiosHerramienta = useMemo(
+    () => cambiosDeHerramienta(seleccionadas.map((op) => herramientaDe(op))),
+    [seleccionadas, herramientaDe],
+  );
+
+  // Material removido: lo calcula el motor (plan_mecanizado.remocion_stock). Si
+  // no ha respondido, no hay número — no se deriva uno aquí.
+  const remocion = (engineResponse as any)?.plan_mecanizado?.remocion_stock;
+  const materialRemovido = remocion
+    ? ["x", "y", "z"]
+        .map((eje) => remocion[eje]?.total_mm)
+        .filter((v: any) => typeof v === "number")
+        .map((v: number, i: number) => `${["X", "Y", "Z"][i]} ${formatMm(v)}`)
+        .join(" · ")
+    : null;
+
+  const opActual = operaciones.find((op) => op.id === opEnfocada) ?? null;
 
   const dimensiones = analisis?.dimensiones ?? { x: 100, y: 100, z: 50 };
   const operacionesBackend = [
     ...(analisis?.lados?.lado_a?.operaciones ?? []),
     ...(analisis?.lados?.lado_b?.operaciones ?? []),
   ];
+  const idsSeleccionadas = seleccionadas.map((op) => op.id);
 
-  // TEMP DEBUG - remove later
-  useEffect(() => {
-    console.log(
-      "🔍 DEBUG: [StepOperaciones] operaciones detectadas (typed)",
-      operaciones.map((op) => ({
-        op_id: op.id,
-        tipo: op.tipo,
-        descripcion: op.descripcion,
-        face_indices: op.face_indices,
-      })),
-    );
-    console.log(
-      "🔍 DEBUG: [StepOperaciones] operacionesBackend RAW (lado_a + lado_b)",
-      operacionesBackend,
-    );
-  }, [operaciones]);
+  // ── Acciones ─────────────────────────────────────────────────────────────
 
-  const opsSetup1 = operaciones.filter((op) => op.setup === 1);
-  const opsSetup2 = operaciones.filter((op) => op.setup === 2);
-  const tieneAmbos = opsSetup1.length > 0 && opsSetup2.length > 0;
-  const haySeleccionadas = operaciones.some((op) => op.seleccionada);
-  const seleccionadas = operaciones
-    .filter((op) => op.seleccionada)
-    .map((op) => op.id);
+  const abrirRegistroHerramienta = (
+    toolType: string | null,
+    diametroMm: number | null,
+  ) => {
+    // El modal ya existe y ya acepta `contexto` y `filtroInicial`: se abre
+    // prefiltrado por la familia y el Ø que falta, para que el operador no
+    // tenga que buscar a mano lo que el MDE acaba de nombrar.
+    const familia = familiaDeToolType(toolType) ?? undefined;
+    setModalHerramienta({
+      familia,
+      diametro: diametroMm,
+      contexto:
+        diametroMm != null
+          ? `La operación necesita Ø${diametroMm} mm`
+          : "La operación necesita una herramienta que no está en el inventario",
+    });
+  };
 
-  const renderOp = (op: (typeof operaciones)[0]) => (
-    <button
-      key={op.id}
-      onClick={() => {
-        // TEMP DEBUG - remove later
-        console.log("🔍 DEBUG: [StepOperaciones] toggle desde lista (checkbox)", {
-          op_id: op.id,
-          tipo: op.tipo,
-          descripcion: op.descripcion,
-          face_indices: op.face_indices,
-        });
-        toggleOperacion(op.id);
-      }}
-      className={`w-full rounded-xl border p-3 min-h-[44px] text-left transition active:scale-[0.99] ${
-        op.seleccionada
-          ? "border-accent-blue/30 bg-accent-blue/5"
-          : "border-border bg-bg-primary hover:border-accent-blue/20"
-      }`}
-    >
-      <div className="flex items-start gap-3">
-        <div
-          className={`mt-0.5 flex-shrink-0 rounded-full border p-1.5 ${tipoColor(op.tipo)}`}
-        >
-          {tipoIcono(op.tipo)}
-        </div>
-        <div className="flex-1 min-w-0">
-          <p className="text-sm font-medium text-text-primary">
-            {op.descripcion}
-          </p>
-          {op.herramienta_sugerida && (
-            <p className="mt-0.5 text-xs text-text-muted">
-              🔧 {op.herramienta_sugerida}
-            </p>
-          )}
-        </div>
-        <div
-          className={`flex-shrink-0 h-6 w-6 md:h-5 md:w-5 rounded border-2 transition mt-0.5 ${
-            op.seleccionada
-              ? "border-accent-blue bg-accent-blue"
-              : "border-border"
-          }`}
-        >
-          {op.seleccionada && (
-            <svg viewBox="0 0 12 12" className="h-full w-full text-white p-0.5">
-              <path
-                d="M2 6l3 3 5-5"
-                stroke="currentColor"
-                strokeWidth="2"
-                fill="none"
-                strokeLinecap="round"
-              />
-            </svg>
-          )}
-        </div>
-      </div>
-    </button>
-  );
+  const alRegistrarHerramienta = async () => {
+    setModalHerramienta(null);
+    await cargarInventario();
+    // Inventario nuevo ⇒ análisis COMPLETO otra vez.
+    await solicitarAnalisis();
+  };
+
+  const ignorarOperacion = () => {
+    if (!opActual || !opActual.seleccionada) return;
+    toggleOperacion(opActual.id);
+  };
 
   return (
-    <div className="space-y-4">
-      {/* Header */}
-      <div>
-        <h2 className="text-lg font-semibold text-text-primary">
-          Operaciones detectadas
-        </h2>
-        <p className="mt-0.5 text-sm text-text-muted">
-          Selecciona desde la lista o haz clic en la pieza 3D.{" "}
-          <span className="text-accent-blue font-medium">
-            {seleccionadas.length}
-          </span>{" "}
-          de <span className="font-medium">{operaciones.length}</span>{" "}
-          seleccionadas.
-        </p>
-      </div>
-
-      {/* Layout dos columnas */}
-      <div className="flex flex-col lg:flex-row gap-4 lg:gap-6">
-        {/* ── Viewer 3D ── */}
-        <div className="w-full lg:w-2/3 rounded-xl border border-border bg-bg-primary overflow-hidden">
-          <div className="flex flex-wrap items-center gap-2 md:gap-3 border-b border-border px-3 md:px-4 py-2">
-            <p className="text-[9px] md:text-[10px] uppercase tracking-widest text-text-muted">
-              Leyenda:
-            </p>
-            {[
-              { color: "bg-blue-400", label: "Planeado" },
-              { color: "bg-green-400", label: "Taladrado" },
-              { color: "bg-purple-400", label: "Cajera" },
-              { color: "bg-orange-400", label: "Contorneado" },
-              { color: "bg-yellow-400", label: "Seleccionada" },
-            ].map(({ color, label }) => (
-              <span
-                key={label}
-                className="flex items-center gap-1 text-[9px] md:text-[10px] text-text-muted"
-              >
-                <span
-                  className={`inline-block h-2 w-2 rounded-full ${color}`}
-                />
-                {label}
-              </span>
-            ))}
-          </div>
-
-          <div className="h-[300px] md:h-[400px]">
-            <CamViewer3D
-              dimensiones={dimensiones}
-              operaciones={operaciones}
-              operacionesBackend={operacionesBackend}
-              seleccionadas={seleccionadas}
-              onToggle={toggleOperacion}
-              faceIdDestacada={montajeConfig.face_id_apoyo}
-              sujecionConfig={montajeConfig.sujecion_config}
-            />
-          </div>
-
-          <p className="border-t border-border px-3 md:px-4 py-2 text-[9px] md:text-[10px] text-text-muted">
-            🖱 Arrastra para rotar · Scroll para zoom · Doble clic en una cara
-            para seleccionar la operación. Un clic muestra su dimensión.
+    <div className="flex flex-col gap-3">
+      {/* ── Cabecera ── */}
+      <div className="flex flex-wrap items-end justify-between gap-2">
+        <div>
+          <h2 className="text-base font-semibold text-text-primary md:text-lg">
+            Operaciones
+          </h2>
+          <p className="mt-0.5 text-xs text-text-muted">
+            Elige una operación para verla sobre la pieza.
           </p>
         </div>
-
-        {/* ── Lista operaciones ── */}
-        <div className="w-full lg:w-1/3 flex flex-col gap-3">
-          {/* Acciones rápidas */}
-          <div className="flex flex-col sm:flex-row gap-2">
-            <button
-              onClick={seleccionarTodas}
-              className="rounded-lg border border-border px-3 py-2.5 md:py-1.5 min-h-[44px] md:min-h-0 text-xs text-text-muted transition hover:border-accent-blue/50 hover:text-text-primary"
-            >
-              Seleccionar todas
-            </button>
-            <button
-              onClick={deseleccionarTodas}
-              className="rounded-lg border border-border px-3 py-2.5 md:py-1.5 min-h-[44px] md:min-h-0 text-xs text-text-muted transition hover:border-red-500/30 hover:text-red-400"
-            >
-              Deseleccionar todas
-            </button>
-          </div>
-
-          <div
-            className="flex-1 space-y-4 overflow-y-auto pr-1"
-            style={{ maxHeight: "420px" }}
-          >
-            {opsSetup1.length > 0 && (
-              <div className="space-y-2">
-                <div className="flex items-center gap-2">
-                  <span className="rounded-full bg-accent-blue/10 px-2.5 py-0.5 text-xs font-semibold text-accent-blue">
-                    Setup 1 — Cara Superior
-                  </span>
-                  <span className="text-xs text-text-muted">
-                    {opsSetup1.filter((o) => o.seleccionada).length}/
-                    {opsSetup1.length} sel.
-                  </span>
-                </div>
-                {opsSetup1.map(renderOp)}
-              </div>
-            )}
-
-            {opsSetup2.length > 0 && (
-              <div className="space-y-2">
-                <div className="flex items-center gap-2">
-                  <span className="rounded-full bg-purple-500/10 px-2.5 py-0.5 text-xs font-semibold text-purple-400">
-                    Setup 2 — Cara Inferior
-                  </span>
-                  <span className="text-xs text-text-muted">
-                    {opsSetup2.filter((o) => o.seleccionada).length}/
-                    {opsSetup2.length} sel.
-                  </span>
-                </div>
-                {opsSetup2.map(renderOp)}
-              </div>
-            )}
-
-            {tieneAmbos &&
-              opsSetup1.some((o) => o.seleccionada) &&
-              opsSetup2.some((o) => o.seleccionada) && (
-                <div className="rounded-xl border border-border bg-bg-primary p-4">
-                  <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-text-muted">
-                    Orden de mecanizado
-                  </p>
-                  <div className="space-y-2">
-                    {[
-                      {
-                        value: "superior_primero",
-                        label: "Cara Superior primero (OP10 → OP20)",
-                      },
-                      {
-                        value: "inferior_primero",
-                        label: "Cara Inferior primero (OP10 → OP20)",
-                      },
-                    ].map((opt) => (
-                      <label
-                        key={opt.value}
-                        className="flex items-center gap-2 cursor-pointer"
-                      >
-                        <div
-                          onClick={() => setOrdenSetups(opt.value)}
-                          className={`h-4 w-4 rounded-full border-2 flex-shrink-0 transition ${
-                            ordenSetups === opt.value
-                              ? "border-accent-blue bg-accent-blue"
-                              : "border-border"
-                          }`}
-                        />
-                        <span className="text-xs text-text-primary">
-                          {opt.label}
-                        </span>
-                      </label>
-                    ))}
-                  </div>
-                </div>
-              )}
-          </div>
-
-          <div className="border-t border-border pt-2">
-            <WizardNavButtons
-              prevStep="contexto"
-              nextStep="resumen"
-              canAdvance={haySeleccionadas}
-            />
-          </div>
+        <div className="flex flex-wrap gap-1.5">
+          <Contador
+            valor={contadores.listas}
+            etiqueta={contadores.listas === 1 ? "lista" : "listas"}
+            clase="border-green-500/30 bg-green-500/10 text-green-400"
+          />
+          <Contador
+            valor={contadores.revision}
+            etiqueta={contadores.revision === 1 ? "revisión" : "revisiones"}
+            clase="border-amber-500/30 bg-amber-500/10 text-amber-400"
+          />
+          <Contador
+            valor={contadores.sinHerramienta}
+            etiqueta="sin herram."
+            clase="border-red-500/30 bg-red-500/10 text-red-400"
+          />
         </div>
       </div>
+
+      {/* ── Zona central: visor + paneles flotantes ──
+          El alto es FIJO y no depende de los paneles. */}
+      <div className="relative h-[520px] overflow-hidden rounded-xl border border-border bg-bg-primary md:h-[620px]">
+        {/* El contenedor del canvas ocupa SIEMPRE el 100 %: los paneles van
+            encima, nunca a su lado. */}
+        <div className="absolute inset-0">
+          <CamViewer3D
+            dimensiones={dimensiones}
+            operaciones={operaciones}
+            operacionesBackend={operacionesBackend}
+            seleccionadas={idsSeleccionadas}
+            opEnfocada={opEnfocada}
+            // Doble clic en una cara → ENFOCA su operación en la lista. El
+            // visor solo informa de qué operación hay en la cara; qué significa
+            // eso lo decide esta pantalla.
+            onToggle={(id) => {
+              setOpEnfocada(id);
+              setPanelDerecho(true);
+            }}
+            faceIdDestacada={montajeConfig.face_id_apoyo}
+            sujecionConfig={montajeConfig.sujecion_config}
+          />
+        </div>
+
+        {/* Línea de ayuda — sobre el visor, sin robarle espacio. */}
+        <p className="pointer-events-none absolute inset-x-0 bottom-0 z-10 bg-gradient-to-t from-black/70 to-transparent px-3 pb-1.5 pt-6 text-center text-[10px] text-white/80">
+          Arrastra para rotar · Scroll para acercar · Doble clic en una cara para
+          seleccionar
+        </p>
+
+        <PanelDeslizante
+          lado="izquierda"
+          abierto={panelIzquierdo}
+          onAlternar={() => setPanelIzquierdo((v) => !v)}
+          ancho={ANCHO_PANEL_IZQUIERDO}
+          titulo="Operaciones"
+          distintivo={
+            <span className="ml-auto text-[10px] text-text-muted">
+              {seleccionadas.length}/{operaciones.length}
+            </span>
+          }
+        >
+          <ListaOperaciones
+            operaciones={operaciones}
+            indiceMDE={indiceMDE}
+            herramientaDe={herramientaDe}
+            opEnfocada={opEnfocada}
+            onEnfocar={setOpEnfocada}
+            onAlternar={toggleOperacion}
+            onSeleccionarTodas={() =>
+              setOperaciones(operaciones.map((op) => ({ ...op, seleccionada: true })))
+            }
+            onDeseleccionarTodas={() =>
+              setOperaciones(operaciones.map((op) => ({ ...op, seleccionada: false })))
+            }
+            ordenSetups={ordenSetups}
+            onOrdenSetups={setOrdenSetups}
+          />
+        </PanelDeslizante>
+
+        <PanelDeslizante
+          lado="derecha"
+          abierto={panelDerecho}
+          onAlternar={() => setPanelDerecho((v) => !v)}
+          ancho={ANCHO_PANEL_DERECHO}
+          titulo="Asistente MDE"
+        >
+          <PanelMDE
+            operacion={opActual}
+            recomendacion={opActual ? recomendacionDe(indiceMDE, opActual) : null}
+            inventario={inventario}
+            estado={mdeEstado}
+            error={mdeError}
+            motivoNoDisponible={fallo?.reason ?? null}
+            onSolicitarAnalisis={solicitarAnalisis}
+            onUsarAlternativa={(herramienta) => {
+              if (opActual) {
+                asignarHerramienta(
+                  opActual.id,
+                  herramienta.id_herramienta_instancia,
+                );
+              }
+            }}
+            onRegistrarHerramienta={abrirRegistroHerramienta}
+            onIgnorarOperacion={ignorarOperacion}
+          />
+        </PanelDeslizante>
+      </div>
+
+      {/* ── Pie: totales ── */}
+      <div className="flex flex-wrap items-center gap-x-5 gap-y-1.5 rounded-xl border border-border bg-bg-primary px-3 py-2">
+        <Total
+          etiqueta="Cambios de herramienta"
+          valor={cambiosHerramienta != null ? String(cambiosHerramienta) : null}
+          ayuda="Se cuenta sobre las operaciones seleccionadas, en el orden de la lista. Si alguna no tiene herramienta asignada no hay total: un número con un hueco sería falso."
+        />
+        <Total
+          etiqueta="Longitud de trayectoria"
+          valor={null}
+          ayuda="La calcula el motor al generar las trayectorias; todavía no ha respondido para este trabajo."
+        />
+        <Total
+          etiqueta="Material removido"
+          valor={materialRemovido ? `${materialRemovido} mm` : null}
+          ayuda="Remoción por eje que reporta el motor (plan_mecanizado.remocion_stock)."
+        />
+        {/* Sitio RESERVADO para el tiempo estimado. Se muestra vacío a
+            propósito: el MDE no calcula tiempo hoy y aquí no se inventa uno.
+            Aparecerá cuando salga de datos reales (pasadas × avance × longitud). */}
+        <Total
+          etiqueta="Tiempo estimado"
+          valor={null}
+          ayuda="No se muestra: hoy no se calcula con datos reales, y un tiempo inventado se convierte en una promesa al cliente."
+        />
+
+        <div className="ml-auto">
+          <WizardNavButtons
+            prevStep="contexto"
+            nextStep="resumen"
+            canAdvance={seleccionadas.length > 0}
+          />
+        </div>
+      </div>
+
+      {/* Modal REUTILIZADO tal cual, prefiltrado por familia y Ø. */}
+      <AgregarHerramientaModal
+        abierto={modalHerramienta !== null}
+        onCerrar={() => setModalHerramienta(null)}
+        onRegistrada={alRegistrarHerramienta}
+        contexto={modalHerramienta?.contexto}
+        filtroInicial={
+          modalHerramienta
+            ? {
+                familia: modalHerramienta.familia,
+                diametro_min:
+                  modalHerramienta.diametro != null
+                    ? modalHerramienta.diametro - TOLERANCIA_DIAMETRO_MM
+                    : undefined,
+                diametro_max:
+                  modalHerramienta.diametro != null
+                    ? modalHerramienta.diametro + TOLERANCIA_DIAMETRO_MM
+                    : undefined,
+              }
+            : undefined
+        }
+      />
     </div>
   );
 };
+
+function Contador({
+  valor,
+  etiqueta,
+  clase,
+}: {
+  valor: number;
+  etiqueta: string;
+  clase: string;
+}) {
+  return (
+    <span className={`rounded-full border px-2.5 py-0.5 text-[11px] ${clase}`}>
+      <span className="font-semibold">{valor}</span> {etiqueta}
+    </span>
+  );
+}
+
+/**
+ * Un total del pie. Sin valor muestra un guion, NUNCA un cero ni una
+ * estimación: la ausencia de dato se ve como ausencia.
+ */
+function Total({
+  etiqueta,
+  valor,
+  ayuda,
+}: {
+  etiqueta: string;
+  valor: string | null;
+  ayuda: string;
+}) {
+  return (
+    <div title={ayuda} className="flex items-baseline gap-1.5">
+      <span className="text-[10px] uppercase tracking-wide text-text-muted">
+        {etiqueta}
+      </span>
+      <span
+        className={`font-mono text-xs ${valor ? "text-text-primary" : "text-text-muted/50"}`}
+      >
+        {valor ?? "—"}
+      </span>
+    </div>
+  );
+}

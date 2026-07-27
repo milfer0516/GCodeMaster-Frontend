@@ -20,6 +20,15 @@ interface Props {
   operacionesBackend?: any[];
   seleccionadas?: string[];
   faceIdDestacada?: number | null;
+
+  // ── Operación ENFOCADA (paso Operaciones) ──
+  // Es la que el operador está mirando en la lista/panel MDE, y NO es lo mismo
+  // que `seleccionadas` (esas son las que se van a mecanizar). Cuando llega un
+  // id, sus caras se pintan en el color de SU TIPO con brillo y el resto de la
+  // pieza se atenúa a gris: así se ve DÓNDE mecaniza la operación, que es todo
+  // el objetivo. En null el visor se comporta exactamente como siempre.
+  opEnfocada?: string | null;
+
   onToggle?: (id: string) => void;
   onFaceClick?: (faceId: number) => void;
   sujecionConfig?: SujecionConfig | null;
@@ -162,39 +171,83 @@ function buildBufferGeometry(meshData: MeshData): THREE.BufferGeometry {
   return geo;
 }
 
+// ── Operación a la que pertenece una cara ──────────────────────────────────
+// Primero por feature.op_id (el vínculo que manda el backend); si no está, por
+// face_indices. Extraído para que el color inicial, el recoloreado por
+// selección y la restauración tras el hover no puedan divergir.
+function operacionDeCara(
+  face: FaceMetadata,
+  operaciones: Operacion[],
+): Operacion | undefined {
+  const opId = face.feature?.op_id as string | undefined;
+  const porId = opId ? operaciones.find((o) => o.id === opId) : undefined;
+  if (porId) return porId;
+  return operaciones.find(
+    (o) => o.face_indices && o.face_indices.includes(face.face_id),
+  );
+}
+
+interface AspectoCara {
+  color: THREE.Color;
+  emissive: number;
+  transparent: boolean;
+  opacity: number;
+}
+
+// ── Aspecto de una cara: la ÚNICA regla de color de la pieza ───────────────
+// Con `opEnfocada` la pieza entra en modo enfoque: solo la operación mirada
+// conserva color (el de su tipo, con brillo) y todo lo demás baja a gris, para
+// que se lea de un vistazo DÓNDE mecaniza. Sin `opEnfocada` rige el
+// comportamiento histórico (amarillo = seleccionada, color de tipo si no).
+function aspectoDeCara(
+  face: FaceMetadata,
+  operaciones: Operacion[],
+  seleccionadas: string[],
+  opEnfocada: string | null,
+): AspectoCara {
+  const op = operacionDeCara(face, operaciones);
+
+  if (opEnfocada) {
+    const esEnfocada = !!op && op.id === opEnfocada;
+    return {
+      color: esEnfocada ? colorPorTipo(op!.tipo) : COLOR_BASE,
+      emissive: esEnfocada ? 0x222222 : 0x000000,
+      transparent: false,
+      opacity: 1.0,
+    };
+  }
+
+  const isSeleccionada = op ? seleccionadas.includes(op.id) : false;
+  return {
+    color: isSeleccionada
+      ? COLOR_SELECCIONADO
+      : op
+        ? colorPorTipo(op.tipo)
+        : COLOR_BASE,
+    emissive: 0x000000,
+    transparent: isSeleccionada,
+    opacity: isSeleccionada ? 0.92 : 1.0,
+  };
+}
+
 // ── Construir array de materiales (uno por cara) ───────────────────────────
 function buildMaterials(
   faces: FaceMetadata[],
   operaciones: Operacion[],
   seleccionadas: string[],
+  opEnfocada: string | null,
 ): THREE.MeshStandardMaterial[] {
   return faces.map((face) => {
-    // Buscar si esta cara tiene una operación asociada via feature.op_id
-    const opId = face.feature?.op_id as string | undefined;
-    let op = opId ? operaciones.find((o) => o.id === opId) : undefined;
-
-    // Fallback: buscar por face_indices si no se encontró por op_id
-    if (!op) {
-      op = operaciones.find((o) =>
-        o.face_indices && o.face_indices.includes(face.face_id)
-      );
-    }
-
-    const isSeleccionada = op ? seleccionadas.includes(op.id) : false;
-
-    const color = isSeleccionada
-      ? COLOR_SELECCIONADO
-      : op
-        ? colorPorTipo(op.tipo)
-        : COLOR_BASE;
+    const aspecto = aspectoDeCara(face, operaciones, seleccionadas, opEnfocada);
 
     return new THREE.MeshStandardMaterial({
-      color,
+      color: aspecto.color,
+      emissive: new THREE.Color(aspecto.emissive),
       metalness: 0.55,
       roughness: 0.35,
       side: THREE.DoubleSide,
-      transparent: isSeleccionada,
-      opacity: isSeleccionada ? 0.92 : 1.0,
+      transparent: aspecto.transparent,
+      opacity: aspecto.opacity,
     });
   });
 }
@@ -207,6 +260,7 @@ export function CamViewer3D({
   operacionesBackend = [],
   seleccionadas = [],
   faceIdDestacada = null,
+  opEnfocada = null,
   onToggle = () => {},
   onFaceClick,
   sujecionConfig = null,
@@ -404,6 +458,7 @@ export function CamViewer3D({
       meshData.faces,
       operaciones,
       seleccionadas,
+      opEnfocada,
     );
     materialsRef.current = materials;
 
@@ -465,30 +520,19 @@ export function CamViewer3D({
       const mat = materialsRef.current[face.face_id];
       if (!mat) return;
 
-      const opId = face.feature?.op_id as string | undefined;
-      let op = opId ? operaciones.find((o) => o.id === opId) : undefined;
-
-      // Fallback: buscar por face_indices si no se encontró por op_id
-      if (!op) {
-        op = operaciones.find((o) =>
-          o.face_indices && o.face_indices.includes(face.face_id)
-        );
-      }
-
-      const isSeleccionada = op ? seleccionadas.includes(op.id) : false;
-
       // No sobreescribir si está en hover
       if (hoveredRef.current === face.face_id) return;
 
-      const color = isSeleccionada
-        ? COLOR_SELECCIONADO
-        : op
-          ? colorPorTipo(op.tipo)
-          : COLOR_BASE;
-
-      mat.color.copy(color);
-      mat.transparent = isSeleccionada;
-      mat.opacity = isSeleccionada ? 0.92 : 1.0;
+      const aspecto = aspectoDeCara(
+        face,
+        operaciones,
+        seleccionadas,
+        opEnfocada,
+      );
+      mat.color.copy(aspecto.color);
+      mat.emissive.set(aspecto.emissive);
+      mat.transparent = aspecto.transparent;
+      mat.opacity = aspecto.opacity;
     });
 
     meshData.faces.forEach((face) => {
@@ -499,7 +543,7 @@ export function CamViewer3D({
         mat.emissive.set(0x003311);
       }
     });
-  }, [seleccionadas, operaciones, meshData, faceIdDestacada]);
+  }, [seleccionadas, operaciones, meshData, faceIdDestacada, opEnfocada]);
 
   // ── 4b. Rotar mesh con animación suave según cara de apoyo ─────────────
   useEffect(() => {
@@ -679,17 +723,21 @@ export function CamViewer3D({
         const prev = materialsRef.current[hoveredRef.current];
         if (prev && meshData) {
           const face = meshData.faces[hoveredRef.current];
-          const opId = face?.feature?.op_id as string | undefined;
-          const op = opId ? operaciones.find((o) => o.id === opId) : undefined;
-          const isSel = op ? seleccionadas.includes(op.id) : false;
-          prev.color.copy(
-            isSel
-              ? COLOR_SELECCIONADO
-              : op
-                ? colorPorTipo(op.tipo)
-                : COLOR_BASE,
-          );
-          prev.emissive.set(0x000000);
+          if (face) {
+            // Se restaura con la MISMA regla que pintó la cara (incluido el
+            // modo enfoque); si no, salir del hover la dejaría con el color de
+            // otro modo.
+            const aspecto = aspectoDeCara(
+              face,
+              operaciones,
+              seleccionadas,
+              opEnfocada,
+            );
+            prev.color.copy(aspecto.color);
+            prev.emissive.set(aspecto.emissive);
+            prev.transparent = aspecto.transparent;
+            prev.opacity = aspecto.opacity;
+          }
         }
         hoveredRef.current = null;
         el.style.cursor = "grab";
@@ -759,7 +807,7 @@ export function CamViewer3D({
       renderer.domElement.removeEventListener("click", handleClick);
       renderer.domElement.removeEventListener("dblclick", handleDoubleClick);
     };
-  }, [meshData, operaciones, seleccionadas, onToggle, onFaceClick]);
+  }, [meshData, operaciones, seleccionadas, opEnfocada, onToggle, onFaceClick]);
 
   // ── 6. Dibujar stock (wireframe + translúcido) ──────────────────────────
   useEffect(() => {
