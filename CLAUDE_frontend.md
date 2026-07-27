@@ -52,9 +52,19 @@ Existe para despertar al MDE: antes, el adaptador del motor fijaba
   Los PNG llevan el nombre del ESTADO, nunca el de un `ProcessOrigin`.
 - La variante de imagen (redondo/cuadrado) sale de `stockConfig.tipo`, ya
   declarado en Stock: se le muestra al operador SU caso.
-- **Límite estricto de la ayuda contextual:** explica qué SIGNIFICA el estado
-  elegido; nunca anticipa lo que el motor hará ni cita reglas. El MDE explica
-  sus propias decisiones después, en Operaciones. No duplicar su razonamiento.
+- **Límite estricto de TODO el texto del paso** (tarjetas y panel de ayuda):
+  solo lo FÍSICAMENTE OBSERVABLE en la pieza. Nunca "el MDE asumirá…",
+  "buscará…", "no propondrá…", "aplicará la regla…", ni IDs de regla. El MDE
+  explica sus propias decisiones después, en Operaciones. Criterio de
+  aceptación: si mañana cambia la lógica del motor, esta pantalla sigue siendo
+  correcta sin tocar una palabra.
+- Anatomía de la tarjeta (fija, para que las seis se comparen de un vistazo):
+  imagen en caja de **180 px con padding de 20 px** (la imagen ilustra, no
+  domina), indicador de forma declarada (● Cilíndrica / ● Prismática), título
+  con `min-h` de dos líneas, descripción observable y una línea reservada
+  siempre para "✔ Seleccionado" — así seleccionar no cambia el alto. La rejilla
+  usa `auto-rows-fr`: un título que envuelve no desalinea su fila. Sin textos
+  del tipo "toca para elegir": una tarjeta clicable se explica sola.
 - El paso NUNCA bloquea: "No estoy seguro" → `DESCONOCIDO` es el valor por
   defecto y el motor degrada igual que hoy.
 - El valor viaja en `generateGcode` como `contexto_json`

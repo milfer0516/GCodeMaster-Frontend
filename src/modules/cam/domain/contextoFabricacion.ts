@@ -58,13 +58,23 @@ export type EstadoPieza =
 // Forma del bruto que el operador YA declaró en el paso Stock.
 export type FormaStock = "rectangular" | "cilindrico";
 
+// Cómo se nombra esa forma en las tarjetas (el operador ve la palabra de taller,
+// no la clave interna del stock).
+export const FORMA_LABEL: Record<FormaStock, string> = {
+  cilindrico: "Cilíndrica",
+  rectangular: "Prismática",
+};
+
 export interface EstadoPiezaCard {
   id: EstadoPieza;
   titulo: string;
+  // Lo que se OBSERVA en la pieza, nada más. Ningún texto de este paso anticipa
+  // el comportamiento del motor ("asumirá", "buscará", "no propondrá", reglas):
+  // eso es exclusivo del MDE, que explica su razonamiento después, en
+  // Operaciones. Si mañana cambia la lógica del motor, esta pantalla sigue
+  // siendo correcta sin tocar una palabra.
   descripcion: string;
-  // Qué SIGNIFICA ese estado en la pieza. Explica lo que el operador está
-  // ELIGIENDO — nunca lo que el MDE hará con ello: el motor explica sus propias
-  // decisiones más adelante, en Operaciones. No duplicar aquí su razonamiento.
+  // Ampliación del MISMO hecho observable, para el panel de ayuda. Misma regla.
   ayuda: string;
   // Una imagen por forma de bruto. `desconocido` no tiene variantes: es la
   // ausencia de declaración, no una pieza concreta.
@@ -75,7 +85,7 @@ export const ESTADOS_PIEZA: EstadoPiezaCard[] = [
   {
     id: "bruto",
     titulo: "Material en bruto",
-    descripcion: "Sin mecanizar, como llegó del proveedor",
+    descripcion: "La pieza aún no presenta mecanizados.",
     ayuda:
       "Ninguna superficie está mecanizada todavía: las medidas son las del " +
       "material de partida, con la tolerancia con que se vende.",
@@ -84,36 +94,35 @@ export const ESTADOS_PIEZA: EstadoPiezaCard[] = [
   {
     id: "torneada",
     titulo: "Pieza torneada",
-    descripcion: "El diámetro exterior ya está terminado",
+    descripcion: "El diámetro exterior ya fue mecanizado en un torno.",
     ayuda:
-      "En una pieza torneada, los diámetros exteriores normalmente ya están " +
-      "terminados; lo que queda en bruto son las zonas que no se pueden hacer " +
-      "en el torno.",
+      "Los diámetros exteriores muestran el acabado del torno; las zonas que " +
+      "no se pueden tornear siguen tal como estaban.",
     imagen: { redondo: torneadaRedondo, cuadrado: torneadaCuadrado },
   },
   {
     id: "parcial",
     titulo: "Pieza parcialmente mecanizada",
-    descripcion: "Ya pasó por otra máquina",
+    descripcion: "La pieza ya tiene algunas operaciones realizadas.",
     ayuda:
-      "Parte de las superficies ya están mecanizadas y a medida, y otras " +
-      "siguen en bruto. La pieza llega de una operación anterior.",
+      "Unas superficies están mecanizadas y a medida, y otras siguen en " +
+      "bruto: la pieza llega de una operación anterior.",
     imagen: { redondo: parcialRedondo, cuadrado: parcialCuadrado },
   },
   {
     id: "fundicion",
     titulo: "Fundición / Forja",
-    descripcion: "Superficie irregular, sobrematerial desigual",
+    descripcion:
+      "La superficie es irregular y conserva la forma del proceso de fabricación.",
     ayuda:
       "La piel de fundición o forja sigue el contorno de la pieza: la " +
-      "cantidad de material sobrante cambia de una zona a otra y la " +
-      "superficie es irregular.",
+      "cantidad de material sobrante cambia de una zona a otra.",
     imagen: { redondo: fundicionRedondo, cuadrado: fundicionCuadrado },
   },
   {
     id: "reparacion",
     titulo: "Reparación",
-    descripcion: "Pieza usada que se está recuperando",
+    descripcion: "Es una pieza usada que será recuperada mediante mecanizado.",
     ayuda:
       "La pieza ya estuvo en servicio: sus medidas actuales pueden no " +
       "coincidir con el plano por desgaste o por un mecanizado anterior.",
@@ -122,10 +131,10 @@ export const ESTADOS_PIEZA: EstadoPiezaCard[] = [
   {
     id: "desconocido",
     titulo: "No estoy seguro",
-    descripcion: "No se declara el estado de la pieza",
+    descripcion: "Continúa sin seleccionar un contexto específico.",
     ayuda:
-      "Es una respuesta válida: se continúa sin declarar el estado de la " +
-      "pieza. Siempre se puede volver a este paso y precisarlo.",
+      "No se declara el estado de la pieza. Es una respuesta válida y " +
+      "siempre se puede volver a este paso a precisarla.",
     imagen: { unica: desconocido },
   },
 ];

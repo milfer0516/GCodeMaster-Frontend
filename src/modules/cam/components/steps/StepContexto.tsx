@@ -16,6 +16,7 @@ import { Check, Info } from "lucide-react";
 import {
   ESTADOS_PIEZA,
   imagenDeEstado,
+  FORMA_LABEL,
   type EstadoPieza,
   type EstadoPiezaCard,
   type FormaStock,
@@ -37,13 +38,15 @@ function EstadoCard({
       type="button"
       onClick={() => onSelect(card.id)}
       aria-pressed={selected}
-      className={`group relative flex flex-col overflow-hidden rounded-xl border text-left transition-colors ${
+      className={`group relative flex h-full flex-col overflow-hidden rounded-xl border text-left transition-colors ${
         selected
           ? "border-accent-blue bg-accent-blue/[0.08] ring-2 ring-accent-blue/25"
           : "border-border bg-bg-surface hover:border-accent-blue/40 hover:bg-bg-elevated"
       }`}
     >
-      <div className="flex aspect-[4/3] w-full items-center justify-center bg-bg-elevated/60 p-3">
+      {/* Imagen con altura FIJA y aire alrededor: las seis tarjetas se comparan
+          de un vistazo, sin scroll. La imagen ilustra, no domina la tarjeta. */}
+      <div className="flex h-[180px] w-full flex-shrink-0 items-center justify-center bg-bg-elevated/60 p-5 md:p-6">
         <img
           src={imagenDeEstado(card, forma)}
           alt={card.titulo}
@@ -52,10 +55,16 @@ function EstadoCard({
         />
       </div>
 
-      <div className="flex flex-1 flex-col gap-1 p-3.5">
+      <div className="flex flex-1 flex-col gap-1 p-3">
+        {/* Forma declarada en Stock — la misma que decide la variante de imagen. */}
+        <span className="text-[10px] font-semibold uppercase tracking-wide text-text-muted">
+          ● {FORMA_LABEL[forma]}
+        </span>
+
         <div className="flex items-start justify-between gap-2">
+          {/* min-h = dos líneas: un título que envuelve no desalinea su fila. */}
           <h3
-            className={`text-sm font-bold leading-tight ${
+            className={`min-h-[2.25rem] text-sm font-bold leading-tight ${
               selected ? "text-accent-blue" : "text-text-primary"
             }`}
           >
@@ -67,16 +76,14 @@ function EstadoCard({
             </span>
           )}
         </div>
+
         <p className="text-xs leading-snug text-text-muted">{card.descripcion}</p>
 
-        <div className="mt-auto pt-2">
-          {selected ? (
+        {/* Línea reservada SIEMPRE: al seleccionar, la tarjeta no cambia de alto. */}
+        <div className="mt-auto flex h-[18px] items-end pt-2">
+          {selected && (
             <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-accent-blue">
               <Check className="h-3 w-3" strokeWidth={3} /> Seleccionado
-            </span>
-          ) : (
-            <span className="text-[11px] text-text-muted/50 group-hover:text-text-muted">
-              Toca para elegir
             </span>
           )}
         </div>
@@ -96,25 +103,22 @@ export const StepContexto = () => {
   );
 
   return (
-    <div className="space-y-5">
-      {/* ── Encabezado ── */}
-      <div>
+    <div className="space-y-4">
+      {/* ── Encabezado (compacto: las seis tarjetas caben sin scroll) ── */}
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
         <h2 className="text-base md:text-lg font-bold text-text-primary">
           ¿Cuál es el estado de esta pieza antes de mecanizar?
         </h2>
-        <p className="mt-1.5 inline-flex items-center gap-1.5 rounded-lg border border-accent-blue/25 bg-accent-blue/[0.07] px-2.5 py-1 text-[11px] md:text-xs text-accent-blue">
+        <p className="inline-flex items-center gap-1.5 rounded-lg border border-accent-blue/25 bg-accent-blue/[0.07] px-2.5 py-1 text-[11px] md:text-xs text-accent-blue">
           <Info className="h-3.5 w-3.5 flex-shrink-0" />
           El MDE utilizará este contexto
         </p>
-        <p className="mt-2 text-xs md:text-sm text-text-muted">
-          Elige lo que tienes en la mano. Si no lo sabes con certeza, deja
-          &laquo;No estoy seguro&raquo;: es una respuesta válida y puedes
-          continuar.
-        </p>
       </div>
 
-      {/* ── Las seis tarjetas ── */}
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
+      {/* ── Las seis tarjetas ──
+          auto-rows-fr = las dos filas miden lo mismo, así que un título de dos
+          líneas no desalinea su fila. */}
+      <div className="grid auto-rows-fr grid-cols-2 gap-3 md:grid-cols-3">
         {ESTADOS_PIEZA.map((card) => (
           <EstadoCard
             key={card.id}
@@ -126,13 +130,11 @@ export const StepContexto = () => {
         ))}
       </div>
 
-      {/* ── Ayuda contextual: qué significa el estado elegido ── */}
+      {/* ── Ayuda contextual: qué se OBSERVA en una pieza en ese estado ── */}
       {seleccionada && (
-        <div className="rounded-xl border border-border bg-bg-elevated/50 p-3.5 md:p-4">
-          <p className="text-xs font-semibold uppercase tracking-wide text-text-muted">
-            {seleccionada.titulo}
-          </p>
-          <p className="mt-1.5 text-xs md:text-sm leading-relaxed text-text-primary">
+        <div className="rounded-xl border border-border bg-bg-elevated/50 px-3.5 py-3">
+          <p className="text-xs md:text-sm leading-relaxed text-text-primary">
+            <span className="font-semibold">{seleccionada.titulo}:</span>{" "}
             {seleccionada.ayuda}
           </p>
         </div>
