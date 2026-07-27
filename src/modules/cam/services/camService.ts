@@ -1,6 +1,6 @@
 // src/modules/cam/services/camService.ts
 import { api } from "../../../services/api";
-import type { StockConfig } from "../store/camStore";
+import type { StockConfig, ContextoFabricacion } from "../store/camStore";
 import { cylTotals, type StockFaceDirection } from "../utils/stockFaces";
 
 export interface MaterialGlobal {
@@ -164,6 +164,11 @@ export async function generateGcode(payload: {
   partCylinderLen?: number | null;
   datumConfig: object;
   montajeConfig: object;
+  // Declaración del operador en el paso Contexto. Viaja SIEMPRE (por defecto
+  // DESCONOCIDO) para que el adaptador del motor construya el ManufacturingContext
+  // real en vez de fijarlo a DESCONOCIDO. El frontend solo transporta el valor:
+  // no interpreta ni anticipa lo que el MDE hará con él.
+  contextoFabricacion: ContextoFabricacion;
   ordenSetups?: string;
   machineKey?: string;
 }) {
@@ -183,6 +188,12 @@ export async function generateGcode(payload: {
   form.append("stock_json", JSON.stringify(stockPayload));
   form.append("datum_json", JSON.stringify(payload.datumConfig));
   form.append("montaje_json", JSON.stringify(payload.montajeConfig));
+  form.append(
+    "contexto_json",
+    JSON.stringify({
+      proceso_origen: payload.contextoFabricacion.proceso_origen,
+    }),
+  );
   form.append("orden_setups", payload.ordenSetups ?? "superior_primero");
   if (payload.machineKey) form.append("machine_key", payload.machineKey);
 

@@ -9,9 +9,15 @@ import {
   type StockFace,
   type CylStock,
 } from "../utils/stockFaces";
+import {
+  procesoOrigenDe,
+  type EstadoPieza,
+  type ProcessOrigin,
+} from "../domain/contextoFabricacion";
 
 export type { Setup };
 export type { StockFace, CylStock };
+export type { EstadoPieza, ProcessOrigin };
 
 // DESPUÉS
 export type CamStep =
@@ -20,6 +26,7 @@ export type CamStep =
   | "montaje"
   | "material"
   | "stock"
+  | "contexto"
   | "operaciones"
   | "resumen"
   | "simulacion"
@@ -62,6 +69,16 @@ export interface StockConfig {
   // editing the + offset copies its value to the − offset of that axis. Off by
   // default — raw stock is rarely centered.
   uniform: { x: boolean; y: boolean; z: boolean };
+}
+
+// Declaración del operador sobre el estado de la pieza ANTES de mecanizar.
+// Se guardan las dos caras del mismo dato: `estado` es la tarjeta que eligió (lo
+// que la UI vuelve a pintar como seleccionada) y `proceso_origen` es su
+// traducción al dominio del MDE (lo que viaja en el payload). La traducción vive
+// en domain/contextoFabricacion.ts — aquí nunca se reconstruye a mano.
+export interface ContextoFabricacion {
+  estado: EstadoPieza;
+  proceso_origen: ProcessOrigin;
 }
 
 export interface DatumConfig {
@@ -157,6 +174,9 @@ interface CamState {
   datumConfig: DatumConfig;
   ordenSetups: string;
 
+  // Paso 6 — Contexto de fabricación (nunca bloquea: por defecto DESCONOCIDO)
+  contextoFabricacion: ContextoFabricacion;
+
   // Paso 7 — Resultado
   gcodeSetups: SetupResultado[];
 
@@ -180,6 +200,7 @@ interface CamState {
   setMaterial: (material: MaterialSeleccionado) => void;
   setMaquina: (maquina: Maquina) => void;
   setStockConfig: (config: StockConfig) => void;
+  setContextoFabricacion: (estado: EstadoPieza) => void;
   setDatumConfig: (config: DatumConfig) => void;
   setOrdenSetups: (orden: string) => void;
   setGcodeSetups: (setups: SetupResultado[]) => void;
@@ -219,6 +240,13 @@ const MONTAJE_INICIAL: MontajeConfig = {
 
 const DATUM_INICIAL: DatumConfig = { x: 0, y: 0, z: 0 };
 
+// Por defecto "No estoy seguro" → DESCONOCIDO: el paso nunca bloquea y no
+// declarar es una respuesta válida (el MDE degrada igual que hoy).
+const CONTEXTO_INICIAL: ContextoFabricacion = {
+  estado: "desconocido",
+  proceso_origen: procesoOrigenDe("desconocido"),
+};
+
 export const useCamStore = create<CamState>((set) => ({
   // DESPUÉS — agrega montajeConfig después de datumConfig
   step: "cargar",
@@ -234,6 +262,7 @@ export const useCamStore = create<CamState>((set) => ({
   maquina: null,
   stockConfig: STOCK_INICIAL,
   datumConfig: DATUM_INICIAL,
+  contextoFabricacion: CONTEXTO_INICIAL,
   montajeConfig: MONTAJE_INICIAL,
   setup: null,
   ordenSetups: "superior_primero",
@@ -328,6 +357,12 @@ export const useCamStore = create<CamState>((set) => ({
   setMaterial: (material) => set({ material }),
   setMaquina: (maquina) => set({ maquina }),
   setStockConfig: (stockConfig) => set({ stockConfig }),
+  // La UI elige una TARJETA; el ProcessOrigin se deriva aquí con la tabla del
+  // dominio, así que en el store no puede quedar un par estado/origen incoherente.
+  setContextoFabricacion: (estado) =>
+    set({
+      contextoFabricacion: { estado, proceso_origen: procesoOrigenDe(estado) },
+    }),
   setDatumConfig: (datumConfig) => set({ datumConfig }),
   setOrdenSetups: (ordenSetups) => set({ ordenSetups }),
   setGcodeSetups: (gcodeSetups) => set({ gcodeSetups }),
@@ -358,6 +393,7 @@ export const useCamStore = create<CamState>((set) => ({
       maquina: null,
       stockConfig: STOCK_INICIAL,
       datumConfig: DATUM_INICIAL,
+      contextoFabricacion: CONTEXTO_INICIAL,
       montajeConfig: MONTAJE_INICIAL,
       setup: null,
       ordenSetups: "superior_primero",

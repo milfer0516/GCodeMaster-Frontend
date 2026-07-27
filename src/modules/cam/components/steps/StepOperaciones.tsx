@@ -332,7 +332,7 @@ export const StepOperaciones = () => {
 
           <div className="border-t border-border pt-2">
             <WizardNavButtons
-              prevStep="stock"
+              prevStep="contexto"
               nextStep="resumen"
               canAdvance={haySeleccionadas}
             />

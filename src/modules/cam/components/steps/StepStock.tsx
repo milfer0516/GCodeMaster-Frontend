@@ -574,7 +574,7 @@ export const StepStock = () => {
           porque los offsets no pueden ser negativos. */}
       <WizardNavButtons
         prevStep="material"
-        nextStep="operaciones"
+        nextStep="contexto"
         canAdvance={true}
       />
     </div>

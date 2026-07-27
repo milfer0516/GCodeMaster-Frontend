@@ -31,9 +31,35 @@ src/modules/cam/
       StepOperaciones.tsx    ✅ double-click toggles operation; single click shows dimension
       StepMaterial.tsx       ✅ catalog grouped by categoria, asignarMaterialJob() on next
       StepStock.tsx          ✅ draws stock wireframe (box/cylinder) over the part in the viewer
+      StepContexto.tsx       ✅ operator declares the part's state before machining
+  domain/contextoFabricacion.ts ✅ PURE: the six UI cards + the ONLY card→ProcessOrigin table
   services/camService.ts     ✅
   store/camStore.ts          ✅
 ```
+
+## Contexto de fabricación (paso `contexto`, entre Stock y Operaciones)
+
+Existe para despertar al MDE: antes, el adaptador del motor fijaba
+`ManufacturingContext = DESCONOCIDO` porque la UI nunca lo preguntaba.
+
+- La pregunta es **"¿cuál es el ESTADO de esta pieza antes de mecanizar?"**, no
+  "¿de dónde viene?": el operador tiene la pieza en la mano y sabe lo que ES,
+  pero puede no conocer su historia de fabricación.
+- Seis tarjetas de UI contra diez `ProcessOrigin` del dominio: la relación **no
+  es 1:1** (Fundición / Forja cubre dos orígenes). Por eso hay DOS tablas en
+  `domain/contextoFabricacion.ts` y no una: `ESTADOS_PIEZA` (la tarjeta es dueña
+  de sus imágenes) y `ORIGEN_POR_ESTADO` (única traducción al dominio del MDE).
+  Los PNG llevan el nombre del ESTADO, nunca el de un `ProcessOrigin`.
+- La variante de imagen (redondo/cuadrado) sale de `stockConfig.tipo`, ya
+  declarado en Stock: se le muestra al operador SU caso.
+- **Límite estricto de la ayuda contextual:** explica qué SIGNIFICA el estado
+  elegido; nunca anticipa lo que el motor hará ni cita reglas. El MDE explica
+  sus propias decisiones después, en Operaciones. No duplicar su razonamiento.
+- El paso NUNCA bloquea: "No estoy seguro" → `DESCONOCIDO` es el valor por
+  defecto y el motor degrada igual que hoy.
+- El valor viaja en `generateGcode` como `contexto_json`
+  (`{ proceso_origen }`). Construir el `ManufacturingContext` real a partir de
+  ahí es tarea del adaptador del motor, no del frontend.
 
 ## Reusable 3D architecture — THREE LAYERS (do not collapse them)
 
@@ -153,7 +179,8 @@ src/components/layout/VisorConPanel.tsx   ← LAYER 3 · layout
 ## Wizard step order (current)
 
 ```
-cargar → analisis → montaje → operaciones → material → stock → resumen → resultado
+cargar → analisis → montaje → material → stock → contexto → operaciones →
+resumen → simulacion → resultado
 ```
 
 No "maquina" step — the machine is mandatory at company registration
