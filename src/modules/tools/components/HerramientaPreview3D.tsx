@@ -6,15 +6,14 @@
 // (capa 2) → <Viewer3D> (capa 1). No hay geometría en este archivo, y no hay
 // React en la que construye la geometría.
 //
-// Cuando hay longitud útil medida se añade la COTA DEL VOLADIZO: el operador
-// entiende qué se le está pidiendo mirando el dibujo, no leyendo un párrafo.
+// SIN COTA DE VOLADIZO NI L/D. La herramienta se dibuja con su propia
+// geometría (Ø, filo, longitud total), que es lo permanente. El voladizo es
+// una decisión de montaje de cada trabajo y se acota en Operaciones, no aquí;
+// `cotaVertical` (lib/geometry/anotaciones) queda disponible para ese paso.
 // ─────────────────────────────────────────────────────────────────────────────
 import { useMemo } from "react";
-import * as THREE from "three";
 import { Viewer3D } from "../../../lib/viewer3d/Viewer3D";
 import { construirHerramienta } from "../../../lib/geometry/herramientas";
-import { resolverParametros } from "../../../lib/geometry/herramientas/parametros";
-import { cotaVertical } from "../../../lib/geometry/anotaciones";
 import {
   aParametrosGeometria,
   type ValoresHerramienta,
@@ -36,15 +35,6 @@ const OPCIONES_VISOR = {
   direccionCamara: [0.9, 0.35, 1] as [number, number, number],
 };
 
-/** Rigidez por relación voladizo/diámetro — regla de taller. */
-function evaluarEsbeltez(ld: number): { texto: string; clase: string } {
-  if (ld <= 3)
-    return { texto: "rígida", clase: "bg-accent-green/20 text-accent-green" };
-  if (ld <= 5)
-    return { texto: "vigilar vibración", clase: "bg-accent-amber/20 text-accent-amber" };
-  return { texto: "muy esbelta", clase: "bg-accent-red/20 text-accent-red" };
-}
-
 export function HerramientaPreview3D({
   valores,
   sinCotas,
@@ -58,33 +48,13 @@ export function HerramientaPreview3D({
   // números que entran a la capa 2: escribir en "marca" no rehace la geometría.
   const clave = JSON.stringify([familia, parametros]);
 
-  const objeto = useMemo(() => {
-    const raiz = new THREE.Group();
-    raiz.add(construirHerramienta(familia, parametros));
-
-    // Cota del voladizo: de la punta (y = 0) a donde empieza el cono.
-    const r = resolverParametros({ ...parametros, familia });
-    if (r.tieneLongitudUtil) {
-      raiz.add(
-        cotaVertical({
-          desde: 0,
-          hasta: r.longitudExpuesta,
-          radio: Math.max(r.R * 2.4, r.R + 6),
-        }),
-      );
-    }
-    return raiz;
+  // La herramienta y nada más: su geometría permanente es toda la proyección
+  // representativa que necesita esta pantalla.
+  const objeto = useMemo(
+    () => construirHerramienta(familia, parametros),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [clave]);
-
-  const voladizo = Number(valores.longitud_util_real_mm);
-  const diametro = Number(valores.diametro_mm);
-  const hayVoladizo = Number.isFinite(voladizo) && voladizo > 0;
-  const ld =
-    hayVoladizo && Number.isFinite(diametro) && diametro > 0
-      ? voladizo / diametro
-      : null;
-  const esbeltez = ld !== null ? evaluarEsbeltez(ld) : null;
+    [clave],
+  );
 
   const cotas = [
     valores.diametro_mm && `Ø${valores.diametro_mm}`,
@@ -103,25 +73,6 @@ export function HerramientaPreview3D({
         <div className="pointer-events-none absolute left-3 top-3 rounded-lg bg-black/55 px-2.5 py-1 text-[11px] font-medium uppercase tracking-wider text-white/90 backdrop-blur-sm">
           {valores.familia ? familiaLabel(valores.familia) : "Vista previa"}
         </div>
-
-        {/* La cota del voladizo, en números, junto a la flecha del dibujo. */}
-        {hayVoladizo && (
-          <div className="pointer-events-none absolute right-3 top-3 rounded-lg bg-black/65 px-2.5 py-1.5 text-right backdrop-blur-sm">
-            <p className="text-[10px] uppercase tracking-wider text-white/60">
-              Sobresale
-            </p>
-            <p className="text-sm font-semibold tabular-nums text-[#4ea1ff]">
-              {voladizo} mm
-            </p>
-            {ld !== null && esbeltez && (
-              <p
-                className={`mt-1 rounded px-1.5 py-0.5 text-[10px] font-medium ${esbeltez.clase}`}
-              >
-                L/D {ld.toFixed(1)} · {esbeltez.texto}
-              </p>
-            )}
-          </div>
-        )}
 
         {!sinCotas && cotas.length > 0 && (
           <div className="pointer-events-none absolute bottom-3 left-3 right-3 flex flex-wrap gap-1.5">

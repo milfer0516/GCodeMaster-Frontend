@@ -256,15 +256,15 @@ export function validarDefinicion(v: ValoresHerramienta): ErrorValidacion | null
   return null;
 }
 
-/** Reglas de la pieza FÍSICA (la longitud útil es el único dato obligatorio). */
+/**
+ * Reglas de la pieza FÍSICA. NINGÚN dato es obligatorio: registrar lo que el
+ * taller tiene no puede fallar por no haber medido nada todavía.
+ *
+ * En concreto la longitud útil YA NO se pide aquí: es una decisión de montaje
+ * de un trabajo concreto (la misma herramienta sale 20 mm hoy y 45 mm mañana),
+ * y se captura en Operaciones. El campo sigue en ToolInstance.
+ */
 export function validarInstancia(v: ValoresHerramienta): ErrorValidacion | null {
-  const lu = n(v.longitud_util_real_mm);
-  if (!lu || lu <= 0)
-    return {
-      campo: "longitud_util_real_mm",
-      mensaje: "Ingresa la longitud útil medida (mayor que 0).",
-    };
-
   const costo = n(v.costo_compra);
   if (v.costo_compra.trim() && (costo === undefined || costo < 0))
     return { campo: "costo_compra", mensaje: "El costo no puede ser negativo." };

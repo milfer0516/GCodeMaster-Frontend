@@ -21,6 +21,12 @@
 //
 // Las dos terminan en el MISMO formulario (HerramientaForm) con el render 3D
 // en vivo al lado.
+//
+// ALCANCE: aquí solo se registra QUÉ HERRAMIENTAS TIENE EL TALLER. El voladizo,
+// el alojamiento del carrusel y el portaherramientas son decisiones de montaje
+// de un trabajo concreto y se capturan en Operaciones, que es donde se evalúa
+// L/D. Por eso este modal se puede abrir igual desde Operaciones (con
+// `contexto` / `filtroInicial`): registra la herramienta, no su montaje.
 // ─────────────────────────────────────────────────────────────────────────────
 import { useEffect, useState } from "react";
 import { X, ChevronLeft, Wrench, BookOpen, PlusCircle } from "lucide-react";
@@ -77,8 +83,8 @@ const TITULOS: Record<Paso, { titulo: string; sub: string }> = {
     sub: "Búscala por la forma, no por el nombre.",
   },
   ficha: {
-    titulo: "Mide tu herramienta",
-    sub: "Solo falta lo que hay que ver y medir en tu pieza.",
+    titulo: "Añadir a tu inventario",
+    sub: "Los datos de abajo son opcionales: puedes guardar ya.",
   },
   nueva: {
     titulo: "Crear nueva herramienta",
@@ -155,13 +161,7 @@ export function AgregarHerramientaModal({
    */
   const adoptarDelCatalogo = async (def: DefinicionResumen) => {
     setIdGlobal(def.id_herramienta_global);
-    setValores((v) => ({
-      ...desdeDefinicion(def),
-      // La medida de la pieza física NUNCA se prefill.
-      longitud_util_real_mm: "",
-      codigo_interno: v.codigo_interno,
-      costo_compra: v.costo_compra,
-    }));
+    setValores((v) => ({ ...desdeDefinicion(def), ...instanciaDe(v) }));
     setPaso("ficha");
     setError("");
 
@@ -201,13 +201,12 @@ export function AgregarHerramientaModal({
         ? await crearDefinicionPersonalizada(aDefinicionPersonalizada(valores))
         : await asegurarEntradaLibreria(idGlobal!);
 
-      // 2. Crear la herramienta FÍSICA (Tier 3).
+      // 2. Crear la herramienta FÍSICA (Tier 3). SOLO propiedades permanentes:
+      //    voladizo, carrusel y portaherramientas son decisiones de montaje y
+      //    las escribirá Operaciones para cada trabajo.
       const instancia = await crearInstancia({
         id_herramienta_libreria: entrada.id_herramienta_libreria,
-        longitud_util_real_mm: aNumero(valores.longitud_util_real_mm),
         codigo_interno: valores.codigo_interno || undefined,
-        posicion_carrusel: aNumero(valores.posicion_carrusel),
-        portaherramienta_real: valores.portaherramienta_real || undefined,
         costo_compra: aNumero(valores.costo_compra),
         marca: valores.marca || undefined,
         referencia_fabricante: valores.referencia_fabricante || undefined,
@@ -274,8 +273,8 @@ export function AgregarHerramientaModal({
                   Seleccionar del catálogo
                 </p>
                 <p className="mt-1 text-sm text-text-muted">
-                  Ya traen las medidas cargadas. Tú solo mides cuánto sobresale
-                  la tuya.
+                  Ya traen todas las medidas cargadas. La reconoces, la eliges y
+                  queda registrada.
                 </p>
                 <p className="mt-3 text-xs font-medium text-accent-blue">
                   Lo más rápido →
@@ -406,10 +405,7 @@ export function AgregarHerramientaModal({
 /** Campos de la pieza física, que sobreviven al recargar la definición. */
 function instanciaDe(v: ValoresHerramienta) {
   return {
-    longitud_util_real_mm: v.longitud_util_real_mm,
     codigo_interno: v.codigo_interno,
-    posicion_carrusel: v.posicion_carrusel,
-    portaherramienta_real: v.portaherramienta_real,
     estado: v.estado,
     costo_compra: v.costo_compra,
     marca: v.marca,

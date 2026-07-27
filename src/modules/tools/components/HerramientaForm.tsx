@@ -3,8 +3,15 @@
 // CAPA 3 · UN SOLO FORMULARIO PARA TRES MODOS.
 //
 //   modo="crear"  → alta de una herramienta física
-//   modo="editar" → re-medida / cambio de estado de una pieza ya registrada
+//   modo="editar" → cambio de datos/estado de una pieza ya registrada
 //   modo="ver"    → ficha en solo lectura
+//
+// SOLO PROPIEDADES PERMANENTES. Aquí se responde "qué herramientas tiene el
+// taller", nada más. El voladizo, la posición de carrusel y el
+// portaherramientas son decisiones de MONTAJE de un trabajo concreto (la misma
+// barra sale 20 mm hoy y 45 mm mañana, en el alojamiento 4 o en el 12), así
+// que se capturan en el paso de Operaciones, que es donde además se evalúa
+// L/D. Los campos siguen existiendo en ToolInstance; aquí no se escriben.
 //
 // DOS BLOQUES, SEPARADOS A PROPÓSITO:
 //   1. Lo que YA SABE el sistema  → ficha técnica de solo lectura (catálogo).
@@ -18,7 +25,7 @@
 // Aquí no hay ni un parámetro de corte (Vc, fz, RPM, avance): esos viven en el
 // catálogo de materiales y en el motor CAM.
 // ─────────────────────────────────────────────────────────────────────────────
-import { Ruler, Wrench, Package } from "lucide-react";
+import { Wrench, Package } from "lucide-react";
 import {
   familiaLabel,
   MATERIALES_HERRAMIENTA,
@@ -33,7 +40,6 @@ import {
 import type { ValoresHerramienta } from "../domain/valoresHerramienta";
 import { FichaTecnica } from "./FichaTecnica";
 import { ListaDatos, type FilaDato } from "./ListaDatos";
-import { formatMm } from "../../../utils/format";
 
 /** Miles con separador local — un costo en crudo (1234567) no se lee. */
 const miles = (v: string): string => {
@@ -43,17 +49,8 @@ const miles = (v: string): string => {
 
 /** Los datos de la pieza física, en el MISMO lenguaje visual que la ficha. */
 function filasPieza(v: ValoresHerramienta): FilaDato[] {
-  const voladizo = Number(v.longitud_util_real_mm);
   return [
-    {
-      etiqueta: "Sobresale",
-      valor: Number.isFinite(voladizo) && voladizo > 0
-        ? `${formatMm(voladizo)} mm`
-        : "",
-    },
     { etiqueta: "Código", valor: v.codigo_interno },
-    { etiqueta: "Carrusel", valor: v.posicion_carrusel },
-    { etiqueta: "Portaherramientas", valor: v.portaherramienta_real },
     { etiqueta: "Costo", valor: v.costo_compra ? `${miles(v.costo_compra)} COP` : "" },
     { etiqueta: "Marca", valor: v.marca },
     { etiqueta: "Referencia", valor: v.referencia_fabricante },
@@ -267,40 +264,9 @@ export function HerramientaForm({
       <Seccion
         titulo="Tu herramienta"
         icono={<Package className="h-4 w-4 text-accent-blue" />}
-        descripcion="Lo que el sistema no puede saber: hay que mirarla y medirla."
+        descripcion="Datos de la pieza que tienes en el taller. Todos opcionales."
       >
         <div className="space-y-4">
-          {/* EL campo: el único obligatorio y el único que el sistema no puede
-              deducir. Va destacado a propósito — antes era el control más
-              estrecho y apagado de la pantalla y se leía como un hueco, no
-              como una casilla donde hay que escribir. */}
-          <div className="rounded-xl border border-accent-blue/40 bg-accent-blue/5 p-3">
-            <label
-              htmlFor="campo-voladizo"
-              className="mb-2 flex items-center gap-1.5 text-sm font-semibold text-text-primary"
-            >
-              <Ruler className="h-4 w-4 text-accent-blue" />
-              ¿Cuánto sobresale del portaherramientas? *
-            </label>
-            <div className="relative w-52">
-              <input
-                id="campo-voladizo"
-                autoFocus
-                className={`${clsDe("longitud_util_real_mm")} border-accent-blue/50 pr-11 text-base font-semibold`}
-                type="number"
-                min={0.1}
-                step={0.1}
-                value={valores.longitud_util_real_mm}
-                placeholder="42.5"
-                onChange={(e) => set({ longitud_util_real_mm: e.target.value })}
-              />
-              <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-sm text-text-muted">
-                mm
-              </span>
-            </div>
-            <p className={ayudaCls}>Míralo en el dibujo: es la cota azul.</p>
-          </div>
-
           <div className={REJILLA}>
             <div className={tramo("medio")}>
               <label className={labelCls}>
@@ -311,28 +277,6 @@ export function HerramientaForm({
                 value={valores.codigo_interno}
                 placeholder="Ej: H-014 (opcional)"
                 onChange={(e) => set({ codigo_interno: e.target.value })}
-              />
-            </div>
-
-            <div className={tramo("corto")}>
-              <label className={labelCls}>¿En qué posición del carrusel?</label>
-              <input
-                className={inputCls}
-                type="number"
-                min={0}
-                value={valores.posicion_carrusel}
-                placeholder="Opcional"
-                onChange={(e) => set({ posicion_carrusel: e.target.value })}
-              />
-            </div>
-
-            <div className={tramo("corto")}>
-              <label className={labelCls}>Portaherramientas</label>
-              <input
-                className={inputCls}
-                value={valores.portaherramienta_real}
-                placeholder="BT40 ER32"
-                onChange={(e) => set({ portaherramienta_real: e.target.value })}
               />
             </div>
 

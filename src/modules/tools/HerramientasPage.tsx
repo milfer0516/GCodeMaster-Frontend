@@ -220,11 +220,10 @@ export function HerramientasPage() {
     setGuardando(true);
     setErrorModal("");
     try {
+      // Solo propiedades permanentes: los datos de montaje (voladizo,
+      // carrusel, portaherramientas) los escribe Operaciones, no el inventario.
       await actualizarInstancia(seleccionada.id_herramienta_instancia, {
-        longitud_util_real_mm: aNumero(valores.longitud_util_real_mm),
         codigo_interno: valores.codigo_interno || undefined,
-        posicion_carrusel: aNumero(valores.posicion_carrusel),
-        portaherramienta_real: valores.portaherramienta_real || undefined,
         estado: valores.estado,
         costo_compra: aNumero(valores.costo_compra),
         marca: valores.marca || undefined,
@@ -447,7 +446,8 @@ export function HerramientasPage() {
                                   {i.longitud_util_real_mm} mm
                                 </span>
                               ) : (
-                                <span className="text-accent-amber">sin medir</span>
+                                // Vacío hasta que Operaciones registre el montaje.
+                                <span className="text-text-muted">—</span>
                               )}
                             </td>
                             <td className="px-4 py-2.5 text-center text-text-muted">
