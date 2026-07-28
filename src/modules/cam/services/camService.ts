@@ -146,8 +146,13 @@ export function buildStockPayload(
   };
 }
 
-// ── Generar G-Code ────────────────────────────────────────────────────────
-export async function generateGcode(payload: {
+// ── El trabajo, tal como lo recibe el motor ───────────────────────────────
+/**
+ * Todo lo que define un trabajo para el motor. Lo consumen las DOS rutas que
+ * hablan con él sobre el mismo trabajo: `/cam/generate` (genera) y
+ * `/cam/mde-recommendations` (consulta asesora del MDE, antes de generar).
+ */
+export interface TrabajoPayload {
   archivo: File;
   idJob: number;
   operaciones: any[];
@@ -171,7 +176,21 @@ export async function generateGcode(payload: {
   contextoFabricacion: ContextoFabricacion;
   ordenSetups?: string;
   machineKey?: string;
-}) {
+}
+
+/**
+ * Arma el multipart del trabajo. ÚNICO sitio donde se construye ese formulario.
+ *
+ * Lo comparten `/cam/generate` y `/cam/mde-recommendations` a propósito, igual
+ * que el backend comparte su `_construir_payload_motor()`: si cada ruta armara
+ * el suyo, el MDE podría estar asesorando sobre un trabajo distinto al que
+ * después va a la máquina. Cualquier campo nuevo se agrega AQUÍ y lo reciben
+ * las dos.
+ *
+ * Los nombres de los campos son el contrato del gateway (cam_routes.py); no se
+ * renombran ni se normalizan valores: el motor es el dueño de su interpretación.
+ */
+export function construirFormularioTrabajo(payload: TrabajoPayload): FormData {
   const form = new FormData();
   form.append("step_file", payload.archivo);
   form.append("id_job", String(payload.idJob));
@@ -196,10 +215,16 @@ export async function generateGcode(payload: {
   );
   form.append("orden_setups", payload.ordenSetups ?? "superior_primero");
   if (payload.machineKey) form.append("machine_key", payload.machineKey);
+  return form;
+}
 
-  const { data } = await api.post("/cam/generate", form, {
-    headers: { "Content-Type": "multipart/form-data" },
-  });
+// ── Generar G-Code ────────────────────────────────────────────────────────
+export async function generateGcode(payload: TrabajoPayload) {
+  const { data } = await api.post(
+    "/cam/generate",
+    construirFormularioTrabajo(payload),
+    { headers: { "Content-Type": "multipart/form-data" } },
+  );
   return data;
 }
 

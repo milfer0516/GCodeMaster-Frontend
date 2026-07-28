@@ -5,10 +5,8 @@
 // El MDE ya existe y ya produce su respuesta: `create_job` la consulta en su
 // PASO 12 y la deja en `mde_recommendations`, que el motor declara CAMPO PÚBLICO
 // de su contrato y serializa INTACTA (freecad_service._handle_generate_multi).
-// Hoy ese payload solo sale por la ruta de generación (`/cam/generate`), que es
-// el final del asistente — después de Operaciones.
 //
-// Por eso el frontend lee el análisis de DOS sitios, en este orden:
+// El frontend lee el análisis de DOS sitios, en este orden:
 //
 //   1. `camStore.engineResponse.mde_recommendations`, si el motor ya respondió
 //      en esta sesión. Es la respuesta real, sin intermediarios.
@@ -26,6 +24,10 @@
 // habría emitido.
 // ─────────────────────────────────────────────────────────────────────────────
 import { api } from "../../../services/api";
+import {
+  construirFormularioTrabajo,
+  type TrabajoPayload,
+} from "./camService";
 import type { RespuestaMDESetup } from "../domain/mdeRecomendaciones";
 
 /**
@@ -47,10 +49,25 @@ export function normalizarRecomendaciones(bruto: any): RespuestaMDESetup[] | nul
  * Pide al motor el análisis COMPLETO del trabajo y devuelve `mde_recommendations`
  * tal cual lo serializó el MDE. No se resume, no se reordena y no se reinterpreta
  * la evidencia: eso rompería la trazabilidad que el motor garantiza.
+ *
+ * Recibe el MISMO `TrabajoPayload` que `generateGcode()` y lo convierte con el
+ * MISMO `construirFormularioTrabajo()`, así que las dos rutas mandan el trabajo
+ * byte por byte igual. Es el punto entero de este servicio: el MDE tiene que
+ * opinar sobre el trabajo que se va a generar, no sobre una versión reducida de
+ * él. Si un campo hiciera falta solo aquí, el análisis dejaría de ser
+ * comparable con el G-code que salga después.
+ *
+ * `POST /cam/mde-recommendations` es de SOLO LECTURA (no crea Job, no guarda
+ * G-Code, no cambia estado), así que llamarla no compromete nada: se puede pedir
+ * el análisis tantas veces como el operador registre herramientas.
  */
 export async function solicitarRecomendacionesMDE(
-  idJob: number,
+  payload: TrabajoPayload,
 ): Promise<RespuestaMDESetup[] | null> {
-  const { data } = await api.post("/cam/mde-recommendations", { id_job: idJob });
+  const { data } = await api.post(
+    "/cam/mde-recommendations",
+    construirFormularioTrabajo(payload),
+    { headers: { "Content-Type": "multipart/form-data" } },
+  );
   return normalizarRecomendaciones(data?.mde_recommendations ?? data);
 }

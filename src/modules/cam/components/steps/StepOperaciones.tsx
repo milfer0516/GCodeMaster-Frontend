@@ -70,6 +70,17 @@ export const StepOperaciones = () => {
   const idJob = useCamStore((s) => s.idJob);
   const engineResponse = useCamStore((s) => s.engineResponse);
 
+  // Lo que define el trabajo para el motor. Se lee aquí porque la consulta al
+  // MDE manda el trabajo COMPLETO (mismo formulario que la generación), no un
+  // resumen: ver solicitarAnalisis().
+  const archivo = useCamStore((s) => s.archivo);
+  const setup = useCamStore((s) => s.setup);
+  const stockConfig = useCamStore((s) => s.stockConfig);
+  const datumConfig = useCamStore((s) => s.datumConfig);
+  const material = useCamStore((s) => s.material);
+  const maquina = useCamStore((s) => s.maquina);
+  const contextoFabricacion = useCamStore((s) => s.contextoFabricacion);
+
   const mdeRecomendaciones = useCamStore((s) => s.mdeRecomendaciones);
   const mdeEstado = useCamStore((s) => s.mdeEstado);
   const mdeError = useCamStore((s) => s.mdeError);
@@ -121,15 +132,58 @@ export const StepOperaciones = () => {
    * cambiar la alternativa de otra operación o resolver un conflicto entre
    * reglas), así que reevaluar una sola daría un resultado que el motor jamás
    * habría emitido.
+   *
+   * Manda el MISMO trabajo que la generación (TrabajoPayload → el formulario
+   * que arma camService), porque el MDE tiene que opinar sobre el trabajo que
+   * se va a mecanizar. Dos detalles que NO son descuidos:
+   *
+   *   · Van TODAS las operaciones detectadas, no solo las marcadas. Es la
+   *     respuesta del MDE la que decide qué casillas quedan marcadas
+   *     (`default_checked` → camStore.setMdeRecomendaciones), así que filtrar
+   *     por `seleccionada` antes de preguntar sería circular: la primera
+   *     consulta no mandaría ninguna operación.
+   *   · Van las herramientas FÍSICAS del taller (Tier 3), que es el inventario
+   *     sobre el que el MDE razona disponibilidad y alternativas.
+   *
+   * Falta el archivo STEP → no se pregunta. El motor necesita la geometría, y
+   * un análisis sin ella no existe: se dice, no se simula.
    */
   const solicitarAnalisis = async () => {
-    if (!idJob) {
+    if (!idJob || !archivo) {
       setMdeEstado("error", "El trabajo aún no tiene análisis geométrico.");
+      return;
+    }
+    if (!setup) {
+      setMdeEstado(
+        "error",
+        "Confirme el montaje antes de pedir el análisis: sin él no hay medidas de bruto que enviar.",
+      );
       return;
     }
     setMdeEstado("analizando");
     try {
-      setMdeRecomendaciones(await solicitarRecomendacionesMDE(idJob));
+      setMdeRecomendaciones(
+        await solicitarRecomendacionesMDE({
+          archivo,
+          idJob,
+          operaciones,
+          herramientas: inventario,
+          materialKey: material?.nombre ?? "",
+          stockConfig,
+          partDims: {
+            x: setup.rotatedBBox.width,
+            y: setup.rotatedBBox.depth,
+            z: setup.rotatedBBox.height,
+          },
+          partCylinderOD: setup.partCylinderOD,
+          partCylinderLen: setup.partCylinderLen,
+          datumConfig,
+          montajeConfig,
+          contextoFabricacion,
+          ordenSetups,
+          machineKey: maquina?.nombre,
+        }),
+      );
     } catch (e: any) {
       setMdeEstado(
         "error",
