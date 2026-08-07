@@ -19,6 +19,7 @@ import {
   recomendacionDe,
   type RespuestaMDESetup,
 } from "../domain/mdeRecomendaciones";
+import type { RespuestaMecanizabilidad } from "../domain/mecanizabilidad";
 
 export type { Setup };
 export type { StockFace, CylStock };
@@ -48,12 +49,16 @@ export interface Operacion {
 }
 
 /**
- * Estado de la consulta asesora al MDE, tal como la vive la pantalla.
+ * Estado de una consulta al motor, tal como la vive la pantalla.
  * `sin_analisis` NO es un error: es "todavía no se ha pedido". Se distingue de
- * `error` a propósito, porque decir "no hay herramienta ideal" cuando en
- * realidad no se ha consultado sería mentirle al operador.
+ * `error` a propósito, porque decir "no hay herramienta ideal" —o "no es
+ * alcanzable"— cuando en realidad no se ha consultado sería mentirle al
+ * operador.
  */
-export type EstadoAnalisisMDE = "sin_analisis" | "analizando" | "listo" | "error";
+export type EstadoConsulta = "sin_analisis" | "analizando" | "listo" | "error";
+
+/** Nombre histórico de la consulta al MDE. Mismo estado, mismos valores. */
+export type EstadoAnalisisMDE = EstadoConsulta;
 
 export interface MaterialSeleccionado {
   id_material: number;
@@ -180,6 +185,23 @@ interface CamState {
   mdeEstado: EstadoAnalisisMDE;
   mdeError: string | null;
 
+  // ── Mecanizabilidad del montaje confirmado ─────────────────────────────
+  // La respuesta del motor GUARDADA TAL CUAL (`POST /cam/machinability`), con
+  // sus veredictos, sus motivos y su `resumen`. Es el ÚNICO sitio del que la
+  // pantalla de Operaciones lee la mecanizabilidad: nadie la recalcula, nadie
+  // la recuenta y nadie la deduce de la geometría, de la normal de la cara ni
+  // del número de setup. Si no hay respuesta, es null — que NO es `desconocido`
+  // (ese veredicto solo lo emite el motor).
+  //
+  // Se invalida en cuanto cambia una de las tres entradas del veredicto: la
+  // geometría analizada, la cara de apoyo o la máquina declarada. Un veredicto
+  // que sobreviviera a un cambio de cara diría "alcanzable" de un montaje que
+  // ya no existe, sin error ni aviso — el fallo silencioso que este proyecto no
+  // se puede permitir.
+  mecanizabilidad: RespuestaMecanizabilidad | null;
+  mecanizabilidadEstado: EstadoConsulta;
+  mecanizabilidadError: string | null;
+
   // Herramienta que el operador ELIGIÓ para una operación, cuando decidió no
   // usar la que el MDE puso primero. Solo guarda ANULACIONES: la asignación por
   // defecto se deriva de la recomendación, así que no hay dos copias del mismo
@@ -225,6 +247,8 @@ interface CamState {
   toggleOperacion: (id: string) => void;
   setMdeEstado: (estado: EstadoAnalisisMDE, error?: string | null) => void;
   setMdeRecomendaciones: (respuesta: RespuestaMDESetup[] | null) => void;
+  setMecanizabilidadEstado: (estado: EstadoConsulta, error?: string | null) => void;
+  setMecanizabilidad: (respuesta: RespuestaMecanizabilidad | null) => void;
   asignarHerramienta: (idOperacion: string, idInstancia: number) => void;
   setMaterial: (material: MaterialSeleccionado) => void;
   setMaquina: (maquina: Maquina) => void;
@@ -287,6 +311,9 @@ export const useCamStore = create<CamState>((set) => ({
   mdeRecomendaciones: null,
   mdeEstado: "sin_analisis",
   mdeError: null,
+  mecanizabilidad: null,
+  mecanizabilidadEstado: "sin_analisis",
+  mecanizabilidadError: null,
   herramientaPorOperacion: {},
   meshData: null,
   meshLoading: false,
@@ -316,6 +343,11 @@ export const useCamStore = create<CamState>((set) => ({
       mdeRecomendaciones: null,
       mdeEstado: "sin_analisis" as EstadoAnalisisMDE,
       mdeError: null,
+      // Otra geometría son otras operaciones: los veredictos anteriores se
+      // emitieron sobre op_id que ya no existen.
+      mecanizabilidad: null,
+      mecanizabilidadEstado: "sin_analisis" as EstadoConsulta,
+      mecanizabilidadError: null,
       herramientaPorOperacion: {},
       meshData: null,
       meshError: null,
@@ -361,6 +393,23 @@ export const useCamStore = create<CamState>((set) => ({
       };
     }),
 
+  setMecanizabilidadEstado: (mecanizabilidadEstado, mecanizabilidadError = null) =>
+    set({ mecanizabilidadEstado, mecanizabilidadError }),
+
+  // Guarda el veredicto del motor y NADA MÁS. A diferencia de
+  // setMdeRecomendaciones, aquí NO se tocan las casillas de las operaciones: el
+  // MDE recomienda qué mecanizar (y su `default_checked` es contrato), mientras
+  // que la mecanizabilidad informa qué ALCANZA la máquina en este montaje.
+  // Desmarcar solo una operación `no_alcanzable` sería el frontend decidiendo
+  // por el operario — y justo del lado peligroso, porque una operación que
+  // `requiere_montaje_opuesto` no sobra: falta darle la vuelta a la pieza.
+  setMecanizabilidad: (mecanizabilidad) =>
+    set({
+      mecanizabilidad,
+      mecanizabilidadEstado: mecanizabilidad ? "listo" : "sin_analisis",
+      mecanizabilidadError: null,
+    }),
+
   asignarHerramienta: (idOperacion, idInstancia) =>
     set((state) => ({
       herramientaPorOperacion: {
@@ -392,6 +441,18 @@ export const useCamStore = create<CamState>((set) => ({
           ? {
               setup: null,
               stockConfig: resetStockMeasurements(state.stockConfig),
+            }
+          : {}),
+        // Cascade cara de apoyo → mecanizabilidad. Va con `cambiaCara`, NO con
+        // `invalidar`: el veredicto depende de la cara de apoyo, no de que
+        // hubiera un Setup confirmado. Si se colgara de `invalidar`, cambiar la
+        // cara antes de confirmar el montaje dejaría en pantalla veredictos de
+        // la cara anterior sin que fallara nada.
+        ...(cambiaCara
+          ? {
+              mecanizabilidad: null,
+              mecanizabilidadEstado: "sin_analisis" as EstadoConsulta,
+              mecanizabilidadError: null,
             }
           : {}),
       };
@@ -433,7 +494,20 @@ export const useCamStore = create<CamState>((set) => ({
       stockConfig: resetStockMeasurements(state.stockConfig),
     })),
   setMaterial: (material) => set({ material }),
-  setMaquina: (maquina) => set({ maquina }),
+  // Cascade máquina → mecanizabilidad: la cinemática declarada es una de las
+  // tres entradas del veredicto. Solo se invalida si la máquina CAMBIA de
+  // verdad; recargar la misma no borra un veredicto vigente.
+  setMaquina: (maquina) =>
+    set((state) =>
+      state.maquina?.id_maquina === maquina.id_maquina
+        ? { maquina }
+        : {
+            maquina,
+            mecanizabilidad: null,
+            mecanizabilidadEstado: "sin_analisis" as EstadoConsulta,
+            mecanizabilidadError: null,
+          },
+    ),
   setStockConfig: (stockConfig) => set({ stockConfig }),
   // La UI elige una TARJETA; el ProcessOrigin se deriva aquí con la tabla del
   // dominio, así que en el store no puede quedar un par estado/origen incoherente.
@@ -453,6 +527,11 @@ export const useCamStore = create<CamState>((set) => ({
       meshError: null,
       setup: null,
       stockConfig: resetStockMeasurements(state.stockConfig),
+      // Otra geometría son otros face_id: el veredicto anterior hablaba de una
+      // cara de apoyo que ya no es la misma.
+      mecanizabilidad: null,
+      mecanizabilidadEstado: "sin_analisis" as EstadoConsulta,
+      mecanizabilidadError: null,
     })),
   setMeshLoading: (meshLoading) => set({ meshLoading }),
   setMeshError: (meshError) => set({ meshError, meshLoading: false }),
@@ -467,6 +546,9 @@ export const useCamStore = create<CamState>((set) => ({
       mdeRecomendaciones: null,
       mdeEstado: "sin_analisis",
       mdeError: null,
+      mecanizabilidad: null,
+      mecanizabilidadEstado: "sin_analisis",
+      mecanizabilidadError: null,
       herramientaPorOperacion: {},
       meshData: null,
       meshLoading: false,

@@ -23,6 +23,15 @@ import {
   recomendacionDe,
   type IndiceMDE,
 } from "../../domain/mdeRecomendaciones";
+import {
+  textoMotivo,
+  tieneRemedioReanalisis,
+  veredictoDe,
+  TEXTO_REMEDIO_REANALISIS,
+  VEREDICTO_CLASE,
+  VEREDICTO_ETIQUETA,
+  type IndiceMecanizabilidad,
+} from "../../domain/mecanizabilidad";
 import { TIPOS_OPERACION, tipoOperacionPunto } from "../../domain/tiposOperacion";
 import {
   numeroT,
@@ -33,6 +42,11 @@ import type { Operacion } from "../../store/camStore";
 interface Props {
   operaciones: Operacion[];
   indiceMDE: IndiceMDE;
+  /**
+   * Veredicto del motor por op_id. Una operación sin entrada NO lleva insignia:
+   * ausencia de veredicto no es `desconocido` — `desconocido` lo dice el motor.
+   */
+  indiceMecanizabilidad: IndiceMecanizabilidad;
   /** Herramienta asignada a cada operación (ya resuelta por el paso). */
   herramientaDe: (op: Operacion) => HerramientaFisica | null;
   opEnfocada: string | null;
@@ -53,6 +67,7 @@ const ORDENES = [
 export function ListaOperaciones({
   operaciones,
   indiceMDE,
+  indiceMecanizabilidad,
   herramientaDe,
   opEnfocada,
   onEnfocar,
@@ -75,6 +90,7 @@ export function ListaOperaciones({
         {operaciones.map((op, indice) => {
           const rec = recomendacionDe(indiceMDE, op);
           const estado = estadoFila(rec);
+          const veredicto = veredictoDe(indiceMecanizabilidad, op);
           const herramienta = herramientaDe(op);
           const t = numeroT(herramienta);
           const enfocada = op.id === opEnfocada;
@@ -156,9 +172,30 @@ export function ListaOperaciones({
                     </p>
                   )}
 
-                  <p className="mt-0.5 text-[9px] uppercase tracking-wide text-text-muted/70">
-                    {rec ? TEXTO_ESTADO[rec.status] : ESTADO_FILA_TEXTO[estado]}
-                  </p>
+                  <div className="mt-0.5 flex flex-wrap items-center gap-1">
+                    <p className="text-[9px] uppercase tracking-wide text-text-muted/70">
+                      {rec ? TEXTO_ESTADO[rec.status] : ESTADO_FILA_TEXTO[estado]}
+                    </p>
+
+                    {/* Insignia de mecanizabilidad. El texto sale de la tabla
+                        del veredicto que emitió el motor; el motivo se explica
+                        en el title. Nada de esto se deduce de la geometría. */}
+                    {veredicto && (
+                      <span
+                        title={
+                          textoMotivo(veredicto.motivo) +
+                          (tieneRemedioReanalisis(veredicto.motivo)
+                            ? ` — ${TEXTO_REMEDIO_REANALISIS}`
+                            : "")
+                        }
+                        className={`rounded border px-1 py-px text-[9px] ${
+                          VEREDICTO_CLASE[veredicto.mecanizabilidad]
+                        }`}
+                      >
+                        {VEREDICTO_ETIQUETA[veredicto.mecanizabilidad]}
+                      </span>
+                    )}
+                  </div>
                 </div>
 
                 {/* Número de herramienta del carrusel. Solo si existe: un T

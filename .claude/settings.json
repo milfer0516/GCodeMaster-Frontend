@@ -1,15 +1,40 @@
 {
-  "autoApprove": ["Edit", "Write"],
-  "disableAutoApprove": [
-    "Bash",
-    "Read",
-    "Bash(grep -n *)",
-    "Bash(grep -rn *)",
-    "Bash(grep -c *)",
-    "Bash(npx tsc *)",
-    "Bash(npx vite *)",
-    "Bash(npm run build)",
-    "Bash(cd * && npm run build)",
-    "Bash(cd * && npx *)"
-  ]
+  "permissions": {
+    "allow": [
+      "Bash(npx tsc *)",
+      "Bash(npx vite *)",
+      "Bash(npm run build)",
+      "Bash(npm run *)",
+      "Bash(git status)",
+      "Bash(git diff*)",
+      "Bash(git log*)",
+      "Bash(git show*)",
+      "Bash(git stash*)",
+      "Bash(grep *)",
+      "Bash(grep -n *)",
+      "Bash(grep -rn *)",
+      "Bash(rg *)",
+      "Bash(ls *)",
+      "Bash(cat *)",
+      "Bash(find *)",
+      "Bash(head *)",
+      "Bash(tail *)",
+      "Bash(wc *)",
+      "Bash(echo *)"
+    ],
+    "ask": [
+      "Bash(docker*)",
+      "Bash(ssh*)",
+      "Bash(git push*)",
+      "Bash(git commit*)",
+      "Bash(git checkout*)",
+      "Bash(git reset*)",
+      "Bash(git restore*)",
+      "Bash(git rm*)",
+      "Bash(rm *)",
+      "Bash(mv *)",
+      "Bash(npm install*)",
+      "Bash(node *)"
+    ]
+  }
 }

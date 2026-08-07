@@ -1,0 +1,71 @@
+// src/modules/cam/services/machinabilityService.ts
+// ─────────────────────────────────────────────────────────────────────────────
+// ÚNICA puerta de entrada del veredicto de mecanizabilidad al frontend.
+//
+// Misma postura que mdeService: el motor opina, el frontend transporta y
+// renderiza. Aquí no se calcula un veredicto, no se completa el que falte y no
+// se traduce un motivo (eso vive en domain/mecanizabilidad.ts).
+//
+// LA PETICIÓN NO LLEVA EL STEP, a diferencia de `/cam/generate` y
+// `/cam/mde-recommendations`. No es una excepción al patrón: es que la
+// geometría YA está analizada y persistida en el job desde `/cam/analyze`, y el
+// gateway la lee de `job.geometria_json` (cam_routes.machinability). Reenviar el
+// archivo provocaría un segundo análisis de la misma pieza — justo lo que este
+// diseño evita — y abriría la puerta a que el veredicto se emitiera sobre una
+// geometría distinta de la que el operario confirmó en el montaje.
+//
+// `face_id_apoyo` y `machine_key` viajan aunque sean null. NO se filtran ni se
+// sustituyen por un valor por defecto: "todavía no se confirmó la cara" y "no
+// hay máquina declarada" son ESTADOS DEL DOMINIO que el motor responde con
+// veredicto `desconocido` y su motivo. Taparlos aquí convertiría una respuesta
+// honesta del motor en un error de red inventado por el frontend.
+//
+// SOLO LECTURA: no crea Job, no escribe G-Code y no cambia estado, así que se
+// puede volver a preguntar cada vez que el operario cambie el montaje.
+// ─────────────────────────────────────────────────────────────────────────────
+import { api } from "../../../services/api";
+import type { RespuestaMecanizabilidad } from "../domain/mecanizabilidad";
+
+/** Lo único que el motor necesita para emitir el veredicto de ESTE montaje. */
+export interface ConsultaMecanizabilidad {
+  idJob: number;
+  /** La cara que confirmó el operario. null = todavía no eligió ninguna. */
+  faceIdApoyo: number | null;
+  /** Máquina declarada. null = no hay ninguna registrada en la sesión. */
+  machineKey: string | null;
+}
+
+/**
+ * Comprueba que lo recibido SEA el contrato, y si no lo es devuelve null.
+ *
+ * La marca es `operaciones`: el motor SIEMPRE devuelve la lista completa,
+ * aunque todas salgan `desconocido` (core/machinability.evaluar). Si no está,
+ * no hay veredicto que mostrar — y null significa exactamente eso, "no hay
+ * respuesta", que NO es lo mismo que `desconocido`. `desconocido` lo dice el
+ * motor; null lo dice la ausencia de motor.
+ */
+export function normalizarMecanizabilidad(
+  bruto: unknown,
+): RespuestaMecanizabilidad | null {
+  if (bruto === null || typeof bruto !== "object") return null;
+  const { operaciones } = bruto as { operaciones?: unknown };
+  if (!Array.isArray(operaciones)) return null;
+  return bruto as RespuestaMecanizabilidad;
+}
+
+/**
+ * Pide el veredicto y devuelve la respuesta del motor TAL CUAL. No se filtran
+ * operaciones, no se reordenan, no se recuentan los totales de `resumen` y no
+ * se renombra un campo: el gateway ya la reenvía verbatim y el frontend hace lo
+ * mismo hasta la pantalla.
+ */
+export async function solicitarMecanizabilidad(
+  consulta: ConsultaMecanizabilidad,
+): Promise<RespuestaMecanizabilidad | null> {
+  const { data } = await api.post("/cam/machinability", {
+    id_job: consulta.idJob,
+    face_id_apoyo: consulta.faceIdApoyo,
+    machine_key: consulta.machineKey,
+  });
+  return normalizarMecanizabilidad(data);
+}

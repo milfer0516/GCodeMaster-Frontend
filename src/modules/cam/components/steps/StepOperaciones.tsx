@@ -54,10 +54,32 @@ import {
   porId,
   TOLERANCIA_DIAMETRO_MM,
 } from "../../domain/herramientasOperacion";
+import {
+  ALCANZABLE,
+  conteoPorMotivo,
+  DESCONOCIDO,
+  indexarMecanizabilidad,
+  MOTIVO,
+  NO_ALCANZABLE,
+  TEXTO_REMEDIO_REANALISIS,
+  VEREDICTO_CLASE,
+  type Veredicto,
+} from "../../domain/mecanizabilidad";
 import { formatMm } from "../../../../utils/format";
 
 const ANCHO_PANEL_IZQUIERDO = 280;
 const ANCHO_PANEL_DERECHO = 340;
+
+/**
+ * Los tres contadores del veredicto. El VALOR se lee de `resumen` (el motor ya
+ * los contó); aquí solo se decide la palabra en español y el color, que es el
+ * único trabajo que el contrato delega en el consumidor.
+ */
+const CONTADORES_VEREDICTO: Array<{ clave: Veredicto; etiqueta: string }> = [
+  { clave: ALCANZABLE, etiqueta: "alcanzables" },
+  { clave: NO_ALCANZABLE, etiqueta: "no alcanzables" },
+  { clave: DESCONOCIDO, etiqueta: "desconocidas" },
+];
 
 export const StepOperaciones = () => {
   const analisis = useCamStore((s) => s.analisis);
@@ -88,6 +110,15 @@ export const StepOperaciones = () => {
   const setMdeRecomendaciones = useCamStore((s) => s.setMdeRecomendaciones);
   const herramientaPorOperacion = useCamStore((s) => s.herramientaPorOperacion);
   const asignarHerramienta = useCamStore((s) => s.asignarHerramienta);
+
+  // ── Mecanizabilidad ──────────────────────────────────────────────────────
+  // SOLO LECTURA del objeto que guardó el paso Montaje. Esta pantalla no pide
+  // el veredicto, no lo recalcula y no lo completa: si el store está vacío, se
+  // dice que está sin evaluar. Tampoco se mira aquí una normal, un face_id ni
+  // un número de setup — la accesibilidad es dominio del motor.
+  const mecanizabilidad = useCamStore((s) => s.mecanizabilidad);
+  const mecanizabilidadEstado = useCamStore((s) => s.mecanizabilidadEstado);
+  const mecanizabilidadError = useCamStore((s) => s.mecanizabilidadError);
 
   const [panelIzquierdo, setPanelIzquierdo] = useState(true);
   const [panelDerecho, setPanelDerecho] = useState(true);
@@ -201,6 +232,17 @@ export const StepOperaciones = () => {
     () => consultaFallida(mdeRecomendaciones),
     [mdeRecomendaciones],
   );
+
+  // Cruce por op_id y por nada más (ni posición, ni tipo, ni setup).
+  const indiceMecanizabilidad = useMemo(
+    () => indexarMecanizabilidad(mecanizabilidad),
+    [mecanizabilidad],
+  );
+
+  // El único `desconocido` con remedio: el análisis guardado es anterior al
+  // contrato de orientación, así que volver a analizar la pieza SÍ cambia la
+  // respuesta (H11). El número sale de `resumen.por_motivo`, no de un recuento.
+  const sinOrientacion = conteoPorMotivo(mecanizabilidad, MOTIVO.SIN_ORIENTACION);
 
   // ── Herramienta de cada operación ────────────────────────────────────────
   // Por defecto la que el MDE emparejó; si el operador eligió otra, la suya.
@@ -319,8 +361,53 @@ export const StepOperaciones = () => {
             etiqueta="sin herram."
             clase="border-red-500/30 bg-red-500/10 text-red-400"
           />
+
+          {/* Mecanizabilidad: los tres contadores salen de `resumen`, ya
+              contados por el motor. Si el frontend los volviera a sumar y el
+              motor cambiara una regla, la cabecera empezaría a discrepar del
+              veredicto de cada fila sin que fallara nada. */}
+          {mecanizabilidad && (
+            <span className="mx-1 self-center text-[11px] text-text-muted/50">
+              |
+            </span>
+          )}
+          {mecanizabilidad &&
+            CONTADORES_VEREDICTO.map(({ clave, etiqueta }) => (
+              <Contador
+                key={clave}
+                valor={mecanizabilidad.resumen[clave]}
+                etiqueta={etiqueta}
+                clase={VEREDICTO_CLASE[clave]}
+              />
+            ))}
         </div>
       </div>
+
+      {/* Estado de la evaluación cuando NO hay veredicto que mostrar. Un hueco
+          en blanco se lee como "todo bien"; aquí se dice qué falta. */}
+      {!mecanizabilidad && (
+        <p className="text-[11px] text-text-muted">
+          {mecanizabilidadEstado === "analizando"
+            ? "Evaluando qué se puede mecanizar con este montaje…"
+            : mecanizabilidadEstado === "error"
+              ? (mecanizabilidadError ??
+                "No se pudo evaluar la mecanizabilidad de este montaje.")
+              : "Mecanizabilidad sin evaluar: vuelve al paso Montaje y confírmalo para pedir el veredicto."}
+        </p>
+      )}
+
+      {/* Único caso con remedio real. No se ofrece en los demás `desconocido`:
+          repetir el análisis no los cambiaría y sería mandar al operario a dar
+          una vuelta inútil. */}
+      {sinOrientacion > 0 && (
+        <p className="rounded-lg border border-slate-500/30 bg-slate-500/10 px-2.5 py-1.5 text-[11px] text-text-muted">
+          <span className="font-semibold text-text-primary">
+            {sinOrientacion}
+          </span>{" "}
+          {sinOrientacion === 1 ? "operación" : "operaciones"} sin veredicto por
+          un análisis antiguo. {TEXTO_REMEDIO_REANALISIS}
+        </p>
+      )}
 
       {/* ── Zona central: visor + paneles flotantes ──
           El alto es FIJO y no depende de los paneles. */}
@@ -367,6 +454,7 @@ export const StepOperaciones = () => {
           <ListaOperaciones
             operaciones={operaciones}
             indiceMDE={indiceMDE}
+            indiceMecanizabilidad={indiceMecanizabilidad}
             herramientaDe={herramientaDe}
             opEnfocada={opEnfocada}
             onEnfocar={setOpEnfocada}

@@ -149,8 +149,8 @@ src/components/layout/VisorConPanel.tsx   ← LAYER 3 · layout
 
 ## Tooling module (T3-bis)
 
-- Dos rutas de entrada, sin la palabra "manual": *Seleccionar del catálogo* /
-  *Crear nueva herramienta*.
+- Dos rutas de entrada, sin la palabra "manual": _Seleccionar del catálogo_ /
+  _Crear nueva herramienta_.
 - `CoincidenciasCatalogo.tsx` — al crear, busca en el catálogo global por
   familia + Ø ±5 % y ofrece adoptar: evita definiciones duplicadas.
 - `HerramientaForm.tsx` — UN componente, tres modos (`crear|editar|ver`).
@@ -171,7 +171,7 @@ src/components/layout/VisorConPanel.tsx   ← LAYER 3 · layout
   S16Q-SCLCR09 (barra), BIG KAISER EWN (cabezal).
 - **Separación catálogo / pieza física en la UI:** los datos del catálogo se
   muestran en `FichaTecnica.tsx` (tabla de solo lectura), NUNCA como `<input
-  disabled>` — un input deshabilitado parece editable y el operador se queda
+disabled>` — un input deshabilitado parece editable y el operador se queda
   esperando poder escribir. Los inputs editables son solo los de la pieza.
 - La longitud útil se explica con la COTA 3D (`lib/geometry/anotaciones.ts`)
   más el indicador L/D, no con párrafos de ayuda.
@@ -345,3 +345,126 @@ old 3-tier split pointless):
   the non-resting faces, not the support face.
 - "Simulacion" step (Pro only) — Three.js toolpath viewer, to be added
   between resumen and resultado.
+
+# Política de Ejecución — GCodeMaster CNC
+
+> Aplica a **todas** las tareas en Motor CAM, Backend, Frontend y MDE.
+
+---
+
+## 1. Principio
+
+Prefiero una tarea terminada al **100%**, verificada y estable, antes que tres tareas abiertas durante la ejecución.
+
+La estabilidad del proyecto tiene prioridad sobre corregir toda la deuda técnica encontrada.
+
+Solo el **Chief Software Architect** decide cuándo un hallazgo pasa del backlog a una tarea.
+
+---
+
+## 2. Alcance cerrado
+
+Cada tarea resuelve **únicamente** el objetivo solicitado y verifica que quedó funcionando.
+
+- Si durante el análisis se descubren otros defectos, inconsistencias o deuda técnica, **NO se incorporan al fix actual** ni se modifica código fuera del alcance, salvo autorización explícita en el prompt.
+- Esos hallazgos se **reportan** como observaciones independientes (ver §3, bloque 3).
+- **Ningún repositorio puede modificar otro** (Motor CAM ↔ Backend ↔ Frontend) sin autorización explícita. _Leer_ para entender un contrato sí está permitido; _escribir_ no.
+
+---
+
+## 3. Formato obligatorio de entrega
+
+Toda respuesta debe terminar con esta estructura, en este orden:
+
+### 1. Objetivo solicitado
+
+- Qué se pidió
+- Qué archivos se modificaron
+- Qué comportamiento cambió
+
+### 2. Verificación
+
+- Compila correctamente
+- Tests ejecutados (cuáles y resultado)
+- Sin regresiones
+- Objetivo cumplido
+
+### 3. Hallazgos encontrados (NO corregidos)
+
+Cada hallazgo con:
+
+| Campo                                  | Valor                     |
+| -------------------------------------- | ------------------------- |
+| Descripción                            |                           |
+| Módulo afectado                        | `archivo:línea` si aplica |
+| Impacto                                | **Alto / Medio / Bajo**   |
+| ¿Bloquea el funcionamiento actual?     | Sí / No                   |
+| **¿Falla en silencio?**                | Sí / No                   |
+| ¿Estaba dentro del alcance solicitado? | Sí / No                   |
+| Recomendación                          |                           |
+
+> **Regla:** si un hallazgo produce datos incorrectos **sin error, log ni aviso**, su impacto es **automáticamente Alto**.
+
+### 4. Backlog sugerido
+
+Mejoras posibles listadas como tareas futuras. **Nunca ejecutadas automáticamente.**
+
+---
+
+## 4. Excepción — cuándo detenerse y pedir ampliación
+
+El alcance solo puede ampliarse si el hallazgo cumple **al menos una** de estas condiciones:
+
+1. **Impide terminar correctamente** la tarea actual
+2. **Produce datos incorrectos**
+3. **Falla en silencio** — genera resultados erróneos sin excepción, log ni aviso
+
+> El tercer caso es el más peligroso de este proyecto: **el software genera G-code que controla una máquina real.**
+> Un fallo ruidoso se detecta. Uno silencioso rompe herramientas o arruina piezas.
+
+En cualquiera de los tres casos, el modelo debe **detenerse y justificar técnicamente** por qué el fix no puede cerrarse sin ampliar el alcance — **no ampliarlo por su cuenta**.
+
+En todo otro caso, el hallazgo va al **backlog**.
+
+---
+
+## 5. Reglas permanentes del dominio
+
+Estas no dependen de la tarea y **nunca se violan**:
+
+- **El sistema nunca inventa un dato de manufactura.** Si no se sabe, se declara desconocido explícitamente.
+- **El operario decide.** El MDE recomienda con evidencia; nunca elimina una operación por su cuenta.
+- **Asimetría de riesgo:** excluir una operación necesaria produce una pieza mala o una colisión; proponer una innecesaria solo corta aire. Ante duda, **proponer**.
+- **Crecimiento por extensión:** capacidades nuevas se agregan como reglas o filas nuevas, **nunca** como condicionales especiales dentro de reglas existentes.
+- **El MDE es dominio puro:** sin FreeCAD, OCC, HTTP, base de datos ni frameworks de UI.
+- **Una sola fuente de verdad** por cálculo. Si ya existe, se consume; no se duplica.
+
+---
+
+## 6. Verificación proporcional
+
+El nivel de verificación debe corresponder al tamaño y riesgo del cambio:
+
+| Tipo de cambio                              | Verificación esperada                                                                                                             |
+| ------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| Visual o de texto                           | Compilar y reportar. Sin scripts de medición.                                                                                     |
+| Lógica                                      | Tests unitarios y verificación del comportamiento afectado.                                                                       |
+| **G-code, geometría o parámetros de corte** | Verificación exhaustiva contra archivos reales, comparación antes/después, y prueba de que la salida no cambió salvo lo esperado. |
+
+## 8. Clasificación de tareas
+
+Toda respuesta debe declarar su tipo ANTES de comenzar:
+
+**INVESTIGACIÓN** — solo observar y reportar evidencia. Cero propuestas.
+No se propone ningún cambio, ninguna estructura, ninguna arquitectura.
+El entregable es evidencia del código con archivo:línea.
+
+**IMPLEMENTACIÓN** — modificar únicamente lo solicitado.
+Alcance cerrado. Los hallazgos van al backlog, no al fix.
+
+**ARQUITECTURA** — solo cuando el Chief Software Architect la solicite explícitamente.
+
+> Nunca mezclar investigación con rediseño.
+> Nunca proponer una nueva arquitectura durante una tarea de verificación.
+> Si una tarea de investigación revela que hace falta un cambio de diseño,
+> se reporta como hallazgo y se detiene — no se implementa ni se propone la solución.

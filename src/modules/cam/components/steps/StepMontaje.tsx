@@ -7,6 +7,8 @@ import { ModalSujecion } from "../sujecion/ModalSujecion";
 import { WizardNavButtons } from "./WizardNavButtons";
 import { getMaquinas } from "../../../../services/maquinasService";
 import type { Maquina } from "../../../../services/maquinasService";
+import { mensajeError } from "../../../../services/toolingService";
+import { solicitarMecanizabilidad } from "../../services/machinabilityService";
 import type { SujecionConfig } from "../../store/camStore";
 
 const WCS_ITEMS = [
@@ -63,6 +65,9 @@ export const StepMontaje = () => {
   const setMaquinaStore = useCamStore((s) => s.setMaquina);
   const meshData = useCamStore((s) => s.meshData);
   const confirmMontaje = useCamStore((s) => s.confirmMontaje);
+  const idJob = useCamStore((s) => s.idJob);
+  const setMecanizabilidad = useCamStore((s) => s.setMecanizabilidad);
+  const setMecanizabilidadEstado = useCamStore((s) => s.setMecanizabilidadEstado);
 
   const [maquinaActiva, setMaquinaActiva] = useState<Maquina | null>(null);
   const [modalAbierto, setModalAbierto] = useState(false);
@@ -94,6 +99,42 @@ export const StepMontaje = () => {
     });
 
   const puedeAvanzar = montajeConfig.sujecion_config !== null;
+
+  /**
+   * Pregunta al motor QUÉ SE PUEDE MECANIZAR con la pieza apoyada en esta cara.
+   * Se lanza al confirmar el montaje porque es aquí donde queda fijada la
+   * entrada del veredicto; el paso Operaciones solo LEE lo que quede guardado.
+   *
+   * Se pide SIEMPRE, aunque falte la cara de apoyo o la máquina. No es un
+   * descuido: el motor responde esos casos con veredicto `desconocido` y su
+   * motivo (`cara_apoyo_no_reconocida`, `cinematica_no_declarada`), y esa
+   * respuesta es información real para el operario. Filtrar la consulta aquí
+   * cambiaría un veredicto del motor por un silencio del frontend.
+   */
+  const evaluarMecanizabilidad = async () => {
+    if (!idJob) {
+      setMecanizabilidadEstado(
+        "error",
+        "El trabajo aún no tiene análisis geométrico persistido.",
+      );
+      return;
+    }
+    setMecanizabilidadEstado("analizando");
+    try {
+      setMecanizabilidad(
+        await solicitarMecanizabilidad({
+          idJob,
+          faceIdApoyo: montajeConfig.face_id_apoyo,
+          machineKey: maquinaActiva?.nombre ?? null,
+        }),
+      );
+    } catch (e) {
+      setMecanizabilidadEstado(
+        "error",
+        mensajeError(e, "No se pudo evaluar la mecanizabilidad de este montaje."),
+      );
+    }
+  };
 
   const handleConfirmarSujecion = (config: SujecionConfig) => {
     setMontajeConfig({
@@ -293,6 +334,11 @@ export const StepMontaje = () => {
           // persistente (fuente de verdad en frame OCC/máquina) que consumirán
           // el visor y, en fases siguientes, Stock/operaciones/G-code.
           confirmMontaje();
+          // El veredicto de mecanizabilidad se pide con el montaje ya
+          // confirmado. No se espera aquí: la respuesta se guarda en el store y
+          // el paso Operaciones la lee cuando llegue (mientras tanto muestra
+          // "evaluando", no un veredicto provisional).
+          void evaluarMecanizabilidad();
           console.log(
             "montajeConfig al confirmar:",
             JSON.stringify(montajeConfig, null, 2),
