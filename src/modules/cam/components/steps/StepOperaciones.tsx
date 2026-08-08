@@ -212,7 +212,7 @@ export const StepOperaciones = () => {
           montajeConfig,
           contextoFabricacion,
           ordenSetups,
-          machineKey: maquina?.nombre,
+          idMaquina: maquina?.id_maquina,
         }),
       );
     } catch (e: any) {

@@ -175,7 +175,11 @@ export interface TrabajoPayload {
   // no interpreta ni anticipa lo que el MDE hará con él.
   contextoFabricacion: ContextoFabricacion;
   ordenSetups?: string;
-  machineKey?: string;
+  // Identidad de la máquina para el backend y el motor: la PK de la fila de
+  // `maquinas`, nunca su `nombre` (eso es presentación). El backend resuelve la
+  // máquina real de la empresa por este id, verifica pertenencia y manda la fila
+  // entera al motor.
+  idMaquina?: number | null;
 }
 
 /**
@@ -214,7 +218,10 @@ export function construirFormularioTrabajo(payload: TrabajoPayload): FormData {
     }),
   );
   form.append("orden_setups", payload.ordenSetups ?? "superior_primero");
-  if (payload.machineKey) form.append("machine_key", payload.machineKey);
+  // `!= null` y no truthiness: el id es numérico y un chequeo laxo descartaría
+  // silenciosamente un id válido que valiera 0.
+  if (payload.idMaquina != null)
+    form.append("id_maquina", String(payload.idMaquina));
   return form;
 }
 

@@ -14,7 +14,7 @@
 // diseño evita — y abriría la puerta a que el veredicto se emitiera sobre una
 // geometría distinta de la que el operario confirmó en el montaje.
 //
-// `face_id_apoyo` y `machine_key` viajan aunque sean null. NO se filtran ni se
+// `face_id_apoyo` y `id_maquina` viajan aunque sean null. NO se filtran ni se
 // sustituyen por un valor por defecto: "todavía no se confirmó la cara" y "no
 // hay máquina declarada" son ESTADOS DEL DOMINIO que el motor responde con
 // veredicto `desconocido` y su motivo. Taparlos aquí convertiría una respuesta
@@ -31,8 +31,12 @@ export interface ConsultaMecanizabilidad {
   idJob: number;
   /** La cara que confirmó el operario. null = todavía no eligió ninguna. */
   faceIdApoyo: number | null;
-  /** Máquina declarada. null = no hay ninguna registrada en la sesión. */
-  machineKey: string | null;
+  /**
+   * Identidad de la máquina declarada: la PK de la fila de `maquinas`, no su
+   * `nombre` (eso es presentación). null = no hay ninguna registrada en la
+   * sesión, y el motor lo responde como `cinematica_no_declarada`.
+   */
+  idMaquina: number | null;
 }
 
 /**
@@ -65,7 +69,7 @@ export async function solicitarMecanizabilidad(
   const { data } = await api.post("/cam/machinability", {
     id_job: consulta.idJob,
     face_id_apoyo: consulta.faceIdApoyo,
-    machine_key: consulta.machineKey,
+    id_maquina: consulta.idMaquina,
   });
   return normalizarMecanizabilidad(data);
 }

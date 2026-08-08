@@ -125,7 +125,7 @@ export const StepMontaje = () => {
         await solicitarMecanizabilidad({
           idJob,
           faceIdApoyo: montajeConfig.face_id_apoyo,
-          machineKey: maquinaActiva?.nombre ?? null,
+          idMaquina: maquinaActiva?.id_maquina ?? null,
         }),
       );
     } catch (e) {
