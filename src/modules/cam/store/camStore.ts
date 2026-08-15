@@ -132,12 +132,29 @@ export interface SujecionConfig {
   es_material_ferromagnetico?: boolean;
   // Altura total del montaje: sujeción + paralelas + pieza (validación Z)
   altura_total_montaje_mm: number | null;
+  // Geometría física del montaje que el operador MIDE en la máquina (alturas de
+  // los elementos de sujeción), nunca una holgura calculada. El motor la lee en
+  // `sujecion_config.parametros_fisicos.*`.
+  parametros_fisicos?: {
+    altura_mordaza_mm?: number | null;
+    altura_paralelas_mm?: number | null;
+  };
+  // Obstáculos declarados por el operador. Todavía SIN editor en el wizard: se
+  // envía siempre `[]` (nunca se inventan posiciones). El motor lo lee en
+  // `sujecion_config.obstaculos`.
+  obstaculos?: Array<Record<string, number>>;
   // Envoltura 3D en coords de pieza (para colisiones y CAM)
   envolvente: {
     x_min: number; x_max: number;
     y_min: number; y_max: number;
     z_min: number; z_max: number;
     z_apoyo_mm: number;
+    // Z del plano sobre el que apoya la base de la pieza (base del montaje +
+    // paralelas). DERIVADO de la geometría física medida, NO un campo manual que
+    // el operador rellene. `null` cuando el tipo de sujeción no define una base
+    // en Z (copa de torno): no se inventa un valor. El motor lo lee en
+    // `sujecion_config.envolvente.z_base_montaje_mm`.
+    z_base_montaje_mm: number | null;
   } | null;
 }
 

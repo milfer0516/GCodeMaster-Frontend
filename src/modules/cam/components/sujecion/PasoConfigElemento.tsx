@@ -84,6 +84,11 @@ export const PasoConfigElemento = ({
         altura_mordaza_mm: alturaMordaza,
         altura_paralelas_mm: alturaParalelasPrensa,
         altura_total_montaje_mm: alturaTotal,
+        parametros_fisicos: {
+          altura_mordaza_mm: alturaMordaza,
+          altura_paralelas_mm: alturaParalelasPrensa,
+        },
+        obstaculos: [],
         envolvente: {
           x_min: -anchoPrensa / 2,
           x_max: anchoPrensa / 2,
@@ -92,6 +97,8 @@ export const PasoConfigElemento = ({
           z_min: -(alturaMordaza + alturaParalelasPrensa),
           z_max: dimensiones.z,
           z_apoyo_mm: alturaMordaza,
+          // base (mordaza) + paralelas — el plano donde apoya la pieza.
+          z_base_montaje_mm: alturaMordaza + alturaParalelasPrensa,
         },
       };
     } else if (tipo === "bridas") {
@@ -110,6 +117,11 @@ export const PasoConfigElemento = ({
         posiciones_bridas: posiciones,
         altura_paralelas_mm: alturaParalelasBridas,
         altura_total_montaje_mm: alturaTotal,
+        parametros_fisicos: {
+          altura_mordaza_mm: null,
+          altura_paralelas_mm: alturaParalelasBridas,
+        },
+        obstaculos: [],
         envolvente: {
           x_min: -dimensiones.x / 2 - holguraBridas,
           x_max: dimensiones.x / 2 + holguraBridas,
@@ -118,6 +130,8 @@ export const PasoConfigElemento = ({
           z_min: -alturaParalelasBridas,
           z_max: dimensiones.z,
           z_apoyo_mm: alturaParalelasBridas,
+          // base sobre la mesa (0) + paralelas.
+          z_base_montaje_mm: alturaParalelasBridas,
         },
       };
     } else if (tipo === "copa_torno") {
@@ -127,6 +141,11 @@ export const PasoConfigElemento = ({
         profundidad_agarre_mm: profundidadAgarre,
         altura_paralelas_mm: 0,
         altura_total_montaje_mm: dimensiones.z,
+        parametros_fisicos: {
+          altura_mordaza_mm: null,
+          altura_paralelas_mm: 0,
+        },
+        obstaculos: [],
         envolvente: {
           x_min: -diametroCopa / 2,
           x_max: diametroCopa / 2,
@@ -135,6 +154,9 @@ export const PasoConfigElemento = ({
           z_min: -80,
           z_max: dimensiones.z,
           z_apoyo_mm: profundidadAgarre,
+          // Copa de torno: la sujeción no define un plano de apoyo en Z (la
+          // pieza va agarrada por las garras), así que NO se inventa una base.
+          z_base_montaje_mm: null,
         },
       };
     } else if (tipo === "mesa_magnetica") {
@@ -142,6 +164,11 @@ export const PasoConfigElemento = ({
         es_material_ferromagnetico: esFerromagnetico,
         altura_paralelas_mm: 0,
         altura_total_montaje_mm: dimensiones.z,
+        parametros_fisicos: {
+          altura_mordaza_mm: null,
+          altura_paralelas_mm: 0,
+        },
+        obstaculos: [],
         envolvente: {
           x_min: -dimensiones.x / 2,
           x_max: dimensiones.x / 2,
@@ -150,6 +177,8 @@ export const PasoConfigElemento = ({
           z_min: -10,
           z_max: dimensiones.z,
           z_apoyo_mm: 0,
+          // Pieza directamente sobre la mesa: base 0, sin paralelas.
+          z_base_montaje_mm: 0,
         },
       };
     }
