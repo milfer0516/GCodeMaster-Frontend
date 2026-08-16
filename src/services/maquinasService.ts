@@ -20,6 +20,15 @@ export interface Maquina {
   recorrido_x_mm: number;
   recorrido_y_mm: number;
   recorrido_z_mm: number;
+  // Nombres físicos crudos de la mesa tal como los expone /maquinas (columnas
+  // reales de BD). Se mapean a los ejes del editor en getMaquinas().
+  mesa_largo_mm?: number | null;
+  mesa_ancho_mm?: number | null;
+  // Dimensiones de la mesa YA en los ejes del editor de montaje espacial
+  // (mesa_x_mm ← mesa_largo_mm, mesa_y_mm ← mesa_ancho_mm; ver getMaquinas).
+  // Opcionales: si el backend aún no las envía, el editor cae a recorrido_x/y_mm.
+  mesa_x_mm?: number | null;
+  mesa_y_mm?: number | null;
   num_herramientas_atc: number | null;
   diametro_herramienta_max_mm: number | null;
   largo_herramienta_max_mm: number | null;
@@ -37,7 +46,17 @@ export interface LimiteMaquinas {
 
 export async function getMaquinas(): Promise<Maquina[]> {
   const { data } = await api.get("/maquinas/");
-  return Array.isArray(data) ? data : [];
+  if (!Array.isArray(data)) return [];
+  // Mapea los nombres físicos crudos de la mesa a los ejes que consume el editor.
+  // Mapeo DEMOSTRADO: el largo de la mesa va en X y el ancho en Y.
+  //   Evidencia: app_models_job.py:149-150 ("Largo ... en X" / "Ancho ... en Y")
+  //   y migración 9a1c2e7d4f6b (mesa_largo ← recorrido_x, mesa_ancho ← recorrido_y).
+  //   ⇒ mesa_largo_mm → X, mesa_ancho_mm → Y.
+  return (data as Maquina[]).map((m) => ({
+    ...m,
+    mesa_x_mm: m.mesa_x_mm ?? m.mesa_largo_mm ?? null,
+    mesa_y_mm: m.mesa_y_mm ?? m.mesa_ancho_mm ?? null,
+  }));
 }
 
 export async function getLimiteMaquinas(): Promise<LimiteMaquinas> {

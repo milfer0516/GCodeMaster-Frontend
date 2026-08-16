@@ -4,6 +4,7 @@ import { Settings2 } from "lucide-react";
 import { useCamStore } from "../../store/camStore";
 import { CamViewer3D } from "../CamViewer3D";
 import { ModalSujecion } from "../sujecion/ModalSujecion";
+import { EditorMontajeEspacial } from "../sujecion/EditorMontajeEspacial";
 import { WizardNavButtons } from "./WizardNavButtons";
 import { getMaquinas } from "../../../../services/maquinasService";
 import type { Maquina } from "../../../../services/maquinasService";
@@ -62,6 +63,7 @@ export const StepMontaje = () => {
   console.log("caras_planas count:", analisis?.caras_planas?.length);
   const montajeConfig = useCamStore((s) => s.montajeConfig);
   const setMontajeConfig = useCamStore((s) => s.setMontajeConfig);
+  const setMontajeEspacial = useCamStore((s) => s.setMontajeEspacial);
   const setMaquinaStore = useCamStore((s) => s.setMaquina);
   const meshData = useCamStore((s) => s.meshData);
   const confirmMontaje = useCamStore((s) => s.confirmMontaje);
@@ -83,6 +85,14 @@ export const StepMontaje = () => {
   }, []);
 
   const dimensiones = analisis?.dimensiones ?? { x: 0, y: 0, z: 0 };
+
+  // Silueta de la pieza en el editor espacial: círculo si la pieza es
+  // cilíndrica, si no rectángulo. Es SOLO presentación (el modelo de datos —
+  // pos/altura/orientación — es idéntico para ambas formas), así que el bbox
+  // manda y esta heurística no puede corromper ningún número serializado.
+  const esCilindrica = /cil|redond|torn|revol/i.test(
+    String(analisis?.tipo_pieza ?? ""),
+  );
 
   const carasPlanas = analisis?.caras_planas ?? [];
   const carasParaSelector = [...carasPlanas]
@@ -322,6 +332,29 @@ export const StepMontaje = () => {
           </div>
         </div>
       </div>
+
+      {/* ── Editor espacial del montaje (vista superior a escala) ── */}
+      {maquinaActiva && (
+        <div className="rounded-xl border border-border bg-bg-card p-4">
+          <div className="mb-3">
+            <h3 className="text-sm font-semibold text-text-primary">
+              Colocación en la mesa
+            </h3>
+            <p className="mt-0.5 text-xs text-text-muted">
+              Arrastra la pieza y los elementos físicos a su posición real sobre la
+              mesa. Marca dónde agarra cada elemento (zona de sujeción). Solo se
+              guardan las posiciones y alturas, no el dibujo.
+            </p>
+          </div>
+          <EditorMontajeEspacial
+            maquina={maquinaActiva}
+            dimensiones={dimensiones}
+            esCilindrica={esCilindrica}
+            value={montajeConfig.montaje_espacial}
+            onChange={setMontajeEspacial}
+          />
+        </div>
+      )}
 
       {/* Navegación */}
       <WizardNavButtons

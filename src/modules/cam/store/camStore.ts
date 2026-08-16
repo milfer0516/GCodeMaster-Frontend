@@ -158,6 +158,61 @@ export interface SujecionConfig {
   } | null;
 }
 
+// ── Modelo ESPACIAL del montaje ────────────────────────────────────────────
+// El operador coloca la pieza y los elementos físicos sobre la mesa a escala.
+// El editor (lienzo) es solo una forma de capturar NÚMEROS: lo único que se
+// serializa son posiciones y alturas, nunca el dibujo. El motor lo lee en
+// `montaje_json.montaje_espacial.*`. Aquí NO se calcula ninguna Z de seguridad:
+// el frontend transporta geometría medida/colocada, el motor decide la holgura.
+
+export type TipoElementoFisico = "brida" | "tornillo" | "mordaza" | "tope";
+export type TipoZonaSujecion =
+  | "brida"
+  | "tornillo"
+  | "mordaza"
+  | "tope"
+  | "apoyo";
+
+// Un elemento físico real sobre la mesa (una brida, un tornillo, una mordaza,
+// un tope). Ocupa un rectángulo `ancho_mm × largo_mm` y se eleva
+// `altura_sobre_mesa_mm` desde la mesa. `id` es estable para que una zona de
+// sujeción pueda referenciarlo.
+export interface ElementoFisico {
+  id: string;
+  tipo: TipoElementoFisico;
+  pos_x_mm: number;
+  pos_y_mm: number;
+  ancho_mm: number;
+  largo_mm: number;
+  altura_sobre_mesa_mm: number;
+}
+
+// Una ZONA DE SUJECIÓN: el punto donde un elemento AGARRA de verdad la pieza.
+// Es distinta del elemento en sí (un elemento puede existir sin agarrar, y el
+// agarre ocurre en un punto concreto). `elemento_ref` apunta al `id` del
+// elemento que la produce.
+export interface ZonaSujecion {
+  pos_x_mm: number;
+  pos_y_mm: number;
+  tipo: TipoZonaSujecion;
+  elemento_ref: string;
+}
+
+// La pieza colocada: su altura total (del bbox que el sistema ya calcula), su
+// posición X/Y sobre la mesa y su orientación física en grados.
+export interface PiezaEspacial {
+  altura_total_pieza_mm: number;
+  pos_x_mm: number;
+  pos_y_mm: number;
+  orientacion_fisica_deg: number;
+}
+
+export interface MontajeEspacial {
+  pieza: PiezaEspacial;
+  zonas_sujecion: ZonaSujecion[];
+  elementos_fisicos: ElementoFisico[];
+}
+
 export interface MontajeConfig {
   tipo_sujecion: TipoSujecion;
   sujecion_config: SujecionConfig | null;
@@ -166,6 +221,10 @@ export interface MontajeConfig {
   face_normal_apoyo: number[] | null;
   wcs: "G54" | "G55" | "G56" | "G57";
   notas: string;
+  // Modelo espacial (pieza + zonas de sujeción + elementos físicos). null hasta
+  // que el operador coloca la pieza en el editor. Va anidado bajo
+  // `montaje_espacial`; NUNCA se aplana a la raíz de montaje_json.
+  montaje_espacial: MontajeEspacial | null;
 }
 
 export interface SetupResultado {
@@ -258,6 +317,7 @@ interface CamState {
   setArchivo: (archivo: File | null) => void;
   setAnalisis: (idJob: number, analisis: Record<string, any>) => void;
   setMontajeConfig: (config: Partial<MontajeConfig>) => void;
+  setMontajeEspacial: (espacial: MontajeEspacial | null) => void;
   confirmMontaje: () => void;
   invalidateSetup: () => void;
   setOperaciones: (ops: Operacion[]) => void;
@@ -306,6 +366,7 @@ const MONTAJE_INICIAL: MontajeConfig = {
   face_normal_apoyo: null,
   wcs: "G54",
   notas: "",
+  montaje_espacial: null,
 };
 
 const DATUM_INICIAL: DatumConfig = { x: 0, y: 0, z: 0 };
@@ -474,6 +535,14 @@ export const useCamStore = create<CamState>((set) => ({
           : {}),
       };
     }),
+  // El editor espacial escribe el modelo completo (pieza + zonas + elementos)
+  // de una vez. Vive dentro de montajeConfig para viajar en `montaje_espacial`
+  // sin aplanarse a la raíz. No dispara cascadas: no cambia la cara de apoyo ni
+  // la cinemática, así que no invalida Setup ni mecanizabilidad.
+  setMontajeEspacial: (montaje_espacial) =>
+    set((state) => ({
+      montajeConfig: { ...state.montajeConfig, montaje_espacial },
+    })),
   confirmMontaje: () =>
     set((state) => {
       const faceId = state.montajeConfig.face_id_apoyo;
