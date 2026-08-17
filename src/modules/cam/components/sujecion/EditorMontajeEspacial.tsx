@@ -1,15 +1,17 @@
 // src/modules/cam/components/sujecion/EditorMontajeEspacial.tsx
 // ─────────────────────────────────────────────────────────────────────────────
-// EDITOR ESPACIAL DEL MONTAJE (vista superior de la mesa, a escala).
+// EDITOR DE DATOS DEL MONTAJE (formulario a escala real, sin lienzo propio).
 //
-// Es un EDITOR DE DATOS: el operador arrastra la pieza y los elementos físicos
-// sobre la mesa, y lo ÚNICO que se guarda son números (posiciones, alturas,
-// orientación) en `montaje_espacial`. El dibujo no se serializa.
+// Es un EDITOR DE DATOS: el operador declara posiciones, alturas y orientación,
+// y lo ÚNICO que se guarda son números en `montaje_espacial`. La representación
+// espacial vive ahora en el visor 3D único (CamViewer3D): este componente ya no
+// dibuja su propia superficie 2D (SVG). Se conservan intactos el modelo de datos,
+// las mutaciones y el cableado onChange — solo se retiró la capa de dibujo/arrastre.
 //
 // Aquí NO se calcula ninguna Z de seguridad. El frontend solo transporta la
 // geometría que el operador coloca; la holgura la decide el motor.
 // ─────────────────────────────────────────────────────────────────────────────
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { Plus, Trash2, RotateCw } from "lucide-react";
 import type { Maquina } from "../../../../services/maquinasService";
 import type {
@@ -20,22 +22,7 @@ import type {
   TipoZonaSujecion,
 } from "../../store/camStore";
 
-// ── Marco físico de la mesa ──────────────────────────────────────────────────
-// Origen (0,0) en la esquina FRONTAL-IZQUIERDA (la más cercana al operador, a su
-// izquierda), X hacia la derecha, Y ALEJÁNDOSE del operador. Cambiar esta única
-// constante reubica el origen de TODO el editor.
-const MARCO_MESA = {
-  origenEnPantalla: "inferior_izquierda" as
-    | "inferior_izquierda"
-    | "inferior_derecha"
-    | "superior_izquierda"
-    | "superior_derecha",
-} as const;
-
-const PAD = 26; // px de margen alrededor de la mesa en el lienzo
-const VIEW_W = 620; // ancho de referencia del viewBox (px); el SVG escala al 100%
-
-// Tamaños por defecto de cada elemento físico al soltarlo (mm). Son valores de
+// Tamaños por defecto de cada elemento físico al añadirlo (mm). Son valores de
 // partida editables por el operador, no medidas inventadas de una pieza real.
 const DEFAULTS_ELEMENTO: Record<
   TipoElementoFisico,
@@ -66,17 +53,12 @@ interface Props {
   maquina: Maquina;
   // bbox de la pieza que el sistema ya calcula (mm).
   dimensiones: { x: number; y: number; z: number };
-  // Silueta: círculo si la pieza es cilíndrica, si no rectángulo. Solo dibujo.
+  // Conservada por compatibilidad de la firma (la silueta redonda/rectangular la
+  // dibuja ahora el visor 3D); este componente ya no la usa para dibujar.
   esCilindrica: boolean;
   value: MontajeEspacial | null;
   onChange: (next: MontajeEspacial) => void;
 }
-
-type Arrastre =
-  | { clase: "pieza"; offX: number; offY: number }
-  | { clase: "elemento"; id: string; offX: number; offY: number }
-  | { clase: "zona"; idx: number; offX: number; offY: number }
-  | null;
 
 let contadorId = 0;
 const nuevoId = (tipo: string) => `${tipo}_${Date.now().toString(36)}_${contadorId++}`;
@@ -84,37 +66,23 @@ const nuevoId = (tipo: string) => `${tipo}_${Date.now().toString(36)}_${contador
 export const EditorMontajeEspacial = ({
   maquina,
   dimensiones,
-  esCilindrica,
   value,
   onChange,
 }: Props) => {
   // Mesa a escala: usa mesa_x/y_mm si el backend las envía; si no, cae a los
-  // recorridos (mejor dibujar el área útil que no dibujar nada).
+  // recorridos (mejor tener un área útil que no tener ninguna).
   const mesaX = maquina.mesa_x_mm ?? maquina.recorrido_x_mm;
   const mesaY = maquina.mesa_y_mm ?? maquina.recorrido_y_mm;
 
-  const scale = (VIEW_W - 2 * PAD) / mesaX;
-  const viewH = mesaY * scale + 2 * PAD;
-
-  const flipX = MARCO_MESA.origenEnPantalla.includes("derecha");
-  const flipY = MARCO_MESA.origenEnPantalla.includes("inferior");
-
-  const wxToSx = (wx: number) => PAD + (flipX ? mesaX - wx : wx) * scale;
-  const wyToSy = (wy: number) => PAD + (flipY ? mesaY - wy : wy) * scale;
-  const sxToWx = (sx: number) => (flipX ? mesaX - (sx - PAD) / scale : (sx - PAD) / scale);
-  const syToWy = (sy: number) => (flipY ? mesaY - (sy - PAD) / scale : (sy - PAD) / scale);
-
-  const svgRef = useRef<SVGSVGElement | null>(null);
-  const [arrastre, setArrastre] = useState<Arrastre>(null);
   // Elemento al que se enlazará la próxima zona de sujeción creada.
   const [elementoParaZona, setElementoParaZona] = useState<string>("");
 
   // Inicializa el modelo la PRIMERA vez con la pieza centrada. `altura_total_pieza_mm`
   // se SIEMBRA desde el bbox del STEP como sugerencia inicial, pero es un dato
   // FÍSICO que declara/confirma el operario: una vez creado NO se vuelve a
-  // sobrescribir aunque cambie dimensiones.z. El bbox sirve para dibujar la
-  // silueta; la altura declarada es independiente de cómo se sujete la pieza (no
-  // reintroducimos por aquí la semántica que quitamos de z_apoyo/z_base).
+  // sobrescribir aunque cambie dimensiones.z. La altura declarada es independiente
+  // de cómo se sujete la pieza (no reintroducimos la semántica que quitamos de
+  // z_apoyo/z_base).
   useEffect(() => {
     if (mesaX <= 0 || mesaY <= 0) return;
     if (value === null) {
@@ -134,48 +102,6 @@ export const EditorMontajeEspacial = ({
 
   if (!value) return null;
   const { pieza, elementos_fisicos, zonas_sujecion } = value;
-
-  // ── Coordenadas puntero → mundo ────────────────────────────────────────────
-  const clienteAMundo = (e: React.PointerEvent) => {
-    const rect = svgRef.current!.getBoundingClientRect();
-    const vx = ((e.clientX - rect.left) / rect.width) * VIEW_W;
-    const vy = ((e.clientY - rect.top) / rect.height) * viewH;
-    return { wx: sxToWx(vx), wy: syToWy(vy) };
-  };
-
-  const clamp = (v: number, max: number) => Math.max(0, Math.min(max, v));
-
-  // ── Arrastre ───────────────────────────────────────────────────────────────
-  const iniciarArrastre = (e: React.PointerEvent, a: Exclude<Arrastre, null>) => {
-    (e.target as Element).setPointerCapture?.(e.pointerId);
-    setArrastre(a);
-  };
-
-  const onPointerMove = (e: React.PointerEvent) => {
-    if (!arrastre) return;
-    const { wx, wy } = clienteAMundo(e);
-    const px = Math.round(clamp(wx - arrastre.offX, mesaX));
-    const py = Math.round(clamp(wy - arrastre.offY, mesaY));
-    if (arrastre.clase === "pieza") {
-      onChange({ ...value, pieza: { ...pieza, pos_x_mm: px, pos_y_mm: py } });
-    } else if (arrastre.clase === "elemento") {
-      onChange({
-        ...value,
-        elementos_fisicos: elementos_fisicos.map((el) =>
-          el.id === arrastre.id ? { ...el, pos_x_mm: px, pos_y_mm: py } : el,
-        ),
-      });
-    } else {
-      onChange({
-        ...value,
-        zonas_sujecion: zonas_sujecion.map((z, i) =>
-          i === arrastre.idx ? { ...z, pos_x_mm: px, pos_y_mm: py } : z,
-        ),
-      });
-    }
-  };
-
-  const finArrastre = () => setArrastre(null);
 
   // ── Mutaciones ──────────────────────────────────────────────────────────────
   const añadirElemento = (tipo: TipoElementoFisico) => {
@@ -247,16 +173,9 @@ export const EditorMontajeEspacial = ({
 
   // Edita un campo numérico de la pieza. Incluye `altura_total_pieza_mm`, que es
   // el dato físico que el operario declara/confirma (no una medida derivada de
-  // la sujeción). pos_x/pos_y también se editan por arrastre en el lienzo.
+  // la sujeción).
   const editarPieza = (campo: keyof typeof pieza, v: number) =>
     onChange({ ...value, pieza: { ...pieza, [campo]: v } });
-
-  // ── Geometría de dibujo de la pieza ──────────────────────────────────────────
-  const anchoPiezaPx = dimensiones.x * scale;
-  const largoPiezaPx = dimensiones.y * scale;
-  const diamPiezaPx = Math.max(dimensiones.x, dimensiones.y) * scale;
-  const piezaCx = wxToSx(pieza.pos_x_mm);
-  const piezaCy = wyToSy(pieza.pos_y_mm);
 
   const inputCls =
     "w-16 rounded border border-border bg-bg-primary px-1.5 py-1 text-xs text-text-primary focus:border-accent-blue focus:outline-none";
@@ -281,213 +200,14 @@ export const EditorMontajeEspacial = ({
         ))}
       </div>
 
-      {/* Lienzo (vista superior de la mesa) */}
-      <svg
-        ref={svgRef}
-        viewBox={`0 0 ${VIEW_W} ${viewH}`}
-        className="w-full touch-none select-none rounded-xl border border-border bg-bg-primary"
-        onPointerMove={onPointerMove}
-        onPointerUp={finArrastre}
-        onPointerLeave={finArrastre}
-      >
-        {/* Mesa */}
-        <rect
-          x={wxToSx(flipX ? mesaX : 0)}
-          y={wyToSy(flipY ? mesaY : 0)}
-          width={mesaX * scale}
-          height={mesaY * scale}
-          fill="#0f172a"
-          stroke="#334155"
-          strokeWidth={1.5}
-          rx={4}
-        />
-
-        {/* Rejilla cada 50mm */}
-        {Array.from({ length: Math.floor(mesaX / 50) }, (_, i) => (i + 1) * 50).map(
-          (gx) => (
-            <line
-              key={`gx${gx}`}
-              x1={wxToSx(gx)}
-              y1={wyToSy(0)}
-              x2={wxToSx(gx)}
-              y2={wyToSy(mesaY)}
-              stroke="#1e293b"
-              strokeWidth={0.5}
-            />
-          ),
-        )}
-        {Array.from({ length: Math.floor(mesaY / 50) }, (_, i) => (i + 1) * 50).map(
-          (gy) => (
-            <line
-              key={`gy${gy}`}
-              x1={wxToSx(0)}
-              y1={wyToSy(gy)}
-              x2={wxToSx(mesaX)}
-              y2={wyToSy(gy)}
-              stroke="#1e293b"
-              strokeWidth={0.5}
-            />
-          ),
-        )}
-
-        {/* Ejes X/Y + origen (esquina frontal-izquierda) */}
-        <line
-          x1={wxToSx(0)}
-          y1={wyToSy(0)}
-          x2={wxToSx(Math.min(mesaX, 120))}
-          y2={wyToSy(0)}
-          stroke="#ef4444"
-          strokeWidth={2}
-        />
-        <line
-          x1={wxToSx(0)}
-          y1={wyToSy(0)}
-          x2={wxToSx(0)}
-          y2={wyToSy(Math.min(mesaY, 120))}
-          stroke="#22c55e"
-          strokeWidth={2}
-        />
-        <circle cx={wxToSx(0)} cy={wyToSy(0)} r={4} fill="#e2e8f0" />
-        <text x={wxToSx(Math.min(mesaX, 120)) + 4} y={wyToSy(0) + 4} fontSize={11} fill="#ef4444">
-          X
-        </text>
-        <text x={wxToSx(0) - 10} y={wyToSy(Math.min(mesaY, 120)) - 4} fontSize={11} fill="#22c55e">
-          Y
-        </text>
-
-        {/* Elementos físicos */}
-        {elementos_fisicos.map((el) => {
-          const w = el.ancho_mm * scale;
-          const h = el.largo_mm * scale;
-          const cx = wxToSx(el.pos_x_mm);
-          const cy = wyToSy(el.pos_y_mm);
-          return (
-            <g
-              key={el.id}
-              style={{ cursor: "grab" }}
-              onPointerDown={(e) => {
-                const { wx, wy } = clienteAMundo(e);
-                iniciarArrastre(e, {
-                  clase: "elemento",
-                  id: el.id,
-                  offX: wx - el.pos_x_mm,
-                  offY: wy - el.pos_y_mm,
-                });
-              }}
-            >
-              <rect
-                x={cx - w / 2}
-                y={cy - h / 2}
-                width={w}
-                height={h}
-                fill={`${COLOR_ELEMENTO[el.tipo]}33`}
-                stroke={COLOR_ELEMENTO[el.tipo]}
-                strokeWidth={1.5}
-                rx={2}
-              />
-              <text x={cx} y={cy + 3} fontSize={9} fill={COLOR_ELEMENTO[el.tipo]} textAnchor="middle">
-                {el.tipo}
-              </text>
-            </g>
-          );
-        })}
-
-        {/* Pieza (silueta del bbox: rectángulo o círculo) */}
-        {esCilindrica ? (
-          <circle
-            cx={piezaCx}
-            cy={piezaCy}
-            r={diamPiezaPx / 2}
-            fill="#3b82f633"
-            stroke="#3b82f6"
-            strokeWidth={2}
-            style={{ cursor: "grab" }}
-            onPointerDown={(e) => {
-              const { wx, wy } = clienteAMundo(e);
-              iniciarArrastre(e, {
-                clase: "pieza",
-                offX: wx - pieza.pos_x_mm,
-                offY: wy - pieza.pos_y_mm,
-              });
-            }}
-          />
-        ) : (
-          <rect
-            x={piezaCx - anchoPiezaPx / 2}
-            y={piezaCy - largoPiezaPx / 2}
-            width={anchoPiezaPx}
-            height={largoPiezaPx}
-            transform={`rotate(${-pieza.orientacion_fisica_deg} ${piezaCx} ${piezaCy})`}
-            fill="#3b82f633"
-            stroke="#3b82f6"
-            strokeWidth={2}
-            rx={2}
-            style={{ cursor: "grab" }}
-            onPointerDown={(e) => {
-              const { wx, wy } = clienteAMundo(e);
-              iniciarArrastre(e, {
-                clase: "pieza",
-                offX: wx - pieza.pos_x_mm,
-                offY: wy - pieza.pos_y_mm,
-              });
-            }}
-          />
-        )}
-        <text x={piezaCx} y={piezaCy + 3} fontSize={10} fill="#93c5fd" textAnchor="middle">
-          PIEZA
-        </text>
-
-        {/* Zonas de sujeción (rombo) + línea al elemento que las produce */}
-        {zonas_sujecion.map((z, i) => {
-          const cx = wxToSx(z.pos_x_mm);
-          const cy = wyToSy(z.pos_y_mm);
-          const ref = elementos_fisicos.find((el) => el.id === z.elemento_ref);
-          return (
-            <g key={`z${i}`}>
-              {ref && (
-                <line
-                  x1={cx}
-                  y1={cy}
-                  x2={wxToSx(ref.pos_x_mm)}
-                  y2={wyToSy(ref.pos_y_mm)}
-                  stroke="#eab308"
-                  strokeWidth={1}
-                  strokeDasharray="3 3"
-                />
-              )}
-              <rect
-                x={cx - 6}
-                y={cy - 6}
-                width={12}
-                height={12}
-                transform={`rotate(45 ${cx} ${cy})`}
-                fill="#eab308"
-                stroke="#fde047"
-                strokeWidth={1.5}
-                style={{ cursor: "grab" }}
-                onPointerDown={(e) => {
-                  const { wx, wy } = clienteAMundo(e);
-                  iniciarArrastre(e, {
-                    clase: "zona",
-                    idx: i,
-                    offX: wx - z.pos_x_mm,
-                    offY: wy - z.pos_y_mm,
-                  });
-                }}
-              />
-            </g>
-          );
-        })}
-      </svg>
-
       {/* Escala de la mesa */}
       <div className="text-xs text-text-muted">
         Mesa {Math.round(mesaX)}×{Math.round(mesaY)}mm
         {maquina.mesa_x_mm == null && " (recorrido — mesa no declarada)"}
       </div>
 
-      {/* Inspector de la PIEZA: X/Y (también arrastrables), orientación y altura
-          total FÍSICA declarada por el operario. */}
+      {/* Inspector de la PIEZA: X/Y, orientación y altura total FÍSICA declarada
+          por el operario. */}
       <div className="rounded-lg border border-accent-blue/30 bg-accent-blue/5 px-2.5 py-2">
         <p className="mb-1.5 text-xs font-medium text-text-primary">Pieza</p>
         <div className="flex flex-wrap items-end gap-3">
@@ -566,6 +286,28 @@ export const EditorMontajeEspacial = ({
                 style={{ background: COLOR_ELEMENTO[el.tipo] }}
               />
               <span className="w-16 text-xs font-medium text-text-primary">{el.tipo}</span>
+              <label className="text-[11px] text-text-muted">
+                pos X
+                <input
+                  type="number"
+                  value={el.pos_x_mm}
+                  min={0}
+                  max={Math.round(mesaX)}
+                  onChange={(e) => editarElemento(el.id, "pos_x_mm", Number(e.target.value))}
+                  className={inputCls}
+                />
+              </label>
+              <label className="text-[11px] text-text-muted">
+                pos Y
+                <input
+                  type="number"
+                  value={el.pos_y_mm}
+                  min={0}
+                  max={Math.round(mesaY)}
+                  onChange={(e) => editarElemento(el.id, "pos_y_mm", Number(e.target.value))}
+                  className={inputCls}
+                />
+              </label>
               <label className="text-[11px] text-text-muted">
                 ancho
                 <input

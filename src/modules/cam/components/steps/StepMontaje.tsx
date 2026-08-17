@@ -172,6 +172,7 @@ export const StepMontaje = () => {
         <div className="w-full lg:w-2/3 h-[300px] lg:h-[500px] rounded-xl overflow-hidden border border-border">
           <CamViewer3D
             dimensiones={dimensiones}
+            mostrarMesa
             sujecionConfig={montajeConfig.sujecion_config}
             piezaBoundingBox={dimensiones}
             onFaceClick={(faceId) => {

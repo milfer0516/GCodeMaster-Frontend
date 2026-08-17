@@ -35,6 +35,12 @@ interface Props {
   piezaBoundingBox?: { x: number; y: number; z: number };
   stockConfig?: StockConfig | null;
 
+  // ── Mesa física (Fase 1) ──
+  // Gate on/off para dibujar el plano de la mesa BAJO la pieza. Las medidas
+  // (mesa_x_mm × mesa_y_mm) se leen del store (maquina) ya normalizadas por
+  // getMaquinas; este prop NO transporta dimensiones ni reinterpreta largo/ancho.
+  mostrarMesa?: boolean;
+
   // ── Stock por-región — el visor es consumidor VISUAL puro ──
   // El dominio entrega las regiones pickables YA ordenadas por materialIndex:
   // rectangular = 6 caras de la BoxGeometry (0..5); cilíndrico = 3 regiones
@@ -266,6 +272,7 @@ export function CamViewer3D({
   sujecionConfig = null,
   piezaBoundingBox,
   stockConfig = null,
+  mostrarMesa = false,
   stockFacesByBoxIndex = null,
   activeStockFaceIndex = null,
   onStockFaceClick,
@@ -284,6 +291,10 @@ export function CamViewer3D({
   // de la BoxGeometry, materialIndex 0..5) para resaltar caras individuales.
   const stockPickMeshRef = useRef<THREE.Mesh | null>(null);
   const stockMaterialsRef = useRef<THREE.MeshBasicMaterial[]>([]);
+  // Mesa física (Fase 1): grupo propio, NUNCA referenciado por los raycasters
+  // de pieza/stock ⇒ excluido del picking por construcción.
+  const tableGroupRef = useRef<THREE.Group | null>(null);
+  const didFitTableRef = useRef(false);
 
   // Cara seleccionada con click simple para mostrar su dimensión en el panel
   const [faceInfo, setFaceInfo] = useState<FaceMetadata | null>(null);
@@ -1077,6 +1088,148 @@ export function CamViewer3D({
       renderer.domElement.removeEventListener("click", handleClick);
     };
   }, [onStockFaceClick, onStockFaceHover, stockFacesByBoxIndex]);
+
+  // ── 7. Dibujar la MESA física (Fase 1 — plano + rejilla métrica) ───────
+  // Sigue el MISMO patrón que el stock (efecto 6): construye un THREE.Group en
+  // coords MÁQUINA (Z arriba) y lo lleva a display con VIEWER_BASE_Q. La mesa se
+  // coloca en el plano de APOYO derivado del transform real: machine Z = z_apoyo
+  // (rotatedBBox.min[2]) → viewer Y = z_apoyo, que es DONDE se apoya la base de
+  // la pieza (efecto 4b: base en Y = zApoyoMm; sin setup, base en Y = 0). NO se
+  // asume Z=0 de la mesa máquina: se usa el plano de la superficie de apoyo para
+  // que la pieza quede SOBRE la mesa, no flotando. Aditivo: no toca la pieza ni
+  // el stock, y su grupo nunca entra en los raycasters (picking intacto).
+  useEffect(() => {
+    if (!sceneRef.current) return;
+    const scene = sceneRef.current;
+
+    // Limpiar mesa anterior
+    if (tableGroupRef.current) {
+      scene.remove(tableGroupRef.current);
+      tableGroupRef.current.traverse((obj) => {
+        if (obj instanceof THREE.Mesh || obj instanceof THREE.LineSegments) {
+          obj.geometry.dispose();
+          if (Array.isArray(obj.material)) obj.material.forEach((m) => m.dispose());
+          else obj.material.dispose();
+        }
+      });
+      tableGroupRef.current = null;
+    }
+
+    if (!mostrarMesa || !maquina) return;
+    // mesa_x_mm / mesa_y_mm YA normalizadas por getMaquinas (largo→X, ancho→Y).
+    // El visor las consume tal cual: NO reinterpreta ni re-deriva el mapeo.
+    const mesaX = maquina.mesa_x_mm;
+    const mesaY = maquina.mesa_y_mm;
+    if (!mesaX || !mesaY || mesaX <= 0 || mesaY <= 0) return;
+
+    // Plano de apoyo (superficie sobre la que descansa la base de la pieza).
+    // Con Setup confirmado = z_apoyo; sin Setup = 0 (base de la pieza en Y=0).
+    const zApoyo = setup?.zApoyoMm ?? 0;
+
+    const hx = mesaX / 2; // proporción física mesaX:mesaY preservada EXACTA:
+    const hy = mesaY / 2; // se usan mm reales, sin escalar X/Y por separado.
+    const group = new THREE.Group();
+
+    // Relleno del tablero: un pelín por debajo del plano de apoyo para que la
+    // base de la pieza quede visualmente SOBRE la mesa sin z-fighting.
+    const fillGeo = new THREE.PlaneGeometry(mesaX, mesaY);
+    fillGeo.translate(0, 0, zApoyo - 0.6);
+    const fillMat = new THREE.MeshBasicMaterial({
+      color: 0x0f172a,
+      transparent: true,
+      opacity: 0.55,
+      side: THREE.DoubleSide,
+      depthWrite: false,
+    });
+    group.add(new THREE.Mesh(fillGeo, fillMat));
+
+    // Rejilla métrica cada 50 mm, RECORTADA EXACTAMENTE a los bordes de la mesa
+    // (las líneas nunca exceden [-hx,hx]×[-hy,hy]) y a escala en mm reales.
+    const STEP = 50;
+    const zGrid = zApoyo - 0.5;
+    const gridPts: number[] = [];
+    for (let x = -hx; x <= hx + 1e-6; x += STEP) {
+      gridPts.push(x, -hy, zGrid, x, hy, zGrid);
+    }
+    for (let y = -hy; y <= hy + 1e-6; y += STEP) {
+      gridPts.push(-hx, y, zGrid, hx, y, zGrid);
+    }
+    const gridGeo = new THREE.BufferGeometry();
+    gridGeo.setAttribute(
+      "position",
+      new THREE.BufferAttribute(new Float32Array(gridPts), 3),
+    );
+    group.add(
+      new THREE.LineSegments(
+        gridGeo,
+        new THREE.LineBasicMaterial({ color: 0x1e293b }),
+      ),
+    );
+
+    // Borde del tablero (contorno más marcado).
+    const zBorder = zApoyo - 0.4;
+    const borderGeo = new THREE.BufferGeometry();
+    borderGeo.setAttribute(
+      "position",
+      new THREE.BufferAttribute(
+        new Float32Array([
+          -hx, -hy, zBorder, hx, -hy, zBorder,
+          hx, -hy, zBorder, hx, hy, zBorder,
+          hx, hy, zBorder, -hx, hy, zBorder,
+          -hx, hy, zBorder, -hx, -hy, zBorder,
+        ]),
+        3,
+      ),
+    );
+    group.add(
+      new THREE.LineSegments(
+        borderGeo,
+        new THREE.LineBasicMaterial({ color: 0x334155, linewidth: 2 }),
+      ),
+    );
+
+    // Coords MÁQUINA (Z arriba) → display: MISMA conversión de frame que el
+    // stock/pieza. NO se copia mesh.quaternion: la mesa es axis-aligned en
+    // máquina y su altura (z_apoyo) ya va incluida en la geometría.
+    group.quaternion.copy(VIEWER_BASE_Q);
+    group.position.set(0, 0, 0);
+    group.renderOrder = -1; // dibujar detrás de pieza/stock
+
+    scene.add(group);
+    tableGroupRef.current = group;
+  }, [mostrarMesa, maquina, setup]);
+
+  // ── 7a-fit. Encuadre MÍNIMO y SEPARADO cuando aparece la mesa ───────────
+  // La mesa es mucho mayor que la pieza; el fit de la pieza ([meshData]) la
+  // dejaría fuera de cuadro. Este efecto es ADITIVO: si no hay mesa, retorna y
+  // el comportamiento de cámara existente queda INTACTO. Encuadra UNA sola vez
+  // (guard didFitTableRef) para no pelear con el orbit del usuario.
+  useEffect(() => {
+    if (!mostrarMesa || !maquina || !meshData) return;
+    if (!cameraRef.current || !controlsRef.current) return;
+    if (didFitTableRef.current) return;
+    const mesaX = maquina.mesa_x_mm;
+    const mesaY = maquina.mesa_y_mm;
+    if (!mesaX || !mesaY || mesaX <= 0 || mesaY <= 0) return;
+    didFitTableRef.current = true;
+
+    const camera = cameraRef.current;
+    const controls = controlsRef.current;
+    const zApoyo = setup?.zApoyoMm ?? 0;
+    const maxDim = Math.max(mesaX, mesaY);
+
+    // Solo mueve la cámara (tamaño APARENTE); la proporción física de la mesa no
+    // se altera. Se encuadra la mesa completa (que ya contiene a la pieza).
+    const dist = maxDim * 1.1;
+    camera.position.set(dist, dist * 0.8, dist);
+    camera.near = maxDim * 0.01;
+    camera.far = maxDim * 20;
+    camera.updateProjectionMatrix();
+    controls.minDistance = maxDim * 0.05;
+    controls.maxDistance = maxDim * 10;
+    controls.target.set(0, zApoyo, 0);
+    controls.update();
+  }, [mostrarMesa, maquina, meshData, setup]);
 
   // ── Render ─────────────────────────────────────────────────────────────
   if (meshLoading) {
