@@ -258,6 +258,35 @@ function buildMaterials(
   });
 }
 
+// ── Escala de LECTURA de la pieza (SOLO display, paso montaje) ─────────────
+// Como un plano acotado con un detalle ampliado: la pieza se dibuja MÁS GRANDE
+// que su proporción real sobre la mesa para que se lea su geometría, pero acotada
+// para que su huella escalada NUNCA rebase el rectángulo de la mesa. Es un factor
+// de RENDER puro (three.js): NO altera ninguna medida real (dimensiones de pieza,
+// mesa_x/y, pos_x/pos_y, altura_total) — esas llegan al motor sin escalar. La
+// cota usa la mayor extensión de la pieza para no rebasar en NINGUNA orientación
+// de apoyo. Nunca encoge (mín 1) ni amplía de forma absurda (tope 6). Fuera del
+// montaje (mostrarMesa=false) devuelve 1 ⇒ el resto de pasos no cambian.
+function pieceDisplayScale(
+  meshData: MeshData | null,
+  maquina: { mesa_x_mm?: number | null; mesa_y_mm?: number | null } | null,
+  mostrarMesa: boolean,
+): number {
+  if (!mostrarMesa || !meshData) return 1;
+  const mx = maquina?.mesa_x_mm;
+  const my = maquina?.mesa_y_mm;
+  if (!mx || !my || mx <= 0 || my <= 0) return 1;
+  const bb = meshData.bounding_box;
+  const footprintMax = Math.max(
+    bb.max[0] - bb.min[0],
+    bb.max[1] - bb.min[1],
+    bb.max[2] - bb.min[2],
+  );
+  if (!(footprintMax > 0)) return 1;
+  const sMax = (0.85 * Math.min(mx, my)) / footprintMax;
+  return Math.max(1, Math.min(sMax, 6));
+}
+
 // ── Componente principal ───────────────────────────────────────────────────
 // DESPUÉS — misma ubicación
 export function CamViewer3D({
@@ -498,10 +527,18 @@ export function CamViewer3D({
     const center = meshData.bounding_box.center;
     const bbMin = meshData.bounding_box.min;
     const halfHeight = (meshData.bounding_box.max[2] - bbMin[2]) / 2;
+
+    // Escala de LECTURA (SOLO display). Amplía la pieza sobre la mesa sin tocar
+    // dato alguno: se aplica al transform three.js (mesh.scale) y, para que la
+    // pieza siga CENTRADA y APOYADA (pivote base-centro = (0,0,0) aquí, base en
+    // Y=0), se escalan también los offsets de centrado. En montaje s>1; en el
+    // resto de pasos (mostrarMesa=false) s=1 ⇒ comportamiento idéntico al previo.
+    const s = pieceDisplayScale(meshData, maquina, mostrarMesa);
+    mesh.scale.setScalar(s);
     mesh.position.set(
-      -center[0], // centrar en X
-      -bbMin[2],  // base en Y=0: Z_min de OCC → punto más bajo del mesh
-      -center[1], // centrar en Z (Y de OCC — negado por la rotación)
+      -center[0] * s, // centrar en X (pivote 0 ⇒ pos = s·pos)
+      -bbMin[2] * s,  // base en Y=0: Z_min de OCC → punto más bajo del mesh
+      -center[1] * s, // centrar en Z (Y de OCC — negado por la rotación)
     );
 
     scene.add(mesh);
@@ -529,7 +566,9 @@ export function CamViewer3D({
     controls.maxDistance = diagonal * 6;
     controls.target.set(0, meshCenterY, 0);
     controls.update();
-  }, [meshData]);
+    // maquina/mostrarMesa: la escala de lectura depende de mesa_x/y; reconstruir
+    // desde meshData (ya cacheado, sin re-teselar) al llegar la máquina en montaje.
+  }, [meshData, maquina, mostrarMesa]);
 
   // ── 4. Actualizar colores cuando cambia selección ───────────────────────
   useEffect(() => {
@@ -574,6 +613,8 @@ export function CamViewer3D({
     let posYTarget: number;
     let posZTarget: number;
     let centerYMundo: number;
+    // Plano de apoyo (base de la pieza) — pivote vertical de la escala de lectura.
+    let pivotY = 0;
 
     // Si existe un montaje confirmado para ESTA cara, el destino se lee del
     // Setup (verdad de dominio en frame OCC) y se convierte a display solo con
@@ -596,6 +637,7 @@ export function CamViewer3D({
       // El centro vertical en el mundo display equivale al centro Z máquina
       // (base en z_apoyo, altura = rotatedBBox.height).
       centerYMundo = setup.zApoyoMm + setup.rotatedBBox.height / 2;
+      pivotY = setup.zApoyoMm;
     } else {
       // ── Camino en vivo (cara seleccionada, montaje aún sin confirmar) ──
       const face = meshData.faces.find((f) => f.face_id === faceIdDestacada);
@@ -654,7 +696,21 @@ export function CamViewer3D({
       posXTarget = -centerXTransformado;
       posZTarget = -centerZTransformado;
       centerYMundo = posYTarget + centerYTransformado;
+      pivotY = zApoyo;
     }
+
+    // ── Escala de LECTURA (SOLO display) ──
+    // Amplía visualmente la pieza manteniéndola centrada (X=Z=0) y apoyada en el
+    // plano base (pivote (0, pivotY, 0)). Escalar un emplazamiento rígido respecto
+    // a un pivote P es: pos_s = (1-s)·P + s·pos  (uniforme, independiente de la
+    // geometría). Solo toca mesh.scale y estas posiciones de RENDER; NINGÚN dato
+    // real cambia. Fuera de montaje s=1 ⇒ animación idéntica a la previa.
+    const s = pieceDisplayScale(meshData, maquina, mostrarMesa);
+    meshRef.current.scale.setScalar(s);
+    posXTarget = s * posXTarget;
+    posZTarget = s * posZTarget;
+    posYTarget = (1 - s) * pivotY + s * posYTarget;
+    centerYMundo = (1 - s) * pivotY + s * centerYMundo;
 
     // Posiciones iniciales
     const posYStart = meshRef.current.position.y;
@@ -697,7 +753,7 @@ export function CamViewer3D({
     animId = requestAnimationFrame(animar);
 
     return () => cancelAnimationFrame(animId);
-  }, [faceIdDestacada, meshData, sujecionConfig, analisis, setup]);
+  }, [faceIdDestacada, meshData, sujecionConfig, analisis, setup, maquina, mostrarMesa]);
 
   // ── 5. Picking por cara — hover y click ────────────────────────────────
   useEffect(() => {
