@@ -283,7 +283,7 @@ function pieceDisplayScale(
     bb.max[2] - bb.min[2],
   );
   if (!(footprintMax > 0)) return 1;
-  const sMax = (0.85 * Math.min(mx, my)) / footprintMax;
+  const sMax = (0.45 * Math.min(mx, my)) / footprintMax;
   return Math.max(1, Math.min(sMax, 6));
 }
 
