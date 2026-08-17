@@ -1231,64 +1231,49 @@ export function CamViewer3D({
       ? Math.max(0, meshData.bounding_box.max[2] - meshData.bounding_box.min[2])
       : 0;
 
-    // Encuadre EXACTO para PerspectiveCamera proyectando las 8 esquinas del
-    // volumen MESA+PIEZA (mm reales, proporción física intacta) sobre los ejes de
-    // cámara y exigiendo que cada esquina caiga dentro del frustum. La mesa ocupa
-    // X∈±mesaX/2, Z∈±mesaY/2 (VIEWER_BASE_Q lleva máquina XY → viewer XZ) y la
-    // pieza aporta altura en Y∈[zApoyo, zApoyo+piezaH]. El FOV horizontal se
-    // deriva del vertical y del ASPECT ACTUAL del viewport ⇒ el cálculo se adapta
-    // a cualquier relación de aspecto (estrecho → domina el ancho → se aleja para
-    // que quepa). No hay multiplicador de zoom fijo: MARGEN es solo un respiro de
-    // encuadre para que la mesa no toque justo los bordes.
-    const MARGEN = 1.06;
-    const vFOV = THREE.MathUtils.degToRad(camera.fov);
-    const aspect = camera.aspect || 1;
-    const hFOV = 2 * Math.atan(Math.tan(vFOV / 2) * aspect);
-    const tanV = Math.tan(vFOV / 2);
-    const tanH = Math.tan(hFOV / 2);
+    // Aspect REAL del elemento renderizado (no el de la cámara, que puede estar
+    // obsoleto en el instante del fit). Se sincroniza en la cámara ANTES de
+    // encuadrar, para que la proyección con la que se dibuja coincida con la que
+    // se usó para calcular la distancia (antes la "matemática" no cuadraba con
+    // los píxeles porque el aspect no estaba sincronizado).
+    const elFit = mountRef.current;
+    const wFit = elFit?.clientWidth ?? 0;
+    const hFit = elFit?.clientHeight ?? 0;
+    const aspect = wFit > 0 && hFit > 0 ? wFit / hFit : camera.aspect || 1;
+    camera.aspect = aspect;
 
-    // Dirección de vista isométrica EXISTENTE (target → cámara); solo cambia la
+    // Fit estándar por esfera envolvente de la MESA + PIEZA (mm reales, ratio
+    // mesa_x:mesa_y intacto). Se elige el semiángulo MÁS restrictivo (vertical u
+    // horizontal según el aspect) para que la mesa quepa también a lo ancho.
+    const R = 0.5 * Math.sqrt(mesaX * mesaX + mesaY * mesaY + piezaH * piezaH);
+    const vHalf = THREE.MathUtils.degToRad(camera.fov) / 2;
+    const hHalf = Math.atan(Math.tan(vHalf) * aspect);
+    const fitHalf = Math.min(vHalf, hHalf);
+
+    // FACTOR < 1: la cámara entra DENTRO de la esfera envolvente. La mesa es un
+    // plano (no una esfera), así que su silueta llena bastante menos que la
+    // esfera; al acercar la cámara la mesa DOMINA la vista (~80-90% de la
+    // dimensión menor) en vez de quedar diminuta rodeada de vacío. Valor ajustado
+    // por el resultado RENDERADO, no por una fórmula: el encuadre "correcto" a la
+    // esfera dejaba la mesa pequeña. Ante la duda, más cerca (mesa más grande);
+    // errar por "demasiado grande" es lo pedido, "demasiado pequeña" es el bug.
+    const FACTOR = 0.5;
+    const distance = (R / Math.sin(fitHalf)) * FACTOR;
+
+    // Objetivo: centro de la mesa (Y=zApoyo) elevado media altura de pieza para
+    // encuadrar ambos. Dirección de vista isométrica EXISTENTE; solo cambia la
     // DISTANCIA (tamaño aparente), nunca la geometría ni la proporción.
+    const target = new THREE.Vector3(0, zApoyo + piezaH / 2, 0);
     const dir = new THREE.Vector3(1, 0.8, 1).normalize();
-    const viewDir = dir.clone().negate();
-    const right = new THREE.Vector3()
-      .crossVectors(viewDir, new THREE.Vector3(0, 1, 0))
-      .normalize();
-    const camUp = new THREE.Vector3()
-      .crossVectors(right, viewDir)
-      .normalize();
-
-    const hx = mesaX / 2;
-    const hy = mesaY / 2;
-    const yb = zApoyo;
-    const yt = zApoyo + piezaH;
-    const target = new THREE.Vector3(0, (yb + yt) / 2, 0);
-
-    // Distancia mínima que mantiene TODAS las esquinas dentro del frustum, en el
-    // eje (horizontal o vertical) que resulte más restrictivo para cada una.
-    let need = 0;
-    for (const sx of [-hx, hx]) {
-      for (const sz of [-hy, hy]) {
-        for (const sy of [yb, yt]) {
-          const p = new THREE.Vector3(sx, sy, sz).sub(target);
-          const along = p.dot(dir); // componente hacia la cámara
-          const lr = Math.abs(p.dot(right));
-          const lu = Math.abs(p.dot(camUp));
-          need = Math.max(need, along + lr / tanH, along + lu / tanV);
-        }
-      }
-    }
-    const distance = need * MARGEN;
     camera.position.copy(target).addScaledVector(dir, distance);
 
-    const span = Math.max(mesaX, mesaY, piezaH);
-    camera.near = Math.max(0.1, distance * 0.02);
-    camera.far = distance + span * 4;
+    camera.near = Math.max(0.5, distance * 0.05);
+    camera.far = distance + R * 4;
     camera.updateProjectionMatrix();
 
     controls.target.copy(target);
-    controls.minDistance = span * 0.15;
-    controls.maxDistance = distance * 3;
+    controls.minDistance = R * 0.3;
+    controls.maxDistance = distance * 4;
     controls.update();
   }, [mostrarMesa, maquina, meshData, setup]);
 
