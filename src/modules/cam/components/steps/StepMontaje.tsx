@@ -1,6 +1,6 @@
 // src/modules/cam/components/steps/StepMontaje.tsx
 import { useEffect, useState } from "react";
-import { Settings2, SlidersHorizontal, X } from "lucide-react";
+import { Menu, Settings2, SlidersHorizontal, X } from "lucide-react";
 import { useCamStore } from "../../store/camStore";
 import { CamViewer3D } from "../CamViewer3D";
 import { Collapsible } from "../../../../components/ui/Collapsible";
@@ -77,6 +77,10 @@ export const StepMontaje = () => {
   // Panel de controles: columna fija en escritorio, cajón deslizante en pantallas
   // estrechas. Solo gobierna la POSICIÓN del panel (layout); no toca ningún dato.
   const [drawerAbierto, setDrawerAbierto] = useState(false);
+  // Colapso del panel en ESCRITORIO: al ocultar los controles, el visor se
+  // expande a ancho casi completo. Puro layout; el visor reacciona al nuevo
+  // tamaño de su contenedor (ResizeObserver, Fase 1.5a). No afecta al cajón móvil.
+  const [panelColapsado, setPanelColapsado] = useState(false);
 
   useEffect(() => {
     getMaquinas().then((lista) => {
@@ -335,9 +339,14 @@ export const StepMontaje = () => {
 
       {/* ── Fila principal: visor dominante + panel lateral ── */}
       <div className="flex flex-col lg:flex-row gap-4 lg:h-[calc(100vh-16rem)] lg:min-h-[520px]">
-        {/* Visor 3D (~72%) — el contenedor solo le da tamaño; el visor reacciona
-            a su tamaño (Fase 1.5a) y reencuadra mesa + pieza al redimensionar. */}
-        <div className="relative w-full lg:w-[72%] h-[55vh] min-h-[360px] lg:h-full rounded-xl overflow-hidden border border-border">
+        {/* Visor 3D — el contenedor solo le da tamaño; el visor reacciona a su
+            tamaño (Fase 1.5a) y reencuadra mesa + pieza al redimensionar. Ancho:
+            ~72% con panel abierto; casi completo cuando se colapsa (escritorio). */}
+        <div
+          className={`relative w-full h-[55vh] min-h-[360px] lg:h-full rounded-xl overflow-hidden border border-border ${
+            panelColapsado ? "lg:w-full" : "lg:w-[72%]"
+          }`}
+        >
           <CamViewer3D
             dimensiones={dimensiones}
             mostrarMesa
@@ -358,6 +367,20 @@ export const StepMontaje = () => {
             }}
             faceIdDestacada={montajeConfig.face_id_apoyo}
           />
+
+          {/* Reabrir el panel colapsado (solo escritorio) */}
+          {panelColapsado && (
+            <button
+              type="button"
+              onClick={() => setPanelColapsado(false)}
+              className="hidden lg:flex absolute top-3 right-3 z-20 items-center gap-2 rounded-xl border border-border bg-bg-surface/90 px-3 py-2 text-sm text-text-muted shadow-soft backdrop-blur transition hover:border-accent-blue/50 hover:text-text-primary"
+              aria-label="Mostrar panel de controles"
+              title="Mostrar controles"
+            >
+              <Menu className="h-4 w-4" />
+              Controles
+            </button>
+          )}
         </div>
 
         {/* Backdrop del cajón (solo pantallas estrechas) */}
@@ -374,7 +397,7 @@ export const StepMontaje = () => {
         <aside
           className={`fixed inset-y-0 right-0 z-40 flex w-[86%] max-w-sm transform flex-col bg-bg-surface shadow-2xl transition-transform duration-300 ease-out lg:static lg:z-auto lg:w-[28%] lg:max-w-none lg:transform-none lg:translate-x-0 lg:bg-transparent lg:shadow-none ${
             drawerAbierto ? "translate-x-0" : "translate-x-full"
-          }`}
+          } ${panelColapsado ? "lg:hidden" : ""}`}
         >
           {/* Encabezado del cajón (solo pantallas estrechas) */}
           <div className="flex items-center justify-between border-b border-border px-4 py-3 lg:hidden">
@@ -388,6 +411,22 @@ export const StepMontaje = () => {
               aria-label="Cerrar controles"
             >
               <X className="h-4 w-4" />
+            </button>
+          </div>
+
+          {/* Cabecera del panel (solo escritorio): colapsa el panel y expande el visor */}
+          <div className="hidden lg:flex items-center justify-between px-1 pb-2">
+            <span className="text-[11px] font-semibold uppercase tracking-widest text-text-muted">
+              Controles
+            </span>
+            <button
+              type="button"
+              onClick={() => setPanelColapsado(true)}
+              className="rounded-lg p-1.5 text-text-muted transition hover:bg-bg-elevated hover:text-text-primary"
+              aria-label="Colapsar panel de controles"
+              title="Colapsar panel"
+            >
+              <Menu className="h-4 w-4" />
             </button>
           </div>
 

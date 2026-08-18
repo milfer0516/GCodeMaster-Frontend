@@ -287,6 +287,40 @@ function pieceDisplayScale(
   return Math.max(1, Math.min(sMax, 6));
 }
 
+// ── Fondo tipo "papel técnico" (SOLO montaje) ──────────────────────────────
+// Rejilla 2D dibujada en un canvas y usada como scene.background: es un plano de
+// PANTALLA (no reacciona a la cámara), así que NO puede confundirse con la mesa
+// 3D. Líneas finas azul-grisáceas a muy baja opacidad ⇒ lee como "papel de
+// fondo", claramente MÁS SUTIL que la mesa. No es geometría: no interviene en
+// picking, dimensiones ni escala; es puramente el telón de fondo del visor.
+function makeBackgroundTexture(): THREE.Texture {
+  const size = 512;
+  const canvas = document.createElement("canvas");
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext("2d")!;
+  // Base: el MISMO color de fondo previo (0x0d1117) para no alterar el tono.
+  ctx.fillStyle = "#0d1117";
+  ctx.fillRect(0, 0, size, size);
+  // Rejilla fina, azul-grisácea, ~12% de opacidad (más tenue que la mesa).
+  ctx.strokeStyle = "rgba(96, 118, 150, 0.12)";
+  ctx.lineWidth = 1;
+  const step = 32;
+  for (let p = 0; p <= size; p += step) {
+    ctx.beginPath();
+    ctx.moveTo(p + 0.5, 0);
+    ctx.lineTo(p + 0.5, size);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(0, p + 0.5);
+    ctx.lineTo(size, p + 0.5);
+    ctx.stroke();
+  }
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
+}
+
 // ── Componente principal ───────────────────────────────────────────────────
 // DESPUÉS — misma ubicación
 export function CamViewer3D({
@@ -390,7 +424,11 @@ export function CamViewer3D({
 
     // Escena
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x0d1117);
+    // Fondo: en MONTAJE, papel técnico 2D (telón de fondo sutil). En el resto de
+    // pasos (mostrarMesa=false), el color plano de siempre ⇒ sin regresión.
+    scene.background = mostrarMesa
+      ? makeBackgroundTexture()
+      : new THREE.Color(0x0d1117);
     sceneRef.current = scene;
 
     // Cámara
@@ -473,6 +511,7 @@ export function CamViewer3D({
       window.removeEventListener("resize", onResize);
       resizeObserver.disconnect();
       controls.dispose();
+      if (scene.background instanceof THREE.Texture) scene.background.dispose();
       renderer.dispose();
       if (el.contains(renderer.domElement)) el.removeChild(renderer.domElement);
     };
@@ -1196,12 +1235,15 @@ export function CamViewer3D({
 
     // Relleno del tablero: un pelín por debajo del plano de apoyo para que la
     // base de la pieza quede visualmente SOBRE la mesa sin z-fighting.
+    // Placa GRIS semi-transparente (slate) ⇒ lee como una mesa física flotando
+    // sobre el papel de fondo, no como una zona oscura. Solo cambia el material
+    // (color/opacidad): geometría, tamaño y posición de la mesa intactos.
     const fillGeo = new THREE.PlaneGeometry(mesaX, mesaY);
     fillGeo.translate(0, 0, zApoyo - 0.6);
     const fillMat = new THREE.MeshBasicMaterial({
-      color: 0x0f172a,
+      color: 0x64748b,
       transparent: true,
-      opacity: 0.55,
+      opacity: 0.3,
       side: THREE.DoubleSide,
       depthWrite: false,
     });
@@ -1226,7 +1268,13 @@ export function CamViewer3D({
     group.add(
       new THREE.LineSegments(
         gridGeo,
-        new THREE.LineBasicMaterial({ color: 0x1e293b }),
+        // Rejilla interna de la mesa: más visible que el papel de fondo, pero
+        // más sutil que la pieza. Escala/posición sin tocar (solo el color).
+        new THREE.LineBasicMaterial({
+          color: 0x94a3b8,
+          transparent: true,
+          opacity: 0.55,
+        }),
       ),
     );
 
@@ -1248,7 +1296,8 @@ export function CamViewer3D({
     group.add(
       new THREE.LineSegments(
         borderGeo,
-        new THREE.LineBasicMaterial({ color: 0x334155, linewidth: 2 }),
+        // Borde nítido de la placa ⇒ arista definida de la mesa (solo color).
+        new THREE.LineBasicMaterial({ color: 0xcbd5e1, linewidth: 2 }),
       ),
     );
 
