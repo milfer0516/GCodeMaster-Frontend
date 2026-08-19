@@ -1,5 +1,5 @@
 // src/modules/cam/components/steps/StepMontaje.tsx
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Settings2 } from "lucide-react";
 import { useCamStore } from "../../store/camStore";
 import { CamViewer3D } from "../CamViewer3D";
@@ -8,8 +8,6 @@ import { LayoutPasoVisor } from "../../../../components/layout/LayoutPasoVisor";
 import { ModalSujecion } from "../sujecion/ModalSujecion";
 import { EditorMontajeEspacial } from "../sujecion/EditorMontajeEspacial";
 import { WizardNavButtons } from "./WizardNavButtons";
-import { getMaquinas } from "../../../../services/maquinasService";
-import type { Maquina } from "../../../../services/maquinasService";
 import { mensajeError } from "../../../../services/toolingService";
 import { solicitarMecanizabilidad } from "../../services/machinabilityService";
 import type { SujecionConfig } from "../../store/camStore";
@@ -66,25 +64,18 @@ export const StepMontaje = () => {
   const montajeConfig = useCamStore((s) => s.montajeConfig);
   const setMontajeConfig = useCamStore((s) => s.setMontajeConfig);
   const setMontajeEspacial = useCamStore((s) => s.setMontajeEspacial);
-  const setMaquinaStore = useCamStore((s) => s.setMaquina);
   const meshData = useCamStore((s) => s.meshData);
   const confirmMontaje = useCamStore((s) => s.confirmMontaje);
   const idJob = useCamStore((s) => s.idJob);
   const setMecanizabilidad = useCamStore((s) => s.setMecanizabilidad);
   const setMecanizabilidadEstado = useCamStore((s) => s.setMecanizabilidadEstado);
 
-  const [maquinaActiva, setMaquinaActiva] = useState<Maquina | null>(null);
+  // La máquina se carga UNA vez a nivel del wizard (CamWizardPage) al entrar al
+  // flujo CAM; aquí solo se LEE del store. Así sus dimensiones (mesa_x/y_mm) están
+  // disponibles para el visor en cualquier paso sin depender de que Montaje se
+  // monte primero. La cascada máquina→mecanizabilidad la conserva setMaquina.
+  const maquinaActiva = useCamStore((s) => s.maquina);
   const [modalAbierto, setModalAbierto] = useState(false);
-
-  useEffect(() => {
-    getMaquinas().then((lista) => {
-      const maq = lista[0] ?? null;
-      if (maq) {
-        setMaquinaActiva(maq);
-        setMaquinaStore(maq);
-      }
-    });
-  }, []);
 
   const dimensiones = analisis?.dimensiones ?? { x: 0, y: 0, z: 0 };
 

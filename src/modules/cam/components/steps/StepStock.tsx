@@ -302,6 +302,7 @@ export const StepStock = () => {
           y: meshData.bounding_box.max[1] - meshData.bounding_box.min[1],
           z: meshData.bounding_box.max[2] - meshData.bounding_box.min[2],
         }}
+        mostrarMesa
         stockConfig={stockConfig}
         faceIdDestacada={montajeConfig.face_id_apoyo}
         sujecionConfig={montajeConfig.sujecion_config}

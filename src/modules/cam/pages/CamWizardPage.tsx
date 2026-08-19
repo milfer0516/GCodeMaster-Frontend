@@ -1,5 +1,7 @@
 // src/modules/cam/pages/CamWizardPage.tsx
+import { useEffect } from "react";
 import { useCamStore } from "../store/camStore";
+import { getMaquinas } from "../../../services/maquinasService";
 import { StepCargarStep } from "../components/steps/StepCargarStep";
 import { StepAnalisis } from "../components/steps/StepAnalisis";
 import { StepOperaciones } from "../components/steps/StepOperaciones";
@@ -28,7 +30,26 @@ export function CamWizardPage() {
   const step = useCamStore((s) => s.step);
   const setStep = useCamStore((s) => s.setStep);
   const reset = useCamStore((s) => s.reset);
+  const maquina = useCamStore((s) => s.maquina);
+  const setMaquina = useCamStore((s) => s.setMaquina);
   const pasoActual = PASOS.findIndex((p) => p.key === step);
+
+  // Cargar la máquina registrada UNA sola vez al entrar al flujo CAM, a nivel del
+  // wizard (no dentro de un paso). Así sus dimensiones (mesa_x/y_mm) están en el
+  // store para CUALQUIER paso que monte el visor (Montaje, Stock, Operaciones),
+  // sin depender de que Montaje se haya montado primero. No añade una llamada
+  // nueva: reemplaza la que hacía StepMontaje y no re-pide si ya está cargada.
+  useEffect(() => {
+    if (maquina) return;
+    let cancelado = false;
+    getMaquinas().then((lista) => {
+      const maq = lista[0];
+      if (!cancelado && maq) setMaquina(maq);
+    });
+    return () => {
+      cancelado = true;
+    };
+  }, [maquina, setMaquina]);
 
   return (
     <div className="space-y-4 md:space-y-6">
