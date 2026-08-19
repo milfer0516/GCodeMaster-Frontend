@@ -4,3 +4,4 @@ dist/
 .env.local
 .env.production
 .CLAUDE_frontend.md
+CLAUDE_frontend.md

@@ -1,9 +1,10 @@
 // src/modules/cam/components/steps/StepMontaje.tsx
 import { useEffect, useState } from "react";
-import { Menu, Settings2, SlidersHorizontal, X } from "lucide-react";
+import { Settings2 } from "lucide-react";
 import { useCamStore } from "../../store/camStore";
 import { CamViewer3D } from "../CamViewer3D";
 import { Collapsible } from "../../../../components/ui/Collapsible";
+import { LayoutPasoVisor } from "../../../../components/layout/LayoutPasoVisor";
 import { ModalSujecion } from "../sujecion/ModalSujecion";
 import { EditorMontajeEspacial } from "../sujecion/EditorMontajeEspacial";
 import { WizardNavButtons } from "./WizardNavButtons";
@@ -74,13 +75,6 @@ export const StepMontaje = () => {
 
   const [maquinaActiva, setMaquinaActiva] = useState<Maquina | null>(null);
   const [modalAbierto, setModalAbierto] = useState(false);
-  // Panel de controles: columna fija en escritorio, cajón deslizante en pantallas
-  // estrechas. Solo gobierna la POSICIÓN del panel (layout); no toca ningún dato.
-  const [drawerAbierto, setDrawerAbierto] = useState(false);
-  // Colapso del panel en ESCRITORIO: al ocultar los controles, el visor se
-  // expande a ancho casi completo. Puro layout; el visor reacciona al nuevo
-  // tamaño de su contenedor (ResizeObserver, Fase 1.5a). No afecta al cajón móvil.
-  const [panelColapsado, setPanelColapsado] = useState(false);
 
   useEffect(() => {
     getMaquinas().then((lista) => {
@@ -162,11 +156,10 @@ export const StepMontaje = () => {
     });
   };
 
-  // Contenido del panel de controles. Se declara una sola vez y se coloca en
-  // dos envolturas de LAYOUT distintas (columna fija / cajón) según el ancho de
-  // pantalla; el contenido y su lógica son idénticos en ambas.
-  const panelControles = (
-    <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-4 lg:p-0 lg:pr-1">
+  // Controles del paso (los Collapsibles). El MARCO — envoltura con scroll,
+  // cabeceras, plegado y cajón — lo aporta LayoutPasoVisor; aquí solo el contenido.
+  const controlesMontaje = (
+    <>
       {/* Sujeción */}
       <Collapsible titulo="Sistema de sujeción" defaultOpen>
         {montajeConfig.sujecion_config ? (
@@ -310,43 +303,24 @@ export const StepMontaje = () => {
           />
         </Collapsible>
       )}
-    </div>
+    </>
   );
 
   return (
-    <div className="flex flex-col gap-4">
-      {/* ── Cabecera compacta ── */}
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <h2 className="text-lg font-semibold text-text-primary">
-            Configuración de montaje
-          </h2>
-          <p className="mt-0.5 text-sm text-text-muted">
-            Define cómo se fija la pieza en la máquina antes de seleccionar
-            operaciones.
-          </p>
-        </div>
-        {/* Abre el cajón de controles en pantallas estrechas */}
-        <button
-          type="button"
-          onClick={() => setDrawerAbierto(true)}
-          className="lg:hidden shrink-0 flex items-center gap-2 rounded-xl border border-border px-3 py-2 text-sm text-text-muted transition hover:border-accent-blue/50 hover:text-text-primary"
-        >
-          <SlidersHorizontal className="h-4 w-4" />
-          Controles
-        </button>
-      </div>
-
-      {/* ── Fila principal: visor dominante + panel lateral ── */}
-      <div className="flex flex-col lg:flex-row gap-4 lg:h-[calc(100vh-16rem)] lg:min-h-[520px]">
-        {/* Visor 3D — el contenedor solo le da tamaño; el visor reacciona a su
-            tamaño (Fase 1.5a) y reencuadra mesa + pieza al redimensionar. Ancho:
-            ~72% con panel abierto; casi completo cuando se colapsa (escritorio). */}
-        <div
-          className={`relative w-full h-[55vh] min-h-[360px] lg:h-full rounded-xl overflow-hidden border border-border ${
-            panelColapsado ? "lg:w-full" : "lg:w-[72%]"
-          }`}
-        >
+    <>
+      <LayoutPasoVisor
+        encabezado={
+          <div>
+            <h2 className="text-lg font-semibold text-text-primary">
+              Configuración de montaje
+            </h2>
+            <p className="mt-0.5 text-sm text-text-muted">
+              Define cómo se fija la pieza en la máquina antes de seleccionar
+              operaciones.
+            </p>
+          </div>
+        }
+        visorContent={
           <CamViewer3D
             dimensiones={dimensiones}
             mostrarMesa
@@ -367,97 +341,40 @@ export const StepMontaje = () => {
             }}
             faceIdDestacada={montajeConfig.face_id_apoyo}
           />
-
-          {/* Reabrir el panel colapsado (solo escritorio) */}
-          {panelColapsado && (
-            <button
-              type="button"
-              onClick={() => setPanelColapsado(false)}
-              className="hidden lg:flex absolute top-3 right-3 z-20 items-center gap-2 rounded-xl border border-border bg-bg-surface/90 px-3 py-2 text-sm text-text-muted shadow-soft backdrop-blur transition hover:border-accent-blue/50 hover:text-text-primary"
-              aria-label="Mostrar panel de controles"
-              title="Mostrar controles"
-            >
-              <Menu className="h-4 w-4" />
-              Controles
-            </button>
-          )}
-        </div>
-
-        {/* Backdrop del cajón (solo pantallas estrechas) */}
-        {drawerAbierto && (
-          <div
-            className="fixed inset-0 z-30 bg-black/50 backdrop-blur-sm lg:hidden"
-            onClick={() => setDrawerAbierto(false)}
+        }
+        paneles={[
+          {
+            id: "controles",
+            titulo: "Controles",
+            tituloMovil: "Controles de montaje",
+            abiertoInicial: true,
+            contenido: controlesMontaje,
+          },
+        ]}
+        navegacion={
+          <WizardNavButtons
+            prevStep="analisis"
+            nextStep="material"
+            nextLabel="Seleccionar material"
+            canAdvance={puedeAvanzar}
+            onNext={() => {
+              // Confirmación explícita del montaje: aquí se construye el Setup
+              // persistente (fuente de verdad en frame OCC/máquina) que consumirán
+              // el visor y, en fases siguientes, Stock/operaciones/G-code.
+              confirmMontaje();
+              // El veredicto de mecanizabilidad se pide con el montaje ya
+              // confirmado. No se espera aquí: la respuesta se guarda en el store y
+              // el paso Operaciones la lee cuando llegue (mientras tanto muestra
+              // "evaluando", no un veredicto provisional).
+              void evaluarMecanizabilidad();
+              console.log(
+                "montajeConfig al confirmar:",
+                JSON.stringify(montajeConfig, null, 2),
+              );
+            }}
           />
-        )}
-
-        {/* Panel lateral (~28%). En escritorio es una columna fija en el flujo;
-            en pantallas estrechas es un cajón fixed que se desliza desde la
-            derecha SOBRE el visor (no redimensiona el canvas ⇒ picking intacto). */}
-        <aside
-          className={`fixed inset-y-0 right-0 z-40 flex w-[86%] max-w-sm transform flex-col bg-bg-surface shadow-2xl transition-transform duration-300 ease-out lg:static lg:z-auto lg:w-[28%] lg:max-w-none lg:transform-none lg:translate-x-0 lg:bg-transparent lg:shadow-none ${
-            drawerAbierto ? "translate-x-0" : "translate-x-full"
-          } ${panelColapsado ? "lg:hidden" : ""}`}
-        >
-          {/* Encabezado del cajón (solo pantallas estrechas) */}
-          <div className="flex items-center justify-between border-b border-border px-4 py-3 lg:hidden">
-            <span className="text-sm font-semibold text-text-primary">
-              Controles de montaje
-            </span>
-            <button
-              type="button"
-              onClick={() => setDrawerAbierto(false)}
-              className="rounded-lg p-1.5 text-text-muted transition hover:bg-bg-elevated hover:text-text-primary"
-              aria-label="Cerrar controles"
-            >
-              <X className="h-4 w-4" />
-            </button>
-          </div>
-
-          {/* Cabecera del panel (solo escritorio): colapsa el panel y expande el visor */}
-          <div className="hidden lg:flex items-center justify-between px-1 pb-2">
-            <span className="text-[11px] font-semibold uppercase tracking-widest text-text-muted">
-              Controles
-            </span>
-            <button
-              type="button"
-              onClick={() => setPanelColapsado(true)}
-              className="rounded-lg p-1.5 text-text-muted transition hover:bg-bg-elevated hover:text-text-primary"
-              aria-label="Colapsar panel de controles"
-              title="Colapsar panel"
-            >
-              <Menu className="h-4 w-4" />
-            </button>
-          </div>
-
-          {panelControles}
-        </aside>
-      </div>
-
-      {/* ── Navegación fija abajo ── */}
-      <div className="sticky bottom-0 z-10 -mx-4 border-t border-border bg-bg-surface/95 px-4 py-3 backdrop-blur md:-mx-6 md:px-6">
-        <WizardNavButtons
-          prevStep="analisis"
-          nextStep="material"
-          nextLabel="Seleccionar material"
-          canAdvance={puedeAvanzar}
-          onNext={() => {
-            // Confirmación explícita del montaje: aquí se construye el Setup
-            // persistente (fuente de verdad en frame OCC/máquina) que consumirán
-            // el visor y, en fases siguientes, Stock/operaciones/G-code.
-            confirmMontaje();
-            // El veredicto de mecanizabilidad se pide con el montaje ya
-            // confirmado. No se espera aquí: la respuesta se guarda en el store y
-            // el paso Operaciones la lee cuando llegue (mientras tanto muestra
-            // "evaluando", no un veredicto provisional).
-            void evaluarMecanizabilidad();
-            console.log(
-              "montajeConfig al confirmar:",
-              JSON.stringify(montajeConfig, null, 2),
-            );
-          }}
-        />
-      </div>
+        }
+      />
 
       {/* Modal de sujeción */}
       {modalAbierto && maquinaActiva && (
@@ -468,6 +385,6 @@ export const StepMontaje = () => {
           onClose={() => setModalAbierto(false)}
         />
       )}
-    </div>
+    </>
   );
 };
