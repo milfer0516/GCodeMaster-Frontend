@@ -315,6 +315,7 @@ export const StepMontaje = () => {
           <CamViewer3D
             dimensiones={dimensiones}
             mostrarMesa
+            modoLecturaMontaje
             sujecionConfig={montajeConfig.sujecion_config}
             piezaBoundingBox={dimensiones}
             onFaceClick={(faceId) => {

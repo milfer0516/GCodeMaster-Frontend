@@ -36,10 +36,23 @@ interface Props {
   stockConfig?: StockConfig | null;
 
   // ── Mesa física (Fase 1) ──
-  // Gate on/off para dibujar el plano de la mesa BAJO la pieza. Las medidas
-  // (mesa_x_mm × mesa_y_mm) se leen del store (maquina) ya normalizadas por
-  // getMaquinas; este prop NO transporta dimensiones ni reinterpreta largo/ancho.
+  // Gate on/off SOLO para dibujar el tablero de la mesa BAJO la pieza (+ fondo de
+  // papel técnico y la supresión de la rejilla genérica). Lo pasan Montaje Y Stock:
+  // ambos quieren ver la mesa. Las medidas (mesa_x_mm × mesa_y_mm) se leen del
+  // store (maquina) ya normalizadas por getMaquinas; este prop NO transporta
+  // dimensiones ni reinterpreta largo/ancho. OJO: NO controla ni la escala de
+  // lectura de la pieza ni el encuadre a la mesa — eso vive en modoLecturaMontaje.
   mostrarMesa?: boolean;
+
+  // ── Modo LECTURA de montaje (SOLO StepMontaje) ──
+  // Gate de las dos conductas de "lectura tipo plano acotado" que solo tienen
+  // sentido en el paso de Montaje: (1) la escala de RENDER que amplía la pieza
+  // sobre la mesa (pieceDisplayScale) y (2) el encuadre de cámara a la MESA
+  // completa (efecto 7a-fit). Stock NO lo pasa: allí la pieza va a tamaño real
+  // para que el stock verde (efecto 6) la envuelva bien, y la cámara la encuadra
+  // con su propio fit pieza+stock (efecto 6a-fit). Ambas conductas son de DISPLAY
+  // puro: ningún dato/medida cambia. En false ⇒ escala 1 y sin fit a la mesa.
+  modoLecturaMontaje?: boolean;
 
   // ── Stock por-región — el visor es consumidor VISUAL puro ──
   // El dominio entrega las regiones pickables YA ordenadas por materialIndex:
@@ -266,13 +279,14 @@ function buildMaterials(
 // mesa_x/y, pos_x/pos_y, altura_total) — esas llegan al motor sin escalar. La
 // cota usa la mayor extensión de la pieza para no rebasar en NINGUNA orientación
 // de apoyo. Nunca encoge (mín 1) ni amplía de forma absurda (tope 6). Fuera del
-// montaje (mostrarMesa=false) devuelve 1 ⇒ el resto de pasos no cambian.
+// modo lectura de montaje (modoLecturaMontaje=false) devuelve 1 ⇒ el resto de
+// pasos (incluido Stock) NO amplían la pieza y la ven a tamaño real.
 function pieceDisplayScale(
   meshData: MeshData | null,
   maquina: { mesa_x_mm?: number | null; mesa_y_mm?: number | null } | null,
-  mostrarMesa: boolean,
+  modoLecturaMontaje: boolean,
 ): number {
-  if (!mostrarMesa || !meshData) return 1;
+  if (!modoLecturaMontaje || !meshData) return 1;
   const mx = maquina?.mesa_x_mm;
   const my = maquina?.mesa_y_mm;
   if (!mx || !my || mx <= 0 || my <= 0) return 1;
@@ -336,6 +350,7 @@ export function CamViewer3D({
   piezaBoundingBox,
   stockConfig = null,
   mostrarMesa = false,
+  modoLecturaMontaje = false,
   stockFacesByBoxIndex = null,
   activeStockFaceIndex = null,
   onStockFaceClick,
@@ -571,8 +586,8 @@ export function CamViewer3D({
     // dato alguno: se aplica al transform three.js (mesh.scale) y, para que la
     // pieza siga CENTRADA y APOYADA (pivote base-centro = (0,0,0) aquí, base en
     // Y=0), se escalan también los offsets de centrado. En montaje s>1; en el
-    // resto de pasos (mostrarMesa=false) s=1 ⇒ comportamiento idéntico al previo.
-    const s = pieceDisplayScale(meshData, maquina, mostrarMesa);
+    // resto de pasos (modoLecturaMontaje=false) s=1 ⇒ comportamiento idéntico.
+    const s = pieceDisplayScale(meshData, maquina, modoLecturaMontaje);
     mesh.scale.setScalar(s);
     mesh.position.set(
       -center[0] * s, // centrar en X (pivote 0 ⇒ pos = s·pos)
@@ -605,9 +620,10 @@ export function CamViewer3D({
     controls.maxDistance = diagonal * 6;
     controls.target.set(0, meshCenterY, 0);
     controls.update();
-    // maquina/mostrarMesa: la escala de lectura depende de mesa_x/y; reconstruir
-    // desde meshData (ya cacheado, sin re-teselar) al llegar la máquina en montaje.
-  }, [meshData, maquina, mostrarMesa]);
+    // maquina/modoLecturaMontaje: la escala de lectura depende de mesa_x/y;
+    // reconstruir desde meshData (ya cacheado, sin re-teselar) al llegar la
+    // máquina en montaje.
+  }, [meshData, maquina, modoLecturaMontaje]);
 
   // ── 4. Actualizar colores cuando cambia selección ───────────────────────
   useEffect(() => {
@@ -743,8 +759,8 @@ export function CamViewer3D({
     // plano base (pivote (0, pivotY, 0)). Escalar un emplazamiento rígido respecto
     // a un pivote P es: pos_s = (1-s)·P + s·pos  (uniforme, independiente de la
     // geometría). Solo toca mesh.scale y estas posiciones de RENDER; NINGÚN dato
-    // real cambia. Fuera de montaje s=1 ⇒ animación idéntica a la previa.
-    const s = pieceDisplayScale(meshData, maquina, mostrarMesa);
+    // real cambia. Fuera del modo lectura s=1 ⇒ animación idéntica a la previa.
+    const s = pieceDisplayScale(meshData, maquina, modoLecturaMontaje);
     meshRef.current.scale.setScalar(s);
     posXTarget = s * posXTarget;
     posZTarget = s * posZTarget;
@@ -792,7 +808,7 @@ export function CamViewer3D({
     animId = requestAnimationFrame(animar);
 
     return () => cancelAnimationFrame(animId);
-  }, [faceIdDestacada, meshData, sujecionConfig, analisis, setup, maquina, mostrarMesa]);
+  }, [faceIdDestacada, meshData, sujecionConfig, analisis, setup, maquina, modoLecturaMontaje]);
 
   // ── 5. Picking por cara — hover y click ────────────────────────────────
   useEffect(() => {
@@ -1314,11 +1330,14 @@ export function CamViewer3D({
 
   // ── 7a-fit. Encuadre MÍNIMO y SEPARADO cuando aparece la mesa ───────────
   // La mesa es mucho mayor que la pieza; el fit de la pieza ([meshData]) la
-  // dejaría fuera de cuadro. Este efecto es ADITIVO: si no hay mesa, retorna y
-  // el comportamiento de cámara existente queda INTACTO. Encuadra UNA sola vez
-  // (guard didFitTableRef) para no pelear con el orbit del usuario.
+  // dejaría fuera de cuadro. SOLO se usa en el modo lectura de Montaje
+  // (modoLecturaMontaje): allí la pieza está ampliada y se quiere ver toda la
+  // mesa. En Stock NO corre (no pasa el flag) ⇒ la cámara la maneja el fit
+  // pieza+stock (efecto 6a-fit) y la pieza no queda plana/diminuta. Este efecto
+  // es ADITIVO: sin el flag retorna y el comportamiento de cámara queda INTACTO.
+  // Encuadra UNA sola vez (guard didFitTableRef) para no pelear con el orbit.
   useEffect(() => {
-    if (!mostrarMesa || !maquina || !meshData) return;
+    if (!modoLecturaMontaje || !maquina || !meshData) return;
     if (!cameraRef.current || !controlsRef.current) return;
     if (didFitTableRef.current) return;
     const mesaX = maquina.mesa_x_mm;
@@ -1380,7 +1399,7 @@ export function CamViewer3D({
     controls.minDistance = R * 0.3;
     controls.maxDistance = distance * 4;
     controls.update();
-  }, [mostrarMesa, maquina, meshData, setup]);
+  }, [modoLecturaMontaje, maquina, meshData, setup]);
 
   // ── Render ─────────────────────────────────────────────────────────────
   if (meshLoading) {
