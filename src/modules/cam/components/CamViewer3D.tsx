@@ -598,28 +598,39 @@ export function CamViewer3D({
     scene.add(mesh);
     meshRef.current = mesh;
 
-    // Ajustar cámara al tamaño real de la pieza
-    const bbMax = meshData.bounding_box.max;
-    const diagonal = Math.sqrt(
-      (bbMax[0] - bbMin[0]) ** 2 +
-        (bbMax[1] - bbMin[1]) ** 2 +
-        (bbMax[2] - bbMin[2]) ** 2,
-    );
-    // El centro visual del mesh en Three.js tras la rotación y posicionamiento
-    const meshCenterY = halfHeight;
-    camera.position.set(
-      diagonal * 1.0,
-      meshCenterY + diagonal * 0.8,
-      diagonal * 1.0,
-    );
-    controls.target.set(0, meshCenterY, 0);
-    camera.near = diagonal * 0.001;
-    camera.far = diagonal * 20;
-    camera.updateProjectionMatrix();
-    controls.minDistance = diagonal * 0.1;
-    controls.maxDistance = diagonal * 6;
-    controls.target.set(0, meshCenterY, 0);
-    controls.update();
+    // Ajustar cámara al tamaño real de la pieza.
+    // En STOCK (mesa visible y SIN modo lectura de montaje) el encuadre lo
+    // gobierna en exclusiva el fit dedicado pieza+stock (efecto 6a-fit): la
+    // pieza está rotada y elevada a z_apoyo por el Setup, y este fit "a la
+    // diagonal de la pieza" apunta al centro OCC sin rotar ⇒ dejaría la pieza
+    // descentrada y pequeña, peleando además con 6a-fit (carrera por el último
+    // que escribe la cámara). Se omite SOLO aquí. Montaje (modoLecturaMontaje,
+    // usa su 7a-fit) y Operaciones (mostrarMesa=false) conservan este encuadre
+    // por pieza EXACTAMENTE igual ⇒ sin regresión.
+    const encuadreStock = mostrarMesa && !modoLecturaMontaje;
+    if (!encuadreStock) {
+      const bbMax = meshData.bounding_box.max;
+      const diagonal = Math.sqrt(
+        (bbMax[0] - bbMin[0]) ** 2 +
+          (bbMax[1] - bbMin[1]) ** 2 +
+          (bbMax[2] - bbMin[2]) ** 2,
+      );
+      // El centro visual del mesh en Three.js tras la rotación y posicionamiento
+      const meshCenterY = halfHeight;
+      camera.position.set(
+        diagonal * 1.0,
+        meshCenterY + diagonal * 0.8,
+        diagonal * 1.0,
+      );
+      controls.target.set(0, meshCenterY, 0);
+      camera.near = diagonal * 0.001;
+      camera.far = diagonal * 20;
+      camera.updateProjectionMatrix();
+      controls.minDistance = diagonal * 0.1;
+      controls.maxDistance = diagonal * 6;
+      controls.target.set(0, meshCenterY, 0);
+      controls.update();
+    }
     // maquina/modoLecturaMontaje: la escala de lectura depende de mesa_x/y;
     // reconstruir desde meshData (ya cacheado, sin re-teselar) al llegar la
     // máquina en montaje.
@@ -1099,37 +1110,72 @@ export function CamViewer3D({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [stockConfig, meshData, setup, stockFacesByBoxIndex]);
 
-  // ── 6a-fit. Auto-fit camera to frame both part and stock envelope ───────
-  // IMPORTANTE: solo debe encuadrar UNA VEZ por Setup (cuando aparece), NUNCA en
-  // cada edición del stock. Antes dependía de `stockConfig`, así que cada tecla
-  // del formulario/popover reencuadraba la cámara y la pieza "saltaba". La cámara
-  // solo debe moverse cuando el usuario orbita. Guard por setup.id.
+  // ── 6a-fit. Encuadre pieza+stock — ENCUADRE PROPIO DE STOCK ─────────────
+  // Este es el encuadre que gobierna el paso STOCK (la pieza a tamaño real con el
+  // stock verde envolviéndola). NO se usa en Montaje: allí manda el 7a-fit (mesa
+  // completa) y este efecto retorna en cuanto ve modoLecturaMontaje, así el
+  // encuadre de Montaje queda intacto. Deliberadamente NO reaplica la escala de
+  // lectura (pieceDisplayScale): esa ampliaría la pieza hasta tragarse el stock;
+  // aquí solo se ajusta la DISTANCIA de cámara para enmarcar bien pieza+stock.
+  // IMPORTANTE: encuadra UNA VEZ por Setup (guard didFitSetupIdRef), nunca en cada
+  // tecla del formulario/popover (antes dependía de stockConfig y la pieza
+  // "saltaba"); tras eso la cámara solo se mueve al orbitar.
   const didFitSetupIdRef = useRef<string | null>(null);
   useEffect(() => {
+    if (modoLecturaMontaje) return; // Montaje encuadra con su propio 7a-fit
     if (!setup || !stockConfig || !cameraRef.current || !controlsRef.current) return;
     if (didFitSetupIdRef.current === setup.id) return;
     didFitSetupIdRef.current = setup.id;
 
     const camera = cameraRef.current;
     const controls = controlsRef.current;
-    const rbb = setup.rotatedBBox;
+    const rbb = setup.rotatedBBox; // envolvente pieza(+stock skin-tight) en frame MÁQUINA
 
-    // Encuadre inicial basado en la PIEZA: los offsets arrancan en 0 (skin-tight),
-    // así que el stock coincide con la pieza en el primer render. La cámara solo
-    // vuelve a moverse cuando el operador orbita (este efecto corre una vez/Setup).
-    const maxDim = Math.max(rbb.width, rbb.depth, rbb.height);
+    // Centro de la envolvente pieza+stock en coords DISPLAY. La caja vive en frame
+    // MÁQUINA (Z arriba) y se lleva a Three.js con VIEWER_BASE_Q (x,y,z)→(x,z,-y),
+    // igual que el stock/pieza. Apuntar al centro REAL evita que la pieza quede
+    // descentrada (el fit anterior apuntaba a Y=0, no al centro de la pieza).
+    const target = new THREE.Vector3(
+      rbb.center[0],
+      rbb.center[2],
+      -rbb.center[1],
+    );
 
-    // Position camera to frame the entire envelope
-    const distance = maxDim * 1.8;
-    camera.position.set(distance, distance * 0.75, distance);
-    camera.lookAt(0, 0, maxDim * 0.3); // Look slightly above center
+    // Fit por esfera envolvente de la caja pieza+stock, teniendo en cuenta FOV y
+    // aspect REAL del contenedor (el semiángulo más restrictivo) para que la
+    // envolvente quepa también a lo ancho. Misma técnica que el 7a-fit de Montaje,
+    // pero encuadrando la PIEZA+STOCK, no la mesa: así la pieza+stock llenan una
+    // buena porción del visor y la mesa queda de CONTEXTO alrededor, sin dominar.
+    const R = 0.5 * Math.sqrt(
+      rbb.width * rbb.width + rbb.depth * rbb.depth + rbb.height * rbb.height,
+    );
+    const elFit = mountRef.current;
+    const wFit = elFit?.clientWidth ?? 0;
+    const hFit = elFit?.clientHeight ?? 0;
+    const aspect = wFit > 0 && hFit > 0 ? wFit / hFit : camera.aspect || 1;
+    camera.aspect = aspect;
+    const vHalf = THREE.MathUtils.degToRad(camera.fov) / 2;
+    const hHalf = Math.atan(Math.tan(vHalf) * aspect);
+    const fitHalf = Math.min(vHalf, hHalf);
 
-    // Update controls limits based on new scale
-    controls.minDistance = maxDim * 0.2;
-    controls.maxDistance = maxDim * 8;
-    controls.target.set(0, 0, maxDim * 0.3);
+    // FACTOR ligeramente > 1: la envolvente pieza+stock llena buena parte del
+    // cuadro dejando un margen para ver la mesa como contexto (ni la pieza tiny,
+    // ni la mesa dominando). Dirección isométrica EXISTENTE de Stock (1, 0.75, 1):
+    // solo cambia la DISTANCIA y el TARGET, nunca el ángulo ni la geometría.
+    const FACTOR = 1.15;
+    const distance = (R / Math.sin(fitHalf)) * FACTOR;
+    const dir = new THREE.Vector3(1, 0.75, 1).normalize();
+    camera.position.copy(target).addScaledVector(dir, distance);
+
+    camera.near = Math.max(0.1, distance * 0.02);
+    camera.far = distance + R * 8;
+    camera.updateProjectionMatrix();
+
+    controls.target.copy(target);
+    controls.minDistance = R * 0.2;
+    controls.maxDistance = distance * 4;
     controls.update();
-  }, [stockConfig, setup]);
+  }, [stockConfig, setup, modoLecturaMontaje]);
 
   // ── 6b. Resaltar cara de stock activa / en hover (sin reconstruir) ──────
   useEffect(() => {
