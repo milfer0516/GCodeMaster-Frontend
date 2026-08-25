@@ -684,6 +684,13 @@ export function CamViewer3D({
     const setupAplicable =
       !!setup?.confirmed && setup.supportFace.faceId === faceIdDestacada;
 
+    console.log("[DIAG viewer] lectura de setup para elevar pieza", {
+      paso: stockConfig ? "Stock" : "Montaje",
+      setup,
+      zApoyoMm: setup?.zApoyoMm,
+      setupAplicable,
+    });
+
     if (setupAplicable && setup) {
       // ── Camino Setup (dominio → display) ──
       qTarget = occToDisplay(setup.rotationOCC);

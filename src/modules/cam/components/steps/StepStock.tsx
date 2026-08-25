@@ -84,6 +84,13 @@ export const StepStock = () => {
   // Setup persistente = ÚNICA fuente de la orientación de montaje (frame máquina).
   const setup = useCamStore((s) => s.setup);
 
+  useEffect(() => {
+    console.log("[DIAG stock] setup consumido al entrar en Stock", {
+      setup,
+      zApoyoMm: setup?.zApoyoMm,
+    });
+  }, [setup]);
+
   // Popover contextual: región de stock activa (índice de material del visor) +
   // posición en pantalla (proyectada por el visor) para anclarlo a la región.
   const [popover, setPopover] = useState<{
