@@ -684,13 +684,6 @@ export function CamViewer3D({
     const setupAplicable =
       !!setup?.confirmed && setup.supportFace.faceId === faceIdDestacada;
 
-    console.log("[DIAG viewer] lectura de setup para elevar pieza", {
-      paso: stockConfig ? "Stock" : "Montaje",
-      setup,
-      zApoyoMm: setup?.zApoyoMm,
-      setupAplicable,
-    });
-
     if (setupAplicable && setup) {
       // ── Camino Setup (dominio → display) ──
       qTarget = occToDisplay(setup.rotationOCC);
@@ -1273,7 +1266,7 @@ export function CamViewer3D({
 
     // Plano de apoyo (superficie sobre la que descansa la base de la pieza).
     // Con Setup confirmado = z_apoyo; sin Setup = 0 (base de la pieza en Y=0).
-    const zApoyo = setup?.zApoyoMm ?? 0;
+    const zMesa = 0;
 
     const hx = mesaX / 2; // proporción física mesaX:mesaY preservada EXACTA:
     const hy = mesaY / 2; // se usan mm reales, sin escalar X/Y por separado.
@@ -1285,7 +1278,7 @@ export function CamViewer3D({
     // sobre el papel de fondo, no como una zona oscura. Solo cambia el material
     // (color/opacidad): geometría, tamaño y posición de la mesa intactos.
     const fillGeo = new THREE.PlaneGeometry(mesaX, mesaY);
-    fillGeo.translate(0, 0, zApoyo - 0.6);
+    fillGeo.translate(0, 0, zMesa - 0.6);
     const fillMat = new THREE.MeshBasicMaterial({
       color: 0x64748b,
       transparent: true,
@@ -1298,7 +1291,7 @@ export function CamViewer3D({
     // Rejilla métrica cada 50 mm, RECORTADA EXACTAMENTE a los bordes de la mesa
     // (las líneas nunca exceden [-hx,hx]×[-hy,hy]) y a escala en mm reales.
     const STEP = 50;
-    const zGrid = zApoyo - 0.5;
+    const zGrid = zMesa - 0.5;
     const gridPts: number[] = [];
     for (let x = -hx; x <= hx + 1e-6; x += STEP) {
       gridPts.push(x, -hy, zGrid, x, hy, zGrid);
@@ -1325,7 +1318,7 @@ export function CamViewer3D({
     );
 
     // Borde del tablero (contorno más marcado).
-    const zBorder = zApoyo - 0.4;
+    const zBorder = zMesa - 0.4;
     const borderGeo = new THREE.BufferGeometry();
     borderGeo.setAttribute(
       "position",

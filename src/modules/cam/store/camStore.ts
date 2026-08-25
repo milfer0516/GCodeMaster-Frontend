@@ -558,10 +558,6 @@ export const useCamStore = create<CamState>((set) => ({
         state.analisis,
         state.montajeConfig.sujecion_config,
       );
-      console.log("[DIAG confirmar] setup construido", {
-        setup,
-        zApoyoMm: setup?.zApoyoMm,
-      });
       if (!setup) {
         return {
           setup: null,
