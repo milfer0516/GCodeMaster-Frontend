@@ -111,7 +111,7 @@ export function ListaOperaciones({
                   ESTADO_FILA_BORDE[estado]
                 } ${
                   enfocada
-                    ? "border-accent-blue/50 bg-accent-blue/10"
+                    ? "border-accent-blue bg-accent-blue/20"
                     : "border-border bg-bg-primary hover:bg-bg-elevated"
                 }`}
               >

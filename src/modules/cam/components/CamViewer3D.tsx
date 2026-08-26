@@ -90,8 +90,8 @@ function stockFaceColor(
 }
 // ── Colores ────────────────────────────────────────────────────────────────
 const COLOR_BASE = new THREE.Color(0xb4b8bf); // gris/plata metálico — cara sin feature
-const COLOR_HOVER = new THREE.Color(0xfbbf24); // amarillo — hover
-const COLOR_SELECCIONADO = new THREE.Color(0xfbbf24); // amarillo — seleccionada
+const COLOR_HOVER = new THREE.Color(0x93c5fd); // azul claro — hover sutil
+const COLOR_SELECCIONADO = new THREE.Color(0x3b82f6); // azul de acento — selección
 const COLOR_PLANEADO = new THREE.Color(0x3b82f6); // azul
 const COLOR_TALADRADO = new THREE.Color(0x22c55e); // verde
 const COLOR_CAJERA = new THREE.Color(0xa855f7); // morado
@@ -183,8 +183,8 @@ function buildBufferGeometry(meshData: MeshData): THREE.BufferGeometry {
   geo.setIndex(new THREE.BufferAttribute(new Uint32Array(meshData.indices), 1));
 
   // Un grupo por cara → materialIndex = face_id → picking O(1)
-  meshData.faces.forEach((face) => {
-    geo.addGroup(face.start, face.count, face.face_id);
+  meshData.faces.forEach((face, materialIndex) => {
+    geo.addGroup(face.start, face.count, materialIndex);
   });
 
   return geo;
@@ -223,20 +223,58 @@ function aspectoDeCara(
   operaciones: Operacion[],
   seleccionadas: string[],
   opEnfocada: string | null,
+  isHovered = false,
+  isSupport = false,
 ): AspectoCara {
   const op = operacionDeCara(face, operaciones);
+  const esEnfocada = !!op && op.id === opEnfocada;
+  const isSeleccionada = op ? seleccionadas.includes(op.id) : false;
 
-  if (opEnfocada) {
-    const esEnfocada = !!op && op.id === opEnfocada;
+  if (esEnfocada) {
     return {
-      color: esEnfocada ? colorPorTipo(op!.tipo) : COLOR_BASE,
-      emissive: esEnfocada ? 0x222222 : 0x000000,
+      color: COLOR_SELECCIONADO,
+      emissive: 0x123a6a,
       transparent: false,
       opacity: 1.0,
     };
   }
 
-  const isSeleccionada = op ? seleccionadas.includes(op.id) : false;
+  if (isSeleccionada) {
+    return {
+      color: COLOR_SELECCIONADO,
+      emissive: 0x123a6a,
+      transparent: false,
+      opacity: 1.0,
+    };
+  }
+
+  if (isSupport) {
+    return {
+      color: new THREE.Color(0x00ff88),
+      emissive: 0x003311,
+      transparent: false,
+      opacity: 1.0,
+    };
+  }
+
+  if (isHovered) {
+    return {
+      color: COLOR_HOVER,
+      emissive: 0x1e3a5f,
+      transparent: false,
+      opacity: 1.0,
+    };
+  }
+
+  if (opEnfocada) {
+    return {
+      color: COLOR_BASE,
+      emissive: 0x000000,
+      transparent: false,
+      opacity: 1.0,
+    };
+  }
+
   return {
     color: isSeleccionada
       ? COLOR_SELECCIONADO
@@ -363,7 +401,7 @@ export function CamViewer3D({
   const sceneRef = useRef<THREE.Scene | null>(null);
   const meshRef = useRef<THREE.Mesh | null>(null);
   const materialsRef = useRef<THREE.MeshStandardMaterial[]>([]);
-  const hoveredRef = useRef<number | null>(null); // face_id en hover
+  const hoveredRef = useRef<number | null>(null); // materialIndex en hover
   const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
   const controlsRef = useRef<OrbitControls | null>(null);
   const stockMeshRef = useRef<THREE.Group | null>(null);
@@ -635,18 +673,18 @@ export function CamViewer3D({
   useEffect(() => {
     if (!meshData || materialsRef.current.length === 0) return;
 
-    meshData.faces.forEach((face) => {
-      const mat = materialsRef.current[face.face_id];
+    meshData.faces.forEach((face, materialIndex) => {
+      const mat = materialsRef.current[materialIndex];
       if (!mat) return;
 
       // No sobreescribir si está en hover
-      if (hoveredRef.current === face.face_id) return;
-
       const aspecto = aspectoDeCara(
         face,
         operaciones,
         seleccionadas,
         opEnfocada,
+        hoveredRef.current === materialIndex,
+        face.face_id === faceIdDestacada,
       );
       mat.color.copy(aspecto.color);
       mat.emissive.set(aspecto.emissive);
@@ -654,14 +692,6 @@ export function CamViewer3D({
       mat.opacity = aspecto.opacity;
     });
 
-    meshData.faces.forEach((face) => {
-      const mat = materialsRef.current[face.face_id];
-      if (!mat) return;
-      if (face.face_id === faceIdDestacada) {
-        mat.color.set(0x00ff88);
-        mat.emissive.set(0x003311);
-      }
-    });
   }, [seleccionadas, operaciones, meshData, faceIdDestacada, opEnfocada]);
 
   // ── 4b. Rotar mesh con animación suave según cara de apoyo ─────────────
@@ -829,8 +859,10 @@ export function CamViewer3D({
 
     // Mapeo face_id → op_id para respuesta rápida
     const faceToOpId = new Map<number, string>();
+    const faceIdToMaterialIndex = new Map<number, number>();
     if (meshData) {
-      meshData.faces.forEach((face) => {
+      meshData.faces.forEach((face, materialIndex) => {
+        faceIdToMaterialIndex.set(face.face_id, materialIndex);
         const opId = face.feature?.op_id as string | undefined;
         if (opId) faceToOpId.set(face.face_id, opId);
       });
@@ -846,16 +878,21 @@ export function CamViewer3D({
       const hits = raycaster.intersectObject(meshRef.current, false);
       if (hits.length === 0) return null;
 
-      // hits[0].face.materialIndex == face_id (por el addGroup)
-      return hits[0].face?.materialIndex ?? null;
+      // hits[0].face.materialIndex es el índice posicional de `meshData.faces`.
+      const materialIndex = hits[0].face?.materialIndex ?? null;
+      return materialIndex === null
+        ? null
+        : (meshData?.faces[materialIndex]?.face_id ?? null);
     };
 
     // Hover
     const handleMouseMove = (e: MouseEvent) => {
       const faceId = getHitFaceId(e);
+      const materialIndex =
+        faceId === null ? null : (faceIdToMaterialIndex.get(faceId) ?? null);
 
       // Restaurar cara anterior si cambió
-      if (hoveredRef.current !== null && hoveredRef.current !== faceId) {
+      if (hoveredRef.current !== null && hoveredRef.current !== materialIndex) {
         const prev = materialsRef.current[hoveredRef.current];
         if (prev && meshData) {
           const face = meshData.faces[hoveredRef.current];
@@ -868,6 +905,8 @@ export function CamViewer3D({
               operaciones,
               seleccionadas,
               opEnfocada,
+              false,
+              face.face_id === faceIdDestacada,
             );
             prev.color.copy(aspecto.color);
             prev.emissive.set(aspecto.emissive);
@@ -880,12 +919,27 @@ export function CamViewer3D({
       }
 
       // Aplicar hover a cara nueva
-      if (faceId !== null && faceId !== hoveredRef.current) {
-        const mat = materialsRef.current[faceId];
+      if (materialIndex !== null && materialIndex !== hoveredRef.current) {
+        const face = meshData?.faces[materialIndex];
+        const mat = materialsRef.current[materialIndex];
         if (mat) {
-          mat.color.copy(COLOR_HOVER);
-          mat.emissive.set(0x332200);
-          hoveredRef.current = faceId;
+          const aspecto = face
+            ? aspectoDeCara(
+                face,
+                operaciones,
+                seleccionadas,
+                opEnfocada,
+                true,
+                face.face_id === faceIdDestacada,
+              )
+            : null;
+          if (aspecto) {
+            mat.color.copy(aspecto.color);
+            mat.emissive.set(aspecto.emissive);
+            mat.transparent = aspecto.transparent;
+            mat.opacity = aspecto.opacity;
+          }
+          hoveredRef.current = materialIndex;
           el.style.cursor = "pointer";
         }
       }
@@ -943,7 +997,15 @@ export function CamViewer3D({
       renderer.domElement.removeEventListener("click", handleClick);
       renderer.domElement.removeEventListener("dblclick", handleDoubleClick);
     };
-  }, [meshData, operaciones, seleccionadas, opEnfocada, onToggle, onFaceClick]);
+  }, [
+    meshData,
+    operaciones,
+    seleccionadas,
+    opEnfocada,
+    faceIdDestacada,
+    onToggle,
+    onFaceClick,
+  ]);
 
   // ── 6. Dibujar stock (wireframe + translúcido) ──────────────────────────
   useEffect(() => {
