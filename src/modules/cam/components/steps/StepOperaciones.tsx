@@ -417,6 +417,8 @@ export const StepOperaciones = () => {
         <div className="absolute inset-0">
           <CamViewer3D
             dimensiones={dimensiones}
+            mostrarMesa
+            modoLecturaMontaje
             operaciones={operaciones}
             operacionesBackend={operacionesBackend}
             seleccionadas={idsSeleccionadas}
