@@ -188,8 +188,9 @@ export const StepOperaciones = () => {
    */
   const evaluarMecanizabilidad = async () => {
     const consulta = consultaMecanizabilidadRef.current;
+    const idJob = consulta.idJob;
     if (
-      !consulta.idJob ||
+      !idJob ||
       consulta.faceIdApoyo === null ||
       consulta.idMaquina === null ||
       isEvaluatingMecanizabilidadRef.current
@@ -197,13 +198,13 @@ export const StepOperaciones = () => {
       return;
     }
 
-    const claveConsulta = `${consulta.idJob}:${consulta.faceIdApoyo}:${consulta.idMaquina}`;
+    const claveConsulta = `${idJob}:${consulta.faceIdApoyo}:${consulta.idMaquina}`;
     const epoch = evaluacionEpochRef.current;
     isEvaluatingMecanizabilidadRef.current = true;
     setMecanizabilidadEstado("analizando");
 
     try {
-      const respuesta = await solicitarMecanizabilidad(consulta);
+      const respuesta = await solicitarMecanizabilidad({ ...consulta, idJob });
       if (epoch === evaluacionEpochRef.current) {
         setMecanizabilidad(respuesta);
       }
@@ -235,15 +236,43 @@ export const StepOperaciones = () => {
   // cambios de estado; el store invalida la respuesta al cambiar la cara.
   useEffect(() => {
     const { idJob, faceIdApoyo, idMaquina } = consultaMecanizabilidadRef.current;
+
+    // [DIAG machinability] logs temporales — quitar tras el diagnóstico.
+    console.log("[MACH] efecto ejecutado (montaje/cambio de deps)");
+    console.log("[MACH] valores:", { idJob, faceIdApoyo, idMaquina });
+    console.log("[MACH] guard:", {
+      idJob_ok: !!idJob,
+      faceIdApoyo_ok: faceIdApoyo !== null,
+      idMaquina_ok: idMaquina !== null,
+      bloqueaPor:
+        !idJob
+          ? "idJob (null/0/undefined)"
+          : faceIdApoyo === null
+            ? "faceIdApoyo === null"
+            : idMaquina === null
+              ? "idMaquina === null"
+              : "no bloquea (pasa el guard)",
+    });
+
     if (!idJob || faceIdApoyo === null || idMaquina === null) return;
 
     const claveConsulta = `${idJob}:${faceIdApoyo}:${idMaquina}`;
     const esInicial = !initialEvaluationDoneRef.current;
     const cambioMontaje = ultimaConsultaSolicitadaRef.current !== claveConsulta;
+
+    // [DIAG machinability] por qué se lanza o no la petición.
+    console.log("[MACH] dedup:", {
+      claveConsulta,
+      esInicial,
+      cambioMontaje,
+      seLanza: esInicial || cambioMontaje,
+    });
+
     if (!esInicial && !cambioMontaje) return;
 
     initialEvaluationDoneRef.current = true;
     ultimaConsultaSolicitadaRef.current = claveConsulta;
+    console.log("[MACH] → llamando evaluarMecanizabilidad()");
     void evaluarMecanizabilidad();
   }, [idJob, montajeConfig.face_id_apoyo, maquina?.id_maquina]);
 
