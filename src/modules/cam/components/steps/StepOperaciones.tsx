@@ -23,7 +23,7 @@
 //   · MARCAR (la casilla): decide si la operación se mecaniza. Solo la casilla
 //     la cambia; enfocar no marca nada.
 // ─────────────────────────────────────────────────────────────────────────────
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useCamStore } from "../../store/camStore";
 import { CamViewer3D } from "../CamViewer3D";
 import { WizardNavButtons } from "./WizardNavButtons";
@@ -40,6 +40,7 @@ import {
   solicitarRecomendacionesMDE,
   normalizarRecomendaciones,
 } from "../../services/mdeService";
+import { solicitarMecanizabilidad } from "../../services/machinabilityService";
 import {
   consultaFallida,
   estadoFila,
@@ -112,13 +113,29 @@ export const StepOperaciones = () => {
   const asignarHerramienta = useCamStore((s) => s.asignarHerramienta);
 
   // ── Mecanizabilidad ──────────────────────────────────────────────────────
-  // SOLO LECTURA del objeto que guardó el paso Montaje. Esta pantalla no pide
-  // el veredicto, no lo recalcula y no lo completa: si el store está vacío, se
-  // dice que está sin evaluar. Tampoco se mira aquí una normal, un face_id ni
-  // un número de setup — la accesibilidad es dominio del motor.
+  // La respuesta del motor es la fuente de verdad. Esta pantalla la solicita al
+  // entrar y al cambiar el montaje, pero no deduce ni recompone veredictos.
   const mecanizabilidad = useCamStore((s) => s.mecanizabilidad);
   const mecanizabilidadEstado = useCamStore((s) => s.mecanizabilidadEstado);
   const mecanizabilidadError = useCamStore((s) => s.mecanizabilidadError);
+  const setMecanizabilidad = useCamStore((s) => s.setMecanizabilidad);
+  const setMecanizabilidadEstado = useCamStore((s) => s.setMecanizabilidadEstado);
+
+  const consultaMecanizabilidadRef = useRef({
+    idJob,
+    faceIdApoyo: montajeConfig.face_id_apoyo,
+    idMaquina: maquina?.id_maquina ?? null,
+  });
+  const initialEvaluationDoneRef = useRef(false);
+  const ultimaConsultaSolicitadaRef = useRef<string | null>(null);
+  const isEvaluatingMecanizabilidadRef = useRef(false);
+  const evaluacionEpochRef = useRef(0);
+
+  consultaMecanizabilidadRef.current = {
+    idJob,
+    faceIdApoyo: montajeConfig.face_id_apoyo,
+    idMaquina: maquina?.id_maquina ?? null,
+  };
 
   const [panelIzquierdo, setPanelIzquierdo] = useState(true);
   const [panelDerecho, setPanelDerecho] = useState(true);
@@ -156,6 +173,79 @@ export const StepOperaciones = () => {
     );
     if (delMotor) setMdeRecomendaciones(delMotor);
   }, [engineResponse, mdeRecomendaciones, setMdeRecomendaciones]);
+
+  // Un Job nuevo es un wizard nuevo: permite una evaluación inicial aunque el
+  // componente no haya sido desmontado entre ambos trabajos.
+  useEffect(() => {
+    initialEvaluationDoneRef.current = false;
+    ultimaConsultaSolicitadaRef.current = null;
+    evaluacionEpochRef.current += 1;
+  }, [idJob]);
+
+  /**
+   * Evalúa el montaje visible. Las refs hacen que este callback siempre tome
+   * los datos actuales sin convertir los flags de control en estado de React.
+   */
+  const evaluarMecanizabilidad = async () => {
+    const consulta = consultaMecanizabilidadRef.current;
+    if (
+      !consulta.idJob ||
+      consulta.faceIdApoyo === null ||
+      consulta.idMaquina === null ||
+      isEvaluatingMecanizabilidadRef.current
+    ) {
+      return;
+    }
+
+    const claveConsulta = `${consulta.idJob}:${consulta.faceIdApoyo}:${consulta.idMaquina}`;
+    const epoch = evaluacionEpochRef.current;
+    isEvaluatingMecanizabilidadRef.current = true;
+    setMecanizabilidadEstado("analizando");
+
+    try {
+      const respuesta = await solicitarMecanizabilidad(consulta);
+      if (epoch === evaluacionEpochRef.current) {
+        setMecanizabilidad(respuesta);
+      }
+    } catch (e) {
+      if (epoch === evaluacionEpochRef.current) {
+        setMecanizabilidadEstado(
+          "error",
+          mensajeError(e, "No se pudo evaluar la mecanizabilidad de este montaje."),
+        );
+      }
+    } finally {
+      isEvaluatingMecanizabilidadRef.current = false;
+
+      // Si la cara o máquina cambió mientras la petición estaba pendiente, no
+      // se solapan llamadas: al terminar se lanza una nueva para el montaje actual.
+      const actual = consultaMecanizabilidadRef.current;
+      const claveActual =
+        actual.idJob && actual.faceIdApoyo !== null && actual.idMaquina !== null
+          ? `${actual.idJob}:${actual.faceIdApoyo}:${actual.idMaquina}`
+          : null;
+      if (epoch !== evaluacionEpochRef.current || claveActual !== claveConsulta) {
+        void evaluarMecanizabilidad();
+      }
+    }
+  };
+
+  // Evalúa una vez al montar Operaciones y de nuevo al variar cara o máquina.
+  // La clave evita repetir la consulta por renders causados por sus propios
+  // cambios de estado; el store invalida la respuesta al cambiar la cara.
+  useEffect(() => {
+    const { idJob, faceIdApoyo, idMaquina } = consultaMecanizabilidadRef.current;
+    if (!idJob || faceIdApoyo === null || idMaquina === null) return;
+
+    const claveConsulta = `${idJob}:${faceIdApoyo}:${idMaquina}`;
+    const esInicial = !initialEvaluationDoneRef.current;
+    const cambioMontaje = ultimaConsultaSolicitadaRef.current !== claveConsulta;
+    if (!esInicial && !cambioMontaje) return;
+
+    initialEvaluationDoneRef.current = true;
+    ultimaConsultaSolicitadaRef.current = claveConsulta;
+    void evaluarMecanizabilidad();
+  }, [idJob, montajeConfig.face_id_apoyo, maquina?.id_maquina]);
 
   /**
    * Pide el análisis COMPLETO. Nunca una re-evaluación parcial de la operación
