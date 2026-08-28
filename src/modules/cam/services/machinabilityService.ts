@@ -66,10 +66,35 @@ export function normalizarMecanizabilidad(
 export async function solicitarMecanizabilidad(
   consulta: ConsultaMecanizabilidad,
 ): Promise<RespuestaMecanizabilidad | null> {
-  const { data } = await api.post("/cam/machinability", {
+  const path = "/cam/machinability";
+  const payload = {
     id_job: consulta.idJob,
     face_id_apoyo: consulta.faceIdApoyo,
     id_maquina: consulta.idMaquina,
+  };
+
+  // [MACH-DEEP] Antes de la petición: baseURL (atrapa VITE_API_URL_* undefined),
+  // URL final y payload. Si baseURL sale undefined, la env no llegó al bundle.
+  console.log("[MACH-DEEP] solicitarMecanizabilidad → antes de api.post", {
+    baseURL: api.defaults.baseURL,
+    mode: import.meta.env.MODE,
+    urlFinal: `${api.defaults.baseURL ?? "(baseURL UNDEFINED)"}${path}`,
+    payload,
   });
-  return normalizarMecanizabilidad(data);
+
+  try {
+    const { data } = await api.post(path, payload);
+    // [MACH-DEEP] Respuesta cruda del gateway antes de normalizar.
+    console.log("[MACH-DEEP] solicitarMecanizabilidad ← respuesta", { data });
+    return normalizarMecanizabilidad(data);
+  } catch (e) {
+    // [MACH-DEEP] Error de red/HTTP con el detalle de axios si existe.
+    console.error("[MACH-DEEP] solicitarMecanizabilidad ✗ error", e, {
+      // @ts-expect-error inspección de diagnóstico
+      status: e?.response?.status,
+      // @ts-expect-error inspección de diagnóstico
+      responseData: e?.response?.data,
+    });
+    throw e;
+  }
 }

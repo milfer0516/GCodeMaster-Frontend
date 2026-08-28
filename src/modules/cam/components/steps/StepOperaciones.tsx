@@ -189,12 +189,27 @@ export const StepOperaciones = () => {
   const evaluarMecanizabilidad = async () => {
     const consulta = consultaMecanizabilidadRef.current;
     const idJob = consulta.idJob;
+
+    // [MACH-DEEP] Punto de entrada: qué ve la función y en qué estado el guard.
+    console.log("[MACH-DEEP] entrar evaluarMecanizabilidad()", {
+      consulta,
+      isEvaluating: isEvaluatingMecanizabilidadRef.current,
+      epochActual: evaluacionEpochRef.current,
+    });
+
     if (
       !idJob ||
       consulta.faceIdApoyo === null ||
       consulta.idMaquina === null ||
       isEvaluatingMecanizabilidadRef.current
     ) {
+      // [MACH-DEEP] SALIDA por guard: éste es el "silencio total".
+      console.warn("[MACH-DEEP] return por guard — NO se emite petición", {
+        idJob_falta: !idJob,
+        faceIdApoyo_null: consulta.faceIdApoyo === null,
+        idMaquina_null: consulta.idMaquina === null,
+        yaEvaluando: isEvaluatingMecanizabilidadRef.current,
+      });
       return;
     }
 
@@ -203,12 +218,28 @@ export const StepOperaciones = () => {
     isEvaluatingMecanizabilidadRef.current = true;
     setMecanizabilidadEstado("analizando");
 
+    // [MACH-DEEP] Guard superado: se va a llamar al servicio HTTP.
+    console.log("[MACH-DEEP] guard OK → solicitarMecanizabilidad()", {
+      claveConsulta,
+      epoch,
+      payload: { ...consulta, idJob },
+    });
+
     try {
       const respuesta = await solicitarMecanizabilidad({ ...consulta, idJob });
+      // [MACH-DEEP] Respuesta recibida del servicio.
+      console.log("[MACH-DEEP] respuesta recibida", {
+        epoch,
+        epochVigente: evaluacionEpochRef.current,
+        aplicaEstado: epoch === evaluacionEpochRef.current,
+        respuesta,
+      });
       if (epoch === evaluacionEpochRef.current) {
         setMecanizabilidad(respuesta);
       }
     } catch (e) {
+      // [MACH-DEEP] Error en la petición — imprime el error completo.
+      console.error("[MACH-DEEP] catch — la petición falló", e);
       if (epoch === evaluacionEpochRef.current) {
         setMecanizabilidadEstado(
           "error",
