@@ -8,8 +8,6 @@ import { LayoutPasoVisor } from "../../../../components/layout/LayoutPasoVisor";
 import { ModalSujecion } from "../sujecion/ModalSujecion";
 import { EditorMontajeEspacial } from "../sujecion/EditorMontajeEspacial";
 import { WizardNavButtons } from "./WizardNavButtons";
-import { mensajeError } from "../../../../services/toolingService";
-import { solicitarMecanizabilidad } from "../../services/machinabilityService";
 import type { SujecionConfig } from "../../store/camStore";
 
 const WCS_ITEMS = [
@@ -66,9 +64,6 @@ export const StepMontaje = () => {
   const setMontajeEspacial = useCamStore((s) => s.setMontajeEspacial);
   const meshData = useCamStore((s) => s.meshData);
   const confirmMontaje = useCamStore((s) => s.confirmMontaje);
-  const idJob = useCamStore((s) => s.idJob);
-  const setMecanizabilidad = useCamStore((s) => s.setMecanizabilidad);
-  const setMecanizabilidadEstado = useCamStore((s) => s.setMecanizabilidadEstado);
 
   // La máquina se carga UNA vez a nivel del wizard (CamWizardPage) al entrar al
   // flujo CAM; aquí solo se LEE del store. Así sus dimensiones (mesa_x/y_mm) están
@@ -102,42 +97,6 @@ export const StepMontaje = () => {
     });
 
   const puedeAvanzar = montajeConfig.sujecion_config !== null;
-
-  /**
-   * Pregunta al motor QUÉ SE PUEDE MECANIZAR con la pieza apoyada en esta cara.
-   * Se lanza al confirmar el montaje porque es aquí donde queda fijada la
-   * entrada del veredicto; el paso Operaciones solo LEE lo que quede guardado.
-   *
-   * Se pide SIEMPRE, aunque falte la cara de apoyo o la máquina. No es un
-   * descuido: el motor responde esos casos con veredicto `desconocido` y su
-   * motivo (`cara_apoyo_no_reconocida`, `cinematica_no_declarada`), y esa
-   * respuesta es información real para el operario. Filtrar la consulta aquí
-   * cambiaría un veredicto del motor por un silencio del frontend.
-   */
-  const evaluarMecanizabilidad = async () => {
-    if (!idJob) {
-      setMecanizabilidadEstado(
-        "error",
-        "El trabajo aún no tiene análisis geométrico persistido.",
-      );
-      return;
-    }
-    setMecanizabilidadEstado("analizando");
-    try {
-      setMecanizabilidad(
-        await solicitarMecanizabilidad({
-          idJob,
-          faceIdApoyo: montajeConfig.face_id_apoyo,
-          idMaquina: maquinaActiva?.id_maquina ?? null,
-        }),
-      );
-    } catch (e) {
-      setMecanizabilidadEstado(
-        "error",
-        mensajeError(e, "No se pudo evaluar la mecanizabilidad de este montaje."),
-      );
-    }
-  };
 
   const handleConfirmarSujecion = (config: SujecionConfig) => {
     setMontajeConfig({
@@ -354,11 +313,11 @@ export const StepMontaje = () => {
               // persistente (fuente de verdad en frame OCC/máquina) que consumirán
               // el visor y, en fases siguientes, Stock/operaciones/G-code.
               confirmMontaje();
-              // El veredicto de mecanizabilidad se pide con el montaje ya
-              // confirmado. No se espera aquí: la respuesta se guarda en el store y
-              // el paso Operaciones la lee cuando llegue (mientras tanto muestra
-              // "evaluando", no un veredicto provisional).
-              void evaluarMecanizabilidad();
+              // El veredicto de mecanizabilidad NO se pide aquí: el paso
+              // Operaciones es el único disparador (useEffect con guarda de los
+              // tres valores idJob/face/idMaquina). Pedirlo también en este punto
+              // —sin esa guarda— lanzaba una evaluación con id_maquina posiblemente
+              // nulo que pisaba el veredicto bueno con 'desconocido'.
               console.log(
                 "montajeConfig al confirmar:",
                 JSON.stringify(montajeConfig, null, 2),
