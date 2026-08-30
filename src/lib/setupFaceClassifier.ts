@@ -105,6 +105,18 @@ export const ETIQUETA_ORIENTACION: Record<FaceMachineOrientation, string> = {
   CILINDRICA: "Diámetro exterior",
 };
 
+/**
+ * Nombre de presentación del tipo de operación. La descripción se COMPONE desde
+ * este vocabulario, no se parchea sobre el string del motor (que trae el tipo y
+ * la cara pegados: "Planeado cara superior — …"). Solo los tipos re-etiquetables
+ * necesitan entrada; el resto conserva su descripción intrínseca sin pasar por
+ * aquí.
+ */
+export const ETIQUETA_TIPO: Record<string, string> = {
+  planeado: "Planeado",
+  contorneado_exterior: "Contorneado",
+};
+
 // ── Re-etiquetado de una operación ──────────────────────────────────────────
 // Solo estos tipos cambian de rótulo; el resto (taladrado, cajera…) conserva su
 // descripción intrínseca, que no depende de la orientación de una cara plana.
@@ -115,7 +127,7 @@ const SEPARADOR = " — ";
 export interface EtiquetarOperacionInput {
   /** Tipo del motor: "planeado" | "contorneado_exterior" | … */
   tipo: string;
-  /** Descripción original del motor, marco CAD (p.ej. "Planeado — cara frontal — 246.0 × 246.0 mm"). */
+  /** Descripción original del motor, marco CAD (p.ej. "Planeado cara superior — 246.0 × 246.0 mm (Z=22.0mm)"). */
   descripcion: string;
   /** Caras que toca la operación. */
   faceIndices: readonly number[] | undefined;
@@ -134,31 +146,40 @@ export interface OperacionEtiquetada {
   descripcion: string;
   /** Orientación derivada, o null si no se re-etiquetó. */
   orientacion: FaceMachineOrientation | null;
-  /** Traza para el tooltip: "Ref. CAD: cara frontal · face_index: 7", o null. */
+  /**
+   * Traza para el tooltip: "Ref. CAD: <descripción original del motor> ·
+   * face_index: 9", o null si no se re-etiquetó.
+   */
   refCad: string | null;
 }
 
 /**
- * Parte la descripción del motor en [tipo, cara?, …dims]. El motor emite
- * "Tipo — cara — dims" (3 segmentos). Con menos segmentos no hay una "cara" que
- * sustituir; se devuelve `cara: null` y el resto se conserva.
+ * Dimensiones del motor: todo lo que sigue al PRIMER " — ". El motor pega el
+ * tipo y la cara en el primer segmento ("Planeado cara superior — 246 × 246 mm
+ * (Z=22.0mm)"), así que el resto es la medida. Se retira un sufijo "(Z=…)": es
+ * una coordenada del marco CAD que tras el montaje deja de significar lo que
+ * dice (esa cara pasó a ser la de apoyo). El resto de paréntesis —"(prof 10mm)",
+ * "(pasante)"— se conservan por ser independientes del marco.
  */
-function partirDescripcion(desc: string): {
-  tipo: string;
-  cara: string | null;
-  resto: string[];
-} {
-  const partes = desc.split(SEPARADOR).map((s) => s.trim());
-  if (partes.length >= 3) {
-    return { tipo: partes[0], cara: partes[1], resto: partes.slice(2) };
-  }
-  return { tipo: partes[0] ?? desc, cara: null, resto: partes.slice(1) };
+function extraerDimensiones(desc: string): string {
+  const i = desc.indexOf(SEPARADOR);
+  if (i < 0) return "";
+  return desc
+    .slice(i + SEPARADOR.length)
+    .replace(/\s*\(Z=[^)]*\)\s*$/i, "")
+    .trim();
+}
+
+/** "Cara de apoyo" → "cara de apoyo": la etiqueta va en minúscula dentro de la frase. */
+function enMinusculaInicial(s: string): string {
+  return s.length === 0 ? s : s[0].toLowerCase() + s.slice(1);
 }
 
 /**
  * Reexpresa la descripción de una operación en el marco de máquina. PURA: no
- * recalcula dimensiones (mantiene las del motor) — solo sustituye el segmento de
- * cara por la orientación de máquina y arma la traza CAD para el tooltip.
+ * recalcula dimensiones (mantiene las del motor) — COMPONE la descripción desde
+ * sus partes (tipo + orientación + dimensiones) en vez de parchear el string del
+ * motor, y arma la traza CAD para el tooltip.
  *
  * Si algo impide clasificar con confianza (tipo no re-etiquetable, sin montaje,
  * sin caras, sin normal conocida), devuelve la descripción ORIGINAL intacta: más
@@ -184,7 +205,7 @@ export function etiquetarOperacion(
   if (input.tipo === "contorneado_exterior" && input.esCaraCilindrica) {
     const caraCil = faces.find((id) => input.esCaraCilindrica!(id));
     if (caraCil !== undefined) {
-      return reconstruir(input.descripcion, "CILINDRICA", caraCil);
+      return reconstruir(input.descripcion, input.tipo, "CILINDRICA", caraCil);
     }
   }
 
@@ -207,28 +228,31 @@ export function etiquetarOperacion(
   }
 
   if (caraPrimaria === null || orientacion === null) return intacta;
-  return reconstruir(input.descripcion, orientacion, caraPrimaria);
+  return reconstruir(input.descripcion, input.tipo, orientacion, caraPrimaria);
 }
 
 /**
- * Arma la descripción de máquina y la traza CAD. Conserva el tipo (primer
- * segmento) y las dimensiones (segmentos finales) del motor; sustituye o inserta
- * la etiqueta de orientación en el segundo segmento.
+ * COMPONE la descripción de máquina desde sus partes —tipo + orientación +
+ * dimensiones del motor— en lugar de sustituir por patrón dentro del string
+ * original (que fallaba: el motor pega tipo y cara, y el rótulo de máquina se
+ * concatenaba al del CAD, dejando dos nombres para la misma cara). El tooltip
+ * conserva la descripción original íntegra para trazabilidad.
  */
 function reconstruir(
   original: string,
+  tipo: string,
   orientacion: FaceMachineOrientation,
   faceId: number,
 ): OperacionEtiquetada {
-  const { tipo, cara, resto } = partirDescripcion(original);
-  const etiqueta = ETIQUETA_ORIENTACION[orientacion];
+  const tipoLabel = ETIQUETA_TIPO[tipo] ?? tipo;
+  const orientacionLabel = enMinusculaInicial(ETIQUETA_ORIENTACION[orientacion]);
+  const dims = extraerDimensiones(original);
 
-  const partes = [tipo, etiqueta, ...resto].filter((s) => s.length > 0);
-  const descripcion = partes.join(SEPARADOR);
+  const descripcion = [tipoLabel, orientacionLabel, dims]
+    .filter((s) => s.length > 0)
+    .join(SEPARADOR);
 
-  // El tooltip conserva la referencia intrínseca del motor para trazabilidad.
-  const caraCad = cara ?? "sin referencia";
-  const refCad = `Ref. CAD: ${caraCad} · face_index: ${faceId}`;
+  const refCad = `Ref. CAD: ${original} · face_index: ${faceId}`;
 
   return { descripcion, orientacion, refCad };
 }

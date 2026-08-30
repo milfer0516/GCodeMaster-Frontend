@@ -105,6 +105,7 @@ export function ListaOperaciones({
           // Descripción en el marco de máquina si el clasificador la reexpresó;
           // si no, la original del motor. El tooltip lleva la referencia CAD.
           const etiqueta = indiceEtiquetas.get(op.id);
+          const reetiquetada = etiqueta?.orientacion != null;
           const descripcion = etiqueta?.descripcion ?? op.descripcion;
 
           return (
@@ -167,13 +168,19 @@ export function ListaOperaciones({
                 />
 
                 <div className="min-w-0 flex-1">
-                  {/* NOMBRE COMPLETO. break-words, nunca truncate. El title
-                      lleva la referencia CAD original para trazabilidad. */}
+                  {/* NOMBRE COMPLETO. break-words, nunca truncate. Para una
+                      operación re-etiquetada se muestra SOLO el rótulo de
+                      máquina; la descripción original del motor no se pinta
+                      (contradiría lo que se ve) y vive únicamente en el title
+                      (traza CAD) y en un span sr-only para lectores de pantalla. */}
                   <p
                     className="break-words text-[12px] leading-snug text-text-primary"
                     title={etiqueta?.refCad ?? undefined}
                   >
                     {descripcion}
+                    {reetiquetada && (
+                      <span className="sr-only"> ({op.descripcion})</span>
+                    )}
                   </p>
 
                   {herramienta ? (

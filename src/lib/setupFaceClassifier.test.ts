@@ -145,25 +145,50 @@ test("placa apoyada por su cara +Z: la cara Z=0 (normal -Z) se lee SUPERIOR", ()
   );
 });
 
-// ── etiquetarOperacion: reconstrucción de la descripción ─────────────────────
-test("planeado: sustituye el segmento de cara y conserva tipo y dimensiones", () => {
+// ── etiquetarOperacion: composición de la descripción ────────────────────────
+// El motor pega tipo y cara ("Planeado cara superior — dims") y anexa "(Z=…)",
+// una coordenada CAD que tras el montaje engaña. La descripción de máquina se
+// COMPONE (tipo + orientación + dims), no se parchea sobre el string original.
+test("planeado: compone tipo + orientación + dims y retira el sufijo (Z=…)", () => {
   const r = etiquetarOperacion({
     tipo: "planeado",
-    descripcion: "Planeado — cara frontal — 246.0 × 246.0 mm",
-    faceIndices: [7],
-    supportFaceId: 1,
+    descripcion: "Planeado cara superior — 246.0 × 246.0 mm (Z=22.0mm)",
+    faceIndices: [9],
+    supportFaceId: 9, // esta cara ES la de apoyo tras el montaje
     rotationOCC: IDENTIDAD,
-    normalPorCara: (id) => (id === 7 ? [0, 0, 1] : null),
+    normalPorCara: (id) => (id === 9 ? [0, 0, -1] : null),
   });
-  assert.equal(r.descripcion, "Planeado — Cara superior — 246.0 × 246.0 mm");
-  assert.equal(r.orientacion, "SUPERIOR");
-  assert.equal(r.refCad, "Ref. CAD: cara frontal · face_index: 7");
+  assert.equal(r.descripcion, "Planeado — cara de apoyo — 246.0 × 246.0 mm");
+  assert.equal(r.orientacion, "APOYO");
+  assert.equal(
+    r.refCad,
+    "Ref. CAD: Planeado cara superior — 246.0 × 246.0 mm (Z=22.0mm) · face_index: 9",
+  );
+});
+
+// Regresión del bug de concatenación: el rótulo de orientación aparece UNA sola
+// vez y la descripción de máquina NO arrastra la cara del CAD ("cara superior").
+test("no duplica el nombre de cara: la orientación aparece una sola vez", () => {
+  const r = etiquetarOperacion({
+    tipo: "planeado",
+    descripcion: "Planeado cara superior — 246.0 × 246.0 mm (Z=22.0mm)",
+    faceIndices: [9],
+    supportFaceId: 9,
+    rotationOCC: IDENTIDAD,
+    normalPorCara: (id) => (id === 9 ? [0, 0, -1] : null),
+  });
+  const veces = (s: string, sub: string) => s.split(sub).length - 1;
+  // "cara" solo en "cara de apoyo".
+  assert.equal(veces(r.descripcion.toLowerCase(), "cara"), 1);
+  // No sobrevive el nombre CAD pegado al tipo.
+  assert.ok(!r.descripcion.includes("Planeado cara"));
+  assert.ok(!r.descripcion.toLowerCase().includes("cara superior"));
 });
 
 test("contorneado_exterior sobre cara cilíndrica → Diámetro exterior", () => {
   const r = etiquetarOperacion({
     tipo: "contorneado_exterior",
-    descripcion: "Contorneado — cara lateral — Ø120.0 mm",
+    descripcion: "Contorneado exterior — Ø120.0 mm",
     faceIndices: [4],
     supportFaceId: 1,
     rotationOCC: IDENTIDAD,
@@ -171,11 +196,11 @@ test("contorneado_exterior sobre cara cilíndrica → Diámetro exterior", () =>
     esCaraCilindrica: (id) => id === 4,
   });
   assert.equal(r.orientacion, "CILINDRICA");
-  assert.equal(r.descripcion, "Contorneado — Diámetro exterior — Ø120.0 mm");
+  assert.equal(r.descripcion, "Contorneado — diámetro exterior — Ø120.0 mm");
 });
 
 test("tipo no re-etiquetable (taladrado) conserva su descripción intacta", () => {
-  const desc = "Taladrado — Ø8.5 mm — 4 agujeros";
+  const desc = "Taladro Ø26.0mm (pasante) en (103.000, -78.000)";
   const r = etiquetarOperacion({
     tipo: "taladrado",
     descripcion: desc,
