@@ -67,6 +67,7 @@ import {
   type Veredicto,
 } from "../../domain/mecanizabilidad";
 import { formatMm } from "../../../../utils/format";
+import { construirEtiquetasOrientacion } from "../../domain/etiquetasOrientacion";
 
 const ANCHO_PANEL_IZQUIERDO = 280;
 const ANCHO_PANEL_DERECHO = 340;
@@ -98,6 +99,7 @@ export const StepOperaciones = () => {
   // resumen: ver solicitarAnalisis().
   const archivo = useCamStore((s) => s.archivo);
   const setup = useCamStore((s) => s.setup);
+  const meshData = useCamStore((s) => s.meshData);
   const stockConfig = useCamStore((s) => s.stockConfig);
   const datumConfig = useCamStore((s) => s.datumConfig);
   const material = useCamStore((s) => s.material);
@@ -389,6 +391,16 @@ export const StepOperaciones = () => {
     [mecanizabilidad],
   );
 
+  // Etiquetas de orientación en el marco de MÁQUINA. El motor rotula en el marco
+  // de la pieza; tras el montaje esa etiqueta puede contradecir lo que se ve. El
+  // clasificador puro (setupFaceClassifier) las reexpresa usando la rotación del
+  // Setup y las normales del análisis. Sin Setup, el índice queda vacío y cada
+  // fila muestra la descripción original del motor.
+  const indiceEtiquetas = useMemo(
+    () => construirEtiquetasOrientacion(operaciones, setup, analisis, meshData),
+    [operaciones, setup, analisis, meshData],
+  );
+
   // El único `desconocido` con remedio: el análisis guardado es anterior al
   // contrato de orientación, así que volver a analizar la pieza SÍ cambia la
   // respuesta (H11). El número sale de `resumen.por_motivo`, no de un recuento.
@@ -607,6 +619,7 @@ export const StepOperaciones = () => {
             operaciones={operaciones}
             indiceMDE={indiceMDE}
             indiceMecanizabilidad={indiceMecanizabilidad}
+            indiceEtiquetas={indiceEtiquetas}
             herramientaDe={herramientaDe}
             opEnfocada={opEnfocada}
             onEnfocar={setOpEnfocada}

@@ -38,6 +38,7 @@ import {
   type HerramientaFisica,
 } from "../../domain/herramientasOperacion";
 import type { Operacion } from "../../store/camStore";
+import type { IndiceEtiquetas } from "../../domain/etiquetasOrientacion";
 
 interface Props {
   operaciones: Operacion[];
@@ -47,6 +48,11 @@ interface Props {
    * ausencia de veredicto no es `desconocido` — `desconocido` lo dice el motor.
    */
   indiceMecanizabilidad: IndiceMecanizabilidad;
+  /**
+   * Etiqueta de orientación en el marco de máquina por op_id. Una operación sin
+   * entrada (o sin re-etiqueta) muestra su descripción original del motor.
+   */
+  indiceEtiquetas: IndiceEtiquetas;
   /** Herramienta asignada a cada operación (ya resuelta por el paso). */
   herramientaDe: (op: Operacion) => HerramientaFisica | null;
   opEnfocada: string | null;
@@ -68,6 +74,7 @@ export function ListaOperaciones({
   operaciones,
   indiceMDE,
   indiceMecanizabilidad,
+  indiceEtiquetas,
   herramientaDe,
   opEnfocada,
   onEnfocar,
@@ -94,6 +101,11 @@ export function ListaOperaciones({
           const herramienta = herramientaDe(op);
           const t = numeroT(herramienta);
           const enfocada = op.id === opEnfocada;
+
+          // Descripción en el marco de máquina si el clasificador la reexpresó;
+          // si no, la original del motor. El tooltip lleva la referencia CAD.
+          const etiqueta = indiceEtiquetas.get(op.id);
+          const descripcion = etiqueta?.descripcion ?? op.descripcion;
 
           return (
             <li key={op.id}>
@@ -124,7 +136,7 @@ export function ListaOperaciones({
                     e.stopPropagation();
                     onAlternar(op.id);
                   }}
-                  aria-label={`${op.seleccionada ? "Quitar" : "Incluir"} ${op.descripcion}`}
+                  aria-label={`${op.seleccionada ? "Quitar" : "Incluir"} ${descripcion}`}
                   aria-pressed={op.seleccionada}
                   className={`mt-0.5 h-4 w-4 shrink-0 rounded border-2 transition ${
                     op.seleccionada
@@ -155,9 +167,13 @@ export function ListaOperaciones({
                 />
 
                 <div className="min-w-0 flex-1">
-                  {/* NOMBRE COMPLETO. break-words, nunca truncate. */}
-                  <p className="break-words text-[12px] leading-snug text-text-primary">
-                    {op.descripcion}
+                  {/* NOMBRE COMPLETO. break-words, nunca truncate. El title
+                      lleva la referencia CAD original para trazabilidad. */}
+                  <p
+                    className="break-words text-[12px] leading-snug text-text-primary"
+                    title={etiqueta?.refCad ?? undefined}
+                  >
+                    {descripcion}
                   </p>
 
                   {herramienta ? (
