@@ -90,6 +90,16 @@ export const MOTIVO = {
   ORIENTACION_AUSENTE: "orientacion_ausente",
   ORIENTACION_NO_RESUELTA: "orientacion_no_resuelta",
   PASANTE_NO_CONFIRMADO: "pasante_no_confirmado",
+  // Obstrucción por el MONTAJE (core/machinability.py, TKT-OPS-046 fase 2). Se
+  // deciden ANTES que la dirección: una cara boca abajo contra la mesa, o
+  // atrapada en la banda que agarra la copa, no depende de por dónde entra la
+  // herramienta. OBSTRUIDA_POR_PIEZA está RESERVADO en el contrato: el motor
+  // todavía NO lo emite, pero se traduce para el día que lo haga.
+  CONTRA_LA_MESA: "contra_la_mesa",
+  OBSTRUIDA_POR_AMARRE: "obstruida_por_amarre",
+  OBSTRUIDA_POR_PIEZA: "obstruida_por_la_pieza",
+  // Fallback: motivo sin causa nombrada por el motor.
+  DESCONOCIDO: "desconocido",
 } as const;
 
 /**
@@ -119,6 +129,10 @@ export const TEXTO_MOTIVO: Record<string, string> = {
     "El análisis no resolvió desde qué dirección se ataca esta operación",
   [MOTIVO.PASANTE_NO_CONFIRMADO]:
     "No se confirmó ningún extremo del agujero, así que su dirección no es segura",
+  [MOTIVO.CONTRA_LA_MESA]: "Cara contra la mesa",
+  [MOTIVO.OBSTRUIDA_POR_AMARRE]: "Obstruida por el amarre",
+  [MOTIVO.OBSTRUIDA_POR_PIEZA]: "Obstruida por la pieza",
+  [MOTIVO.DESCONOCIDO]: "No determinado",
 };
 
 export function textoMotivo(motivo: string | null | undefined): string {

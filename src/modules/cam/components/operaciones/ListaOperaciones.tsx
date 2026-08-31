@@ -27,6 +27,7 @@ import {
   textoMotivo,
   tieneRemedioReanalisis,
   veredictoDe,
+  NO_ALCANZABLE,
   TEXTO_REMEDIO_REANALISIS,
   VEREDICTO_CLASE,
   VEREDICTO_ETIQUETA,
@@ -218,6 +219,20 @@ export function ListaOperaciones({
                         {VEREDICTO_ETIQUETA[veredicto.mecanizabilidad]}
                       </span>
                     )}
+
+                    {/* Motivo de no-alcanzabilidad, JUNTO al badge y visible (no
+                        solo en el tooltip): "No alcanzable" a secas obliga a
+                        pasar el ratón para saber POR QUÉ. Solo para no_alcanzable
+                        y solo si el motor nombró un motivo; el texto es la
+                        traducción del código (textoMotivo), nunca una deducción
+                        de la UI. */}
+                    {veredicto &&
+                      veredicto.mecanizabilidad === NO_ALCANZABLE &&
+                      veredicto.motivo && (
+                        <span className="text-[9px] text-red-400/90">
+                          — {textoMotivo(veredicto.motivo)}
+                        </span>
+                      )}
                   </div>
                 </div>
 

@@ -26,6 +26,21 @@
 import { api } from "../../../services/api";
 import type { RespuestaMecanizabilidad } from "../domain/mecanizabilidad";
 
+/**
+ * Amarre de ESTE montaje, con las claves PLANAS que el motor lee en
+ * /machinability (core/machinability._sujecion_declarada): descarta, ANTES de la
+ * lógica direccional, la cara contra la mesa y las caras que la copa agarra. Es
+ * el contrato del motor —plano, no el envoltorio anidado de la generación—; el
+ * componente lo arma desde el estado de Montaje. null en un campo = ausente: el
+ * motor lo lee como "no declarado", no como cero.
+ */
+export interface SujecionMecanizabilidad {
+  tipo: string | null;
+  diametro_copa_mm: number | null;
+  z_apoyo_mm: number | null;
+  profundidad_agarre_mm: number | null;
+}
+
 /** Lo único que el motor necesita para emitir el veredicto de ESTE montaje. */
 export interface ConsultaMecanizabilidad {
   idJob: number;
@@ -37,6 +52,14 @@ export interface ConsultaMecanizabilidad {
    * sesión, y el motor lo responde como `cinematica_no_declarada`.
    */
   idMaquina: number | null;
+  /**
+   * El amarre declarado en Montaje, o null si el operario no configuró sujeción.
+   * null viaja igual que face_id_apoyo/id_maquina: "no se declaró sujeción" es un
+   * ESTADO DEL DOMINIO —sin él el motor responde EXACTAMENTE como antes del hito
+   * de obstrucción— y taparlo aquí sería inventar un amarre que el operario no
+   * puso.
+   */
+  sujecionConfig: SujecionMecanizabilidad | null;
 }
 
 /**
@@ -71,6 +94,10 @@ export async function solicitarMecanizabilidad(
     id_job: consulta.idJob,
     face_id_apoyo: consulta.faceIdApoyo,
     id_maquina: consulta.idMaquina,
+    // El gateway lo reenvía CRUDO al motor (cam_routes.machinability →
+    // evaluate_machinability). null cuando no hay sujeción declarada: es un
+    // estado del dominio, no un error, y el motor lo trata como antes del hito.
+    sujecion_config: consulta.sujecionConfig,
   };
 
   // [MACH-DEEP] Antes de la petición: baseURL (atrapa VITE_API_URL_* undefined),

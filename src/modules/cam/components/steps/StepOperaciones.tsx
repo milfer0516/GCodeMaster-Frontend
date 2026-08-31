@@ -25,6 +25,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useCamStore } from "../../store/camStore";
+import type { SujecionConfig } from "../../store/camStore";
 import { CamViewer3D } from "../CamViewer3D";
 import { WizardNavButtons } from "./WizardNavButtons";
 import { PanelDeslizante } from "../operaciones/PanelDeslizante";
@@ -40,7 +41,10 @@ import {
   solicitarRecomendacionesMDE,
   normalizarRecomendaciones,
 } from "../../services/mdeService";
-import { solicitarMecanizabilidad } from "../../services/machinabilityService";
+import {
+  solicitarMecanizabilidad,
+  type SujecionMecanizabilidad,
+} from "../../services/machinabilityService";
 import {
   consultaFallida,
   estadoFila,
@@ -82,6 +86,49 @@ const CONTADORES_VEREDICTO: Array<{ clave: Veredicto; etiqueta: string }> = [
   { clave: NO_ALCANZABLE, etiqueta: "no alcanzables" },
   { clave: DESCONOCIDO, etiqueta: "desconocidas" },
 ];
+
+/**
+ * Aplana el amarre del estado de Montaje al contrato PLANO que el motor lee en
+ * /machinability ({tipo, diametro_copa_mm, z_apoyo_mm, profundidad_agarre_mm}).
+ * El motor arma la banda de agarre como (z_apoyo_mm, z_apoyo_mm + profundidad),
+ * midiendo la altura DESDE el plano de apoyo hacia arriba.
+ *
+ * z_apoyo_mm es DÓNDE EMPIEZA esa banda sobre el plano de apoyo, no la altura de
+ * vuelo que `envolvente.z_apoyo_mm` significa en la ruta de generación. Para la
+ * COPA DE TORNO la banda arranca en el propio plano de apoyo (las garras agarran
+ * desde la cara que apoya hacia dentro), así que z_apoyo_mm = 0 y la banda queda
+ * (0, profundidad_agarre) — que es donde de verdad muerde la copa. Para el resto
+ * de sujeciones se transporta `envolvente.z_apoyo_mm` tal cual. null cuando aún
+ * no hay sujeción configurada.
+ */
+function sujecionParaMecanizabilidad(
+  sujecion: SujecionConfig | null,
+): SujecionMecanizabilidad | null {
+  if (!sujecion) return null;
+  const zApoyo =
+    sujecion.tipo === "copa_torno" ? 0 : sujecion.envolvente?.z_apoyo_mm ?? null;
+  return {
+    tipo: sujecion.tipo,
+    diametro_copa_mm: sujecion.diametro_copa_mm ?? null,
+    z_apoyo_mm: zApoyo,
+    profundidad_agarre_mm: sujecion.profundidad_agarre_mm ?? null,
+  };
+}
+
+/**
+ * Clave de deduplicación de la consulta: dos consultas con la MISMA clave piden
+ * el mismo veredicto y no se repiten. Incluye el amarre porque el veredicto
+ * ahora depende de él (obstrucción por montaje): cambiar la copa o su banda debe
+ * volver a preguntar, igual que cambiar la cara o la máquina.
+ */
+function claveConsultaMec(c: {
+  idJob: number | null;
+  faceIdApoyo: number | null;
+  idMaquina: number | null;
+  sujecionConfig: SujecionMecanizabilidad | null;
+}): string {
+  return `${c.idJob}:${c.faceIdApoyo}:${c.idMaquina}:${JSON.stringify(c.sujecionConfig)}`;
+}
 
 export const StepOperaciones = () => {
   const analisis = useCamStore((s) => s.analisis);
@@ -127,6 +174,7 @@ export const StepOperaciones = () => {
     idJob,
     faceIdApoyo: montajeConfig.face_id_apoyo,
     idMaquina: maquina?.id_maquina ?? null,
+    sujecionConfig: sujecionParaMecanizabilidad(montajeConfig.sujecion_config),
   });
   const initialEvaluationDoneRef = useRef(false);
   const ultimaConsultaSolicitadaRef = useRef<string | null>(null);
@@ -137,6 +185,7 @@ export const StepOperaciones = () => {
     idJob,
     faceIdApoyo: montajeConfig.face_id_apoyo,
     idMaquina: maquina?.id_maquina ?? null,
+    sujecionConfig: sujecionParaMecanizabilidad(montajeConfig.sujecion_config),
   };
 
   const [panelIzquierdo, setPanelIzquierdo] = useState(true);
@@ -215,7 +264,7 @@ export const StepOperaciones = () => {
       return;
     }
 
-    const claveConsulta = `${idJob}:${consulta.faceIdApoyo}:${consulta.idMaquina}`;
+    const claveConsulta = claveConsultaMec(consulta);
     const epoch = evaluacionEpochRef.current;
     isEvaluatingMecanizabilidadRef.current = true;
     setMecanizabilidadEstado("analizando");
@@ -256,7 +305,7 @@ export const StepOperaciones = () => {
       const actual = consultaMecanizabilidadRef.current;
       const claveActual =
         actual.idJob && actual.faceIdApoyo !== null && actual.idMaquina !== null
-          ? `${actual.idJob}:${actual.faceIdApoyo}:${actual.idMaquina}`
+          ? claveConsultaMec(actual)
           : null;
       if (epoch !== evaluacionEpochRef.current || claveActual !== claveConsulta) {
         void evaluarMecanizabilidad();
@@ -264,9 +313,17 @@ export const StepOperaciones = () => {
     }
   };
 
-  // Evalúa una vez al montar Operaciones y de nuevo al variar cara o máquina.
-  // La clave evita repetir la consulta por renders causados por sus propios
-  // cambios de estado; el store invalida la respuesta al cambiar la cara.
+  // Firma estable del amarre: entra en las dependencias del efecto para que
+  // cambiar la sujeción (copa, banda de agarre) vuelva a pedir el veredicto,
+  // igual que cambiar la cara o la máquina. Es una cadena para que un objeto
+  // nuevo con los mismos valores NO dispare una consulta redundante.
+  const firmaSujecion = JSON.stringify(
+    sujecionParaMecanizabilidad(montajeConfig.sujecion_config),
+  );
+
+  // Evalúa una vez al montar Operaciones y de nuevo al variar cara, máquina o
+  // amarre. La clave evita repetir la consulta por renders causados por sus
+  // propios cambios de estado; el store invalida la respuesta al cambiar la cara.
   useEffect(() => {
     const { idJob, faceIdApoyo, idMaquina } = consultaMecanizabilidadRef.current;
 
@@ -289,7 +346,7 @@ export const StepOperaciones = () => {
 
     if (!idJob || faceIdApoyo === null || idMaquina === null) return;
 
-    const claveConsulta = `${idJob}:${faceIdApoyo}:${idMaquina}`;
+    const claveConsulta = claveConsultaMec(consultaMecanizabilidadRef.current);
     const esInicial = !initialEvaluationDoneRef.current;
     const cambioMontaje = ultimaConsultaSolicitadaRef.current !== claveConsulta;
 
@@ -307,7 +364,7 @@ export const StepOperaciones = () => {
     ultimaConsultaSolicitadaRef.current = claveConsulta;
     console.log("[MACH] → llamando evaluarMecanizabilidad()");
     void evaluarMecanizabilidad();
-  }, [idJob, montajeConfig.face_id_apoyo, maquina?.id_maquina]);
+  }, [idJob, montajeConfig.face_id_apoyo, maquina?.id_maquina, firmaSujecion]);
 
   /**
    * Pide el análisis COMPLETO. Nunca una re-evaluación parcial de la operación
