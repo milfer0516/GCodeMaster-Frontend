@@ -33,6 +33,7 @@ export const StepCargarStep = () => {
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (cargando) return;
     const file = e.target.files?.[0];
     if (file) {
       const validationError = validateFile(file);
@@ -47,6 +48,7 @@ export const StepCargarStep = () => {
 
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
+    if (cargando) return;
     const file = e.dataTransfer.files?.[0];
     if (!file) return;
     const validationError = validateFile(file);
@@ -117,28 +119,44 @@ export const StepCargarStep = () => {
           p-6 md:p-10 transition cursor-pointer min-h-[200px] md:min-h-0
           ${
             archivo
-              ? "border-accent-green bg-green-500/5 cursor-default"
+              ? cargando
+                ? "border-accent-blue bg-accent-blue/5 cursor-default"
+                : "border-accent-green bg-green-500/5 cursor-default"
               : "border-border bg-bg-primary hover:border-accent-blue hover:bg-accent-blue/5"
           }
         `}
       >
         {archivo ? (
-          <>
-            <FileCheck className="h-10 md:h-12 w-10 md:w-12 text-green-400 mb-3" />
-            <p className="font-semibold text-text-primary text-sm md:text-base text-center px-2">{archivo.name}</p>
-            <p className="mt-1 text-xs text-text-muted">
-              {(archivo.size / 1024).toFixed(1)} KB
-            </p>
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                fileInputRef.current?.click();
-              }}
-              className="mt-3 px-4 py-2 min-h-[44px] text-sm text-text-muted hover:text-accent-blue transition underline"
-            >
-              Cambiar archivo
-            </button>
-          </>
+          cargando ? (
+            <>
+              <Loader2 className="h-10 md:h-12 w-10 md:w-12 text-accent-blue mb-3 animate-spin" />
+              <p className="font-semibold text-text-primary text-sm md:text-base text-center px-2">{archivo.name}</p>
+              <p
+                role="status"
+                aria-live="polite"
+                className="mt-1 text-sm text-accent-blue"
+              >
+                Analizando archivo, esto puede tardar unos segundos…
+              </p>
+            </>
+          ) : (
+            <>
+              <FileCheck className="h-10 md:h-12 w-10 md:w-12 text-green-400 mb-3" />
+              <p className="font-semibold text-text-primary text-sm md:text-base text-center px-2">{archivo.name}</p>
+              <p className="mt-1 text-xs text-text-muted">
+                {(archivo.size / 1024).toFixed(1)} KB
+              </p>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  fileInputRef.current?.click();
+                }}
+                className="mt-3 px-4 py-2 min-h-[44px] text-sm text-text-muted hover:text-accent-blue transition underline"
+              >
+                Cambiar archivo
+              </button>
+            </>
+          )
         ) : (
           <>
             <UploadCloud className="h-10 md:h-12 w-10 md:w-12 text-text-muted mb-3" />
