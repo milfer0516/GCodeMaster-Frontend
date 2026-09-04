@@ -28,7 +28,6 @@ export type { EstadoPieza, ProcessOrigin };
 // DESPUÉS
 export type CamStep =
   | "cargar"
-  | "analisis"
   | "montaje"
   | "material"
   | "stock"
@@ -237,11 +236,10 @@ interface CamState {
   // Navegación
   step: CamStep;
 
-  // Paso 1 — Archivo
+  // Paso 1 — Archivo y Análisis (carga del STEP + resultado de /cam/analyze
+  // en el mismo paso del wizard)
   archivo: File | null;
   nombreArchivo: string;
-
-  // Paso 2 — Análisis
   idJob: number | null;
   analisis: Record<string, any> | null;
 

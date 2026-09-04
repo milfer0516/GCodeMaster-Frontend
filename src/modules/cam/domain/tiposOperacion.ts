@@ -4,8 +4,8 @@
 //
 // Existe para que la leyenda, el punto de color de cada fila y el resaltado en
 // el visor 3D no puedan discrepar: los tres leen de aquí. Antes cada pantalla
-// repetía su propio `switch (tipo)` y ya se habían separado (StepAnalisis usa
-// azul para planeado; StepOperaciones tenía otro juego de clases).
+// repetía su propio `switch (tipo)` y ya se habían separado (la vista de
+// análisis usaba azul para planeado; StepOperaciones tenía otro juego de clases).
 //
 // El HEX es el mismo que CamViewer3D pinta sobre la malla — misma operación,
 // mismo color en la lista y en la pieza. Si cambia uno debe cambiar el otro:

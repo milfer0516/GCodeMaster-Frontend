@@ -304,7 +304,7 @@ export const StepMontaje = () => {
         ]}
         navegacion={
           <WizardNavButtons
-            prevStep="analisis"
+            prevStep="cargar"
             nextStep="material"
             nextLabel="Seleccionar material"
             canAdvance={puedeAvanzar}

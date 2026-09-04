@@ -3,7 +3,6 @@ import { useEffect } from "react";
 import { useCamStore } from "../store/camStore";
 import { getMaquinas } from "../../../services/maquinasService";
 import { StepCargarStep } from "../components/steps/StepCargarStep";
-import { StepAnalisis } from "../components/steps/StepAnalisis";
 import { StepOperaciones } from "../components/steps/StepOperaciones";
 import { StepMaterial } from "../components/steps/StepMaterial";
 import { StepStock } from "../components/steps/StepStock";
@@ -14,8 +13,7 @@ import { StepResultado } from "../components/steps/StepResultado";
 import { StepMontaje } from "../components/steps/StepMontaje";
 
 const PASOS = [
-  { key: "cargar", label: "Archivo" },
-  { key: "analisis", label: "Análisis" },
+  { key: "cargar", label: "Archivo y Análisis" },
   { key: "montaje", label: "Montaje" },
   { key: "material", label: "Material" },
   { key: "stock", label: "Stock" },
@@ -114,7 +112,6 @@ export function CamWizardPage() {
       {/* ── Contenido del paso ── */}
       <div className="rounded-xl md:rounded-2xl border border-border bg-bg-surface p-4 md:p-6">
         {step === "cargar" && <StepCargarStep />}
-        {step === "analisis" && <StepAnalisis />}
         {step === "montaje" && <StepMontaje />}
         {step === "material" && <StepMaterial />}
         {step === "stock" && <StepStock />}
