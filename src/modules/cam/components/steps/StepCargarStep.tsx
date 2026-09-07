@@ -10,6 +10,7 @@ import { useRef, useState } from "react";
 import { useCamStore } from "../../store/camStore";
 import { analyzeStep } from "../../services/camService";
 import { WizardNavButtons } from "./WizardNavButtons";
+import { OperacionesAgrupadas } from "../OperacionesAgrupadas";
 import {
   UploadCloud,
   FileCheck,
@@ -19,40 +20,10 @@ import {
   Layers,
   Drill,
   CircleDot,
-  Wrench,
 } from "lucide-react";
 
-// ── HELPERS ───────────────────────────────────────────────────────────────
-
-function tipoColor(tipo: string) {
-  switch (tipo) {
-    case "planeado":
-      return "bg-blue-500/10 text-blue-400 border-blue-500/20";
-    case "taladrado":
-      return "bg-green-500/10 text-green-400 border-green-500/20";
-    case "cajera":
-      return "bg-purple-500/10 text-purple-400 border-purple-500/20";
-    case "contorneado_exterior":
-      return "bg-orange-500/10 text-orange-400 border-orange-500/20";
-    default:
-      return "bg-bg-elevated text-text-muted border-border";
-  }
-}
-
-function tipoIcono(tipo: string) {
-  switch (tipo) {
-    case "planeado":
-      return <Layers className="h-3.5 w-3.5" />;
-    case "taladrado":
-      return <Drill className="h-3.5 w-3.5" />;
-    case "cajera":
-      return <Box className="h-3.5 w-3.5" />;
-    case "contorneado_exterior":
-      return <CircleDot className="h-3.5 w-3.5" />;
-    default:
-      return <Wrench className="h-3.5 w-3.5" />;
-  }
-}
+// Los colores e iconos por tipo viven ahora en OperacionesAgrupadas, que es
+// quien pinta las operaciones agrupadas por tipo dentro de cada Setup.
 
 // Etiqueta de sección — mismo patrón visual que las cabeceras de panel de
 // LayoutPasoVisor (text-[11px] uppercase tracking-widest).
@@ -215,21 +186,10 @@ export const StepCargarStep = () => {
                         {lado.ops.length} op{lado.ops.length !== 1 ? "s" : ""}
                       </span>
                     </div>
-                    <div className="space-y-2">
-                      {lado.ops.map((op: any, idx: number) => (
-                        <div key={idx} className="flex items-start gap-2">
-                          <span
-                            className={`flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-medium flex-shrink-0 ${tipoColor(op.tipo)}`}
-                          >
-                            {tipoIcono(op.tipo)}
-                            {op.tipo}
-                          </span>
-                          <p className="text-xs text-text-muted leading-relaxed">
-                            {op.descripcion}
-                          </p>
-                        </div>
-                      ))}
-                    </div>
+                    {/* Operaciones agrupadas por tipo (campo `tipo` del
+                        backend): botones desplegables en desktop, acordeones
+                        en mobile. Mismas filas de siempre, misma info. */}
+                    <OperacionesAgrupadas ops={lado.ops} />
                   </div>
                 ))}
             </div>
