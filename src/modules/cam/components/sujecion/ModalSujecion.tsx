@@ -2,14 +2,15 @@
 import { useState } from "react";
 import { X } from "lucide-react";
 import type { Maquina } from "../../../../services/maquinasService";
-import type { TipoSujecion, SujecionConfig } from "../../store/camStore";
+import type { SujecionConfig } from "../../store/camStore";
+import type { UtillajeResumen } from "../../services/utillajesService";
 import { PasoSelectorElemento } from "./PasoSelectorElemento";
 import { PasoConfigElemento } from "./PasoConfigElemento";
 import { PasoValidacionMaquina } from "./PasoValidacionMaquina";
 
 const PASOS = [
-  { n: 1, label: "Elemento" },
-  { n: 2, label: "Configuración" },
+  { n: 1, label: "Utillaje" },
+  { n: 2, label: "Montaje" },
   { n: 3, label: "Validación" },
 ] as const;
 
@@ -22,11 +23,12 @@ interface Props {
 
 export const ModalSujecion = ({ maquina, dimensiones, onConfirm, onClose }: Props) => {
   const [paso, setPaso] = useState<1 | 2 | 3>(1);
-  const [tipoSeleccionado, setTipoSeleccionado] = useState<TipoSujecion>(null);
+  const [utillajeSeleccionado, setUtillajeSeleccionado] =
+    useState<UtillajeResumen | null>(null);
   const [configParcial, setConfigParcial] = useState<Partial<SujecionConfig>>({});
 
-  const handleSeleccion = (tipo: TipoSujecion) => {
-    setTipoSeleccionado(tipo);
+  const handleSeleccion = (utillaje: UtillajeResumen) => {
+    setUtillajeSeleccionado(utillaje);
     setConfigParcial({});
     setPaso(2);
   };
@@ -36,10 +38,13 @@ export const ModalSujecion = ({ maquina, dimensiones, onConfirm, onClose }: Prop
     setPaso(3);
   };
 
+  // En el paso 3 configParcial ya viene completa del formulario del schema
+  // (familia, id_utillaje, parametros_montaje y envolvente); los defaults solo
+  // cubren el tipado.
   const configFinal: SujecionConfig = {
-    tipo: tipoSeleccionado,
-    altura_paralelas_mm: 0,
-    altura_total_montaje_mm: null,
+    familia: "",
+    id_utillaje: 0,
+    parametros_montaje: {},
     envolvente: null,
     ...configParcial,
   };
@@ -98,9 +103,9 @@ export const ModalSujecion = ({ maquina, dimensiones, onConfirm, onClose }: Prop
             <PasoSelectorElemento onSelect={handleSeleccion} />
           )}
 
-          {paso === 2 && tipoSeleccionado && (
+          {paso === 2 && utillajeSeleccionado && (
             <PasoConfigElemento
-              tipo={tipoSeleccionado}
+              utillaje={utillajeSeleccionado}
               dimensiones={dimensiones}
               maquina={maquina}
               onBack={() => setPaso(1)}
@@ -108,7 +113,7 @@ export const ModalSujecion = ({ maquina, dimensiones, onConfirm, onClose }: Prop
             />
           )}
 
-          {paso === 3 && tipoSeleccionado && (
+          {paso === 3 && utillajeSeleccionado && (
             <PasoValidacionMaquina
               config={configFinal}
               maquina={maquina}

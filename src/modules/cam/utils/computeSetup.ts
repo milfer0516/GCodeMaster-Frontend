@@ -263,10 +263,11 @@ export function computeSetup(
   const depth = maxY - minY; // Y extent
   const height = maxZ - minZ; // Z extent (vertical)
 
-  const zApoyoMm = sujecionConfig?.envolvente?.z_apoyo_mm ?? 0;
+  const zApoyoMm = sujecionConfig?.envolvente?.part_bottom_z_mm ?? 0;
 
   // Machine-frame placement: centre the part footprint over (0, 0) and rest its
-  // base on the table at Z = 0, lifted by z_apoyo_mm. Mirrors CamViewer3D 4b's
+  // base on the table at Z = 0, lifted by part_bottom_z_mm (la cota medida por
+  // el operario: mesa → cara inferior de la pieza). Mirrors CamViewer3D 4b's
   // display-frame placement, but here in OCC coordinates.
   const centerX = (minX + maxX) / 2;
   const centerY = (minY + maxY) / 2;

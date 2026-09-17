@@ -2,13 +2,13 @@
 import { ChevronLeft, CheckCircle, AlertTriangle, XCircle } from "lucide-react";
 import type { Maquina } from "../../../../services/maquinasService";
 import type { SujecionConfig } from "../../store/camStore";
+import { alturaTotalDeclarada } from "../../domain/camposMontaje";
 
-const LABEL_TIPO: Record<string, string> = {
-  prensa: "Prensa de banco",
-  bridas: "Bridas + tornillos",
-  mesa_magnetica: "Mesa magnética",
-  copa_torno: "Copa de torno",
-};
+// Solo validaciones GENÉRICAS contra la máquina (espacio libre en Z, recorrido
+// XY). Las reglas por familia (apertura de prensa, holgura de bridas,
+// ferromagnetismo) ya no se codifican aquí: los campos y su obligatoriedad los
+// define el schema de la familia (backend) y la validación fina la hace el
+// gateway/motor contra ese mismo schema.
 
 type Severidad = "ok" | "warn" | "error";
 
@@ -26,10 +26,11 @@ function calcularValidaciones(
   const resultado: Validacion[] = [];
 
   const largoHerramientaMax = maq.largo_herramienta_max_mm ?? 300;
-  const diametroHerramientaMax = maq.diametro_herramienta_max_mm ?? 80;
-  // Espacio libre seguro en Z = recorrido total − largo máx de herramienta
+  // Espacio libre seguro en Z = recorrido total − largo máx de herramienta.
+  // La altura del montaje se DERIVA de las cotas medidas declaradas (lo más
+  // alto entre la cara superior de la pieza y el punto más alto del amarre).
   const umbralZ = maq.recorrido_z_mm - largoHerramientaMax;
-  const alturaTotal = cfg.altura_total_montaje_mm ?? 0;
+  const alturaTotal = alturaTotalDeclarada(cfg.envolvente);
 
   // R1 — Restricción espacio libre en Z (colisión husillo/ATC)
   if (alturaTotal > umbralZ) {
@@ -46,43 +47,7 @@ function calcularValidaciones(
     });
   }
 
-  // R2 — Apertura de prensa vs dimensión Y de pieza
-  if (cfg.tipo === "prensa" && cfg.apertura_mm !== undefined) {
-    const dimY = Math.round(dim.y);
-    if (cfg.apertura_mm < dimY) {
-      resultado.push({
-        label: "Apertura de prensa",
-        detalle: `Apertura ${cfg.apertura_mm}mm insuficiente para pieza ${dimY}mm en Y.`,
-        severidad: "error",
-      });
-    } else {
-      resultado.push({
-        label: "Apertura de prensa",
-        detalle: `${cfg.apertura_mm}mm ≥ pieza ${dimY}mm en Y.`,
-        severidad: "ok",
-      });
-    }
-  }
-
-  // R3 — Holgura de bridas para herramienta grande (posición automática)
-  if (cfg.tipo === "bridas") {
-    const holgura = Math.ceil(diametroHerramientaMax / 2) + 5;
-    if (cfg.posicion_automatica) {
-      resultado.push({
-        label: "Holgura de bridas",
-        detalle: `Posición automática con holgura ${holgura}mm respecto a caras mecanizables. Compatible con planeador Ø${diametroHerramientaMax}mm.`,
-        severidad: "ok",
-      });
-    } else {
-      resultado.push({
-        label: "Holgura de bridas",
-        detalle: `Posición manual: verifique que las bridas queden al menos ${holgura}mm de cualquier cara mecanizable (radio Ø${diametroHerramientaMax}mm + 5mm margen).`,
-        severidad: "warn",
-      });
-    }
-  }
-
-  // R4 — Dimensiones de pieza vs recorrido XY de la máquina
+  // R2 — Dimensiones de pieza vs recorrido XY de la máquina
   if (dim.x > maq.recorrido_x_mm || dim.y > maq.recorrido_y_mm) {
     resultado.push({
       label: "Recorrido XY",
@@ -94,15 +59,6 @@ function calcularValidaciones(
       label: "Recorrido XY",
       detalle: `Pieza ${Math.round(dim.x)}×${Math.round(dim.y)}mm dentro del recorrido ${maq.recorrido_x_mm}×${maq.recorrido_y_mm}mm.`,
       severidad: "ok",
-    });
-  }
-
-  // R5 — Compatibilidad mesa magnética
-  if (cfg.tipo === "mesa_magnetica" && !cfg.es_material_ferromagnetico) {
-    resultado.push({
-      label: "Compatibilidad magnética",
-      detalle: "El material no es ferromagnético. La mesa no asegurará la pieza.",
-      severidad: "error",
     });
   }
 
@@ -158,7 +114,9 @@ export const PasoValidacionMaquina = ({
           {maquina.diametro_herramienta_max_mm ?? "—"}mm max
         </p>
         <p className="text-xs font-medium text-text-primary pt-0.5">
-          Sujeción: {LABEL_TIPO[config.tipo ?? ""] ?? config.tipo}
+          Sujeción: {config.nombre_utillaje ?? ""}
+          {config.nombre_utillaje ? " · " : ""}
+          {config.etiqueta_familia ?? config.familia}
         </p>
       </div>
 

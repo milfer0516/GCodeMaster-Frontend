@@ -90,28 +90,24 @@ const CONTADORES_VEREDICTO: Array<{ clave: Veredicto; etiqueta: string }> = [
 /**
  * Aplana el amarre del estado de Montaje al contrato PLANO que el motor lee en
  * /machinability ({tipo, diametro_copa_mm, z_apoyo_mm, profundidad_agarre_mm}).
- * El motor arma la banda de agarre como (z_apoyo_mm, z_apoyo_mm + profundidad),
- * midiendo la altura DESDE el plano de apoyo hacia arriba.
  *
- * z_apoyo_mm es DÓNDE EMPIEZA esa banda sobre el plano de apoyo, no la altura de
- * vuelo que `envolvente.z_apoyo_mm` significa en la ruta de generación. Para la
- * COPA DE TORNO la banda arranca en el propio plano de apoyo (las garras agarran
- * desde la cara que apoya hacia dentro), así que z_apoyo_mm = 0 y la banda queda
- * (0, profundidad_agarre) — que es donde de verdad muerde la copa. Para el resto
- * de sujeciones se transporta `envolvente.z_apoyo_mm` tal cual. null cuando aún
- * no hay sujeción configurada.
+ * Ese contrato plano es HEREDADO y está pendiente de migración aparte (ver
+ * CLAUDE_frontend.md, advertencia 2): con el montaje T2 la geometría del
+ * utillaje ya no viaja en el frontend —la resuelve el backend por
+ * id_utillaje—, así que diametro_copa_mm y profundidad_agarre_mm se declaran
+ * null (= "no declarado", el motor lo reporta) en vez de inventarse. z_apoyo_mm
+ * se transporta desde la cota medida envolvente.part_bottom_z_mm. null cuando
+ * aún no hay sujeción configurada.
  */
 function sujecionParaMecanizabilidad(
   sujecion: SujecionConfig | null,
 ): SujecionMecanizabilidad | null {
   if (!sujecion) return null;
-  const zApoyo =
-    sujecion.tipo === "copa_torno" ? 0 : sujecion.envolvente?.z_apoyo_mm ?? null;
   return {
-    tipo: sujecion.tipo,
-    diametro_copa_mm: sujecion.diametro_copa_mm ?? null,
-    z_apoyo_mm: zApoyo,
-    profundidad_agarre_mm: sujecion.profundidad_agarre_mm ?? null,
+    tipo: sujecion.familia,
+    diametro_copa_mm: null,
+    z_apoyo_mm: sujecion.envolvente?.part_bottom_z_mm ?? null,
+    profundidad_agarre_mm: null,
   };
 }
 

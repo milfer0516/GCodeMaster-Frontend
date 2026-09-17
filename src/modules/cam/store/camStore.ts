@@ -104,57 +104,45 @@ export interface DatumConfig {
   z: number;
 }
 
-export type TipoSujecion =
-  | "prensa"
-  | "bridas"
-  | "mesa_magnetica"
-  | "copa_torno"
-  | null;
+// La familia del utillaje elegido. Ya NO es una lista cerrada escrita a mano:
+// las familias las sirve el backend (GET /utillajes/familias) y una familia
+// nueva no exige tocar el frontend. null = sin sujeción configurada.
+export type TipoSujecion = string | null;
+
+// Las cotas que el operario MIDE con calibre sobre la mesa (cero de máquina),
+// hacia arriba. Son los campos del schema con `medida_desde` — el backend los
+// exige/lee en sujecion_config.envolvente (cam_routes.py:701-739):
+// part_bottom_z_mm es OBLIGATORIO (400 si falta); las otras dos son
+// passthrough opcional en el gateway ("no declarado" es un estado legítimo).
+// El frontend NUNCA deriva una cota de otra: son medidas independientes.
+export interface EnvolventeMontaje {
+  part_bottom_z_mm: number; // mesa → cara INFERIOR de la pieza
+  part_top_z_mm?: number | null; // mesa → cara SUPERIOR de la pieza
+  fixture_top_z_mm?: number | null; // mesa → punto MÁS ALTO del amarre
+}
 
 export interface SujecionConfig {
-  tipo: TipoSujecion;
-  // Prensa
-  ancho_mordaza_mm?: number;
-  apertura_mm?: number;
-  altura_mordaza_mm?: number;
-  // Común (elevar pieza con paralelas)
-  altura_paralelas_mm: number;
-  // Bridas
-  cantidad_bridas?: number;
-  posicion_automatica?: boolean;
-  posiciones_bridas?: Array<{ x: number; y: number }>;
-  // Copa de torno
-  diametro_copa_mm?: number;
-  tipo_garras?: 3 | 4;
-  profundidad_agarre_mm?: number;
-  // Mesa magnética
-  es_material_ferromagnetico?: boolean;
-  // Altura total del montaje: sujeción + paralelas + pieza (validación Z)
-  altura_total_montaje_mm: number | null;
-  // Geometría física del montaje que el operador MIDE en la máquina (alturas de
-  // los elementos de sujeción), nunca una holgura calculada. El motor la lee en
-  // `sujecion_config.parametros_fisicos.*`.
-  parametros_fisicos?: {
-    altura_mordaza_mm?: number | null;
-    altura_paralelas_mm?: number | null;
-  };
+  // Familia del utillaje elegido (contrato backend §7). Si se declara y no
+  // coincide con la registrada en el parque, el gateway responde 400.
+  familia: string;
+  // Fila del parque de la empresa. La GEOMETRÍA del amarre (medidas del
+  // utillaje) la resuelve el backend desde esta fila — el frontend nunca la
+  // declara. Sin id_utillaje, mandar parametros_montaje es un 400.
+  id_utillaje: number;
+  nombre_utillaje?: string; // solo presentación en el wizard
+  etiqueta_familia?: string; // solo presentación (etiqueta del schema)
+  // Cómo se usa el utillaje en ESTE trabajo. Las claves son los `nombre` de
+  // los campos_montaje del schema de la familia (p.ej. en bridas:
+  // `posiciones`: Array<{x_mm, y_mm}>). Se construye en
+  // domain/camposMontaje.ts desde el schema — nunca a mano por familia.
+  parametros_montaje: Record<string, unknown>;
+  // Cotas medidas (campos del schema con `medida_desde`). null hasta que el
+  // operario confirma la sujeción.
+  envolvente: EnvolventeMontaje | null;
   // Obstáculos declarados por el operador. Todavía SIN editor en el wizard: se
   // envía siempre `[]` (nunca se inventan posiciones). El motor lo lee en
   // `sujecion_config.obstaculos`.
   obstaculos?: Array<Record<string, number>>;
-  // Envoltura 3D en coords de pieza (para colisiones y CAM)
-  envolvente: {
-    x_min: number; x_max: number;
-    y_min: number; y_max: number;
-    z_min: number; z_max: number;
-    z_apoyo_mm: number;
-    // Z del plano sobre el que apoya la base de la pieza (base del montaje +
-    // paralelas). DERIVADO de la geometría física medida, NO un campo manual que
-    // el operador rellene. `null` cuando el tipo de sujeción no define una base
-    // en Z (copa de torno): no se inventa un valor. El motor lo lee en
-    // `sujecion_config.envolvente.z_base_montaje_mm`.
-    z_base_montaje_mm: number | null;
-  } | null;
 }
 
 // ── Modelo ESPACIAL del montaje ────────────────────────────────────────────

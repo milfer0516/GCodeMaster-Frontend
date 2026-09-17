@@ -778,7 +778,7 @@ export function CamViewer3D({
       const centerYTransformado = (minYTransformado + maxYTransformado) / 2;
       const centerZTransformado = (minZTransformado + maxZTransformado) / 2;
 
-      const zApoyo = sujecionConfig?.envolvente?.z_apoyo_mm ?? 0;
+      const zApoyo = sujecionConfig?.envolvente?.part_bottom_z_mm ?? 0;
 
       // Posiciones target del mesh: centrar en X/Z y apoyar en Y
       qTarget = qLive;

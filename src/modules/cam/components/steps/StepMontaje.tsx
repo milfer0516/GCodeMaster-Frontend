@@ -8,6 +8,7 @@ import { LayoutPasoVisor } from "../../../../components/layout/LayoutPasoVisor";
 import { ModalSujecion } from "../sujecion/ModalSujecion";
 import { EditorMontajeEspacial } from "../sujecion/EditorMontajeEspacial";
 import { WizardNavButtons } from "./WizardNavButtons";
+import { alturaTotalDeclarada } from "../../domain/camposMontaje";
 import type { SujecionConfig } from "../../store/camStore";
 
 const WCS_ITEMS = [
@@ -17,41 +18,30 @@ const WCS_ITEMS = [
   { code: "G57" as const, descripcion: "Origen pieza 4" },
 ];
 
-const LABEL_TIPO: Record<string, string> = {
-  prensa: "Prensa de banco",
-  bridas: "Bridas + tornillos",
-  mesa_magnetica: "Mesa magnética",
-  copa_torno: "Copa de torno",
-};
-
-function badgeSujecion(cfg: SujecionConfig): string {
-  const tipo = LABEL_TIPO[cfg.tipo ?? ""] ?? (cfg.tipo ?? "");
-  const zApoyo = cfg.envolvente?.z_apoyo_mm ?? 0;
-  if (cfg.tipo === "prensa")
-    return `${tipo} — Ø${cfg.ancho_mordaza_mm}mm — z_apoyo: ${zApoyo}mm`;
-  if (cfg.tipo === "bridas")
-    return `${tipo} — ${cfg.cantidad_bridas} bridas — z_apoyo: ${zApoyo}mm`;
-  if (cfg.tipo === "copa_torno")
-    return `${tipo} — Ø${cfg.diametro_copa_mm}mm — z_apoyo: ${zApoyo}mm`;
-  if (cfg.tipo === "mesa_magnetica")
-    return `${tipo} — z_apoyo: ${zApoyo}mm`;
-  return tipo;
+// Resúmenes GENÉRICOS del amarre: la etiqueta de la familia y las cotas
+// medidas vienen del schema/contrato del backend, y los parámetros de montaje
+// se listan con las claves del schema. Nada se codifica por familia.
+function resumirSujecion(cfg: SujecionConfig): string {
+  const partes: string[] = [];
+  const env = cfg.envolvente;
+  if (env) {
+    partes.push(`Cara inferior ${env.part_bottom_z_mm}mm`);
+    if (env.part_top_z_mm != null)
+      partes.push(`Cara superior ${env.part_top_z_mm}mm`);
+    if (env.fixture_top_z_mm != null)
+      partes.push(`Amarre hasta ${env.fixture_top_z_mm}mm`);
+  }
+  return partes.join(" · ");
 }
 
-function resumirSujecion(cfg: SujecionConfig): string {
-  if (cfg.tipo === "prensa") {
-    return `Mordaza ${cfg.ancho_mordaza_mm}mm · Apertura ${cfg.apertura_mm}mm · H.mordaza ${cfg.altura_mordaza_mm}mm${cfg.altura_paralelas_mm ? ` · Paralelas ${cfg.altura_paralelas_mm}mm` : ""}`;
-  }
-  if (cfg.tipo === "bridas") {
-    return `${cfg.cantidad_bridas} bridas${cfg.posicion_automatica ? " · Posición automática" : " · Posición manual"}${cfg.altura_paralelas_mm ? ` · Paralelas ${cfg.altura_paralelas_mm}mm` : ""}`;
-  }
-  if (cfg.tipo === "copa_torno") {
-    return `Ø${cfg.diametro_copa_mm}mm · ${cfg.tipo_garras} garras`;
-  }
-  if (cfg.tipo === "mesa_magnetica") {
-    return "Mesa magnética activa";
-  }
-  return "";
+function badgeSujecion(cfg: SujecionConfig): string {
+  const params = Object.entries(cfg.parametros_montaje ?? {}).map(
+    ([clave, valor]) =>
+      Array.isArray(valor)
+        ? `${clave}: ${valor.length} punto(s)`
+        : `${clave}: ${String(valor)}`,
+  );
+  return [cfg.etiqueta_familia ?? cfg.familia, ...params].join(" — ");
 }
 
 export const StepMontaje = () => {
@@ -100,7 +90,7 @@ export const StepMontaje = () => {
 
   const handleConfirmarSujecion = (config: SujecionConfig) => {
     setMontajeConfig({
-      tipo_sujecion: config.tipo,
+      tipo_sujecion: config.familia,
       sujecion_config: config,
       id_maquina: maquinaActiva?.id_maquina ?? null,
     });
@@ -117,17 +107,23 @@ export const StepMontaje = () => {
             <div className="flex items-start justify-between gap-2">
               <div className="min-w-0">
                 <p className="text-sm font-semibold text-text-primary">
-                  {LABEL_TIPO[montajeConfig.sujecion_config.tipo ?? ""] ??
-                    montajeConfig.sujecion_config.tipo}
+                  {montajeConfig.sujecion_config.nombre_utillaje ??
+                    montajeConfig.sujecion_config.etiqueta_familia ??
+                    montajeConfig.sujecion_config.familia}
                 </p>
                 <p className="mt-0.5 text-xs text-text-muted leading-snug">
                   {resumirSujecion(montajeConfig.sujecion_config)}
                 </p>
-                {montajeConfig.sujecion_config.altura_total_montaje_mm !== null && (
+                {montajeConfig.sujecion_config.envolvente && (
                   <p className="mt-1 text-xs text-text-muted">
                     Altura total:{" "}
                     <span className="font-semibold text-text-primary">
-                      {Math.round(montajeConfig.sujecion_config.altura_total_montaje_mm)}mm
+                      {Math.round(
+                        alturaTotalDeclarada(
+                          montajeConfig.sujecion_config.envolvente,
+                        ),
+                      )}
+                      mm
                     </span>
                   </p>
                 )}
