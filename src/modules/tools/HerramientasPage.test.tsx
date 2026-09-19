@@ -5,7 +5,7 @@
 // Sin red ni backend: se mockean las dos capas de servicio y los modales
 // pesados (formulario / preview 3D de herramientas).
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { render, screen, fireEvent, within } from "@testing-library/react";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
@@ -180,19 +180,49 @@ describe("HerramientasPage — inventario de dos secciones (diseño)", () => {
     expect(screen.queryByText("Broca HSS-Co 5×D")).toBeNull();
   });
 
-  it("cada fila muestra insignia de estado y menú de acciones (Ver detalle / Editar / Eliminar)", async () => {
+  it("cada fila muestra insignia y TRES iconos directos (Ver / Editar / Eliminar), sin menú kebab", async () => {
     render(<HerramientasPage />);
-    await screen.findByText("Broca HSS-Co 5×D");
+    const fila = (await screen.findByText("Broca HSS-Co 5×D")).closest(
+      ".border-t",
+    ) as HTMLElement;
 
     expect(screen.getAllByText("Disponible").length).toBeGreaterThan(0);
     expect(screen.getByText("En mantenimiento")).toBeTruthy();
 
-    fireEvent.click(
-      screen.getByLabelText("Acciones de Broca HSS-Co 5×D"),
-    );
-    expect(screen.getByText("Ver detalle")).toBeTruthy();
-    expect(screen.getByText("Editar")).toBeTruthy();
-    expect(screen.getByText("Eliminar")).toBeTruthy();
+    // Los tres botones-icono están a la vista en la propia fila…
+    const ver = within(fila).getByLabelText("Ver");
+    const editar = within(fila).getByLabelText("Editar");
+    const eliminar = within(fila).getByLabelText("Eliminar");
+    // …y ya NO existe el botón kebab "Acciones de …"
+    expect(
+      screen.queryByLabelText("Acciones de Broca HSS-Co 5×D"),
+    ).toBeNull();
+
+    // Cada icono dispara el MISMO handler que antes llamaba el menú:
+    // ver → ficha, editar → mismo formulario en modo edición, eliminar → retirar
+    fireEvent.click(ver);
+    expect(screen.getByText("Ficha de la herramienta")).toBeTruthy();
+    fireEvent.click(screen.getByLabelText("Cerrar"));
+
+    fireEvent.click(editar);
+    expect(screen.getByText("Editar herramienta física")).toBeTruthy();
+    fireEvent.click(screen.getByLabelText("Cerrar"));
+
+    fireEvent.click(eliminar);
+    expect(screen.getByText("¿Retirar esta herramienta?")).toBeTruthy();
+    fireEvent.click(screen.getByText("Cancelar"));
+  });
+
+  it("las filas de utillajes también muestran su acción como icono directo (Ver)", async () => {
+    render(<HerramientasPage />);
+    const fila = (
+      await screen.findByText("Prensa mecánica de precisión")
+    ).closest(".border-t") as HTMLElement;
+
+    // Icono directo, sin kebab; al pulsarlo se despliega el detalle bajo la fila
+    fireEvent.click(within(fila).getByLabelText("Ver"));
+    expect(screen.getByText("ancho_mordazas_mm: 125")).toBeTruthy();
+    expect(screen.queryByLabelText(/Acciones de /)).toBeNull();
   });
 
   it.each(["dark", "light"])(
