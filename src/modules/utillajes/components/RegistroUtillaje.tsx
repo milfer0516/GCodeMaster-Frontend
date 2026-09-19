@@ -29,7 +29,7 @@
 // MensajeUtillaje (201) para que el contenedor refresque el parque.
 // ─────────────────────────────────────────────────────────────────────────────
 import { useEffect, useMemo, useState } from "react";
-import { ChevronLeft, CopyPlus, Wrench } from "lucide-react";
+import { ChevronLeft, CopyPlus, Wrench, X } from "lucide-react";
 import {
   crearUtillajeDesdePlantilla,
   crearUtillajeManual,
@@ -64,6 +64,30 @@ type Modo = "plantilla" | "manual";
 
 const inputCls =
   "w-full rounded-lg border border-border bg-bg-primary px-3 py-2 text-sm text-text-primary focus:border-accent-blue focus:outline-none";
+
+// ── Aviso de medidas CERRABLE ──────────────────────────────────────────────
+// Las advertencias de medida se quedaban abiertas para siempre y, apiladas,
+// empujaban el botón "Registrar utillaje" fuera de la vista. Cada aviso se
+// descarta con su "x"; el contenido NO se toca.
+const AvisoCerrable = ({
+  texto,
+  onCerrar,
+}: {
+  texto: string;
+  onCerrar: () => void;
+}) => (
+  <div className="flex items-start gap-2 rounded-lg border border-yellow-500/30 bg-yellow-500/10 px-3 py-2 text-xs text-yellow-500">
+    <p className="min-w-0 flex-1">{texto}</p>
+    <button
+      type="button"
+      onClick={onCerrar}
+      aria-label="Cerrar aviso"
+      className="shrink-0 rounded p-0.5 transition hover:bg-yellow-500/20"
+    >
+      <X className="h-3.5 w-3.5" />
+    </button>
+  </div>
+);
 
 // ── Traducción del error HTTP al contrato del backend ────────────────────────
 function describirError(e: unknown): {
@@ -120,6 +144,13 @@ export const RegistroUtillaje = ({
   const [erroresCampos, setErroresCampos] = useState<Record<string, string>>(
     {},
   );
+  // Advertencias de medida descartadas con su "x" (por texto). Se reinician
+  // al elegir OTRA plantilla/familia: los avisos de lo nuevo deben verse.
+  const [avisosOcultos, setAvisosOcultos] = useState<ReadonlySet<string>>(
+    new Set(),
+  );
+  const ocultarAviso = (a: string) =>
+    setAvisosOcultos((prev) => new Set(prev).add(a));
 
   // ── Vía USAR PLANTILLA ───────────────────────────────────────────────────
   const [catalogo, setCatalogo] = useState<CatalogoGlobal | null>(null);
@@ -296,22 +327,59 @@ export const RegistroUtillaje = ({
 
     return (
       <div className="space-y-4">
-        {catalogo.advertencia_general && (
-          <div className="rounded-lg border border-yellow-500/30 bg-yellow-500/10 px-3 py-2 text-xs text-yellow-500">
-            {catalogo.advertencia_general}
+        {catalogo.advertencia_general &&
+          !avisosOcultos.has(catalogo.advertencia_general) && (
+            <AvisoCerrable
+              texto={catalogo.advertencia_general}
+              onCerrar={() => ocultarAviso(catalogo.advertencia_general!)}
+            />
+          )}
+
+        {/* ── RESUMEN DE LO ELEGIDO ────────────────────────────────────────
+            Visible en LOS DOS pasos y con la lista plegada: con las listas
+            cerradas no habia forma de saber que habia algo seleccionado. */}
+        {plantilla && (
+          <div className="flex items-start justify-between gap-3 rounded-xl border border-accent-blue/40 bg-accent-blue/10 px-3 py-2">
+            <div className="min-w-0">
+              <p className="text-[11px] uppercase tracking-wide text-text-muted">
+                Plantilla seleccionada
+              </p>
+              <p className="truncate text-sm font-semibold text-text-primary">
+                {plantilla.nombre}
+              </p>
+              <p className="mt-0.5 text-xs text-text-muted">
+                {etiquetaFamilia(plantilla.familia)}
+                {plantilla.norma ? ` · ${plantilla.norma}` : ""}
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                setPlantilla(null);
+                setNombre("");
+                limpiarErrores();
+              }}
+              className="shrink-0 rounded-lg border border-border px-2 py-1 text-xs text-text-muted transition hover:text-text-primary"
+            >
+              Quitar
+            </button>
           </div>
         )}
 
         {familiaSel === null ? (
           // ── PASO 1: elegir la FAMILIA (tarjetas derivadas del catálogo) ──
-          <div className="space-y-2">
+          // Scroll PROPIO: con muchas familias la lista se desplaza dentro de
+          // su caja en vez de estirar el modal y empujar el boton de registro.
+          <div className="max-h-72 space-y-2 overflow-y-auto pr-1">
             {[...plantillasPorFamilia.entries()].map(([fam, lista]) => (
               <button
                 key={fam}
                 type="button"
                 onClick={() => {
+                  // NO se borra `plantilla`: entrar a otra familia a mirar no
+                  // puede deshacer lo ya elegido. La selección solo cambia si
+                  // se elige otra plantilla o se pulsa "Quitar" en el resumen.
                   setFamiliaSel(fam);
-                  setPlantilla(null);
                   limpiarErrores();
                 }}
                 className="flex w-full items-center justify-between gap-3 rounded-xl border border-border bg-bg-primary p-3 text-left transition hover:border-accent-blue/50"
@@ -331,8 +399,9 @@ export const RegistroUtillaje = ({
             <button
               type="button"
               onClick={() => {
+                // Volver al paso 1 PLIEGA la lista, no cancela la eleccion:
+                // era el bug que dejaba "Registrar utillaje" deshabilitado.
                 setFamiliaSel(null);
-                setPlantilla(null);
                 limpiarErrores();
               }}
               className="flex items-center gap-1 text-xs text-text-muted transition hover:text-text-primary"
@@ -351,6 +420,8 @@ export const RegistroUtillaje = ({
                     // El nombre es opcional en el contrato: si se deja, el
                     // backend usa el de la plantilla (utillajes_routes.py:290).
                     setNombre(p.nombre);
+                    // Los avisos de ESTA plantilla se vuelven a mostrar.
+                    setAvisosOcultos(new Set());
                     limpiarErrores();
                   }}
                   className={`w-full rounded-xl border p-3 text-left transition ${
@@ -379,14 +450,15 @@ export const RegistroUtillaje = ({
 
         {plantilla && (
           <>
-            {plantilla.advertencias.map((a, i) => (
-              <div
-                key={i}
-                className="rounded-lg border border-yellow-500/30 bg-yellow-500/10 px-3 py-2 text-xs text-yellow-500"
-              >
-                {a}
-              </div>
-            ))}
+            {plantilla.advertencias
+              .filter((a) => !avisosOcultos.has(a))
+              .map((a) => (
+                <AvisoCerrable
+                  key={a}
+                  texto={a}
+                  onCerrar={() => ocultarAviso(a)}
+                />
+              ))}
 
             <div>
               <label
@@ -457,6 +529,8 @@ export const RegistroUtillaje = ({
             value={familia ?? ""}
             onChange={(e) => {
               setFamilia(e.target.value || null);
+              // Los avisos del schema de ESTA familia se vuelven a mostrar.
+              setAvisosOcultos(new Set());
               limpiarErrores();
             }}
             className={inputCls}
@@ -478,14 +552,15 @@ export const RegistroUtillaje = ({
 
         {schema && (
           <>
-            {schema.advertencias.map((a, i) => (
-              <div
-                key={i}
-                className="rounded-lg border border-yellow-500/30 bg-yellow-500/10 px-3 py-2 text-xs text-yellow-500"
-              >
-                {a}
-              </div>
-            ))}
+            {schema.advertencias
+              .filter((a) => !avisosOcultos.has(a))
+              .map((a) => (
+                <AvisoCerrable
+                  key={a}
+                  texto={a}
+                  onCerrar={() => ocultarAviso(a)}
+                />
+              ))}
 
             <div>
               <label
@@ -588,7 +663,11 @@ export const RegistroUtillaje = ({
         </div>
       )}
 
-      <div className="flex justify-end gap-3 pt-1">
+      {/* Barra de acciones FIJA abajo (sticky dentro del área con scroll del
+          modal): las listas y los avisos se desplazan, pero "Registrar
+          utillaje" queda siempre a la vista y clicable. bg-bg-surface tapa el
+          contenido que pasa por debajo (mismo fondo del cuerpo del modal). */}
+      <div className="sticky bottom-0 flex justify-end gap-3 border-t border-border bg-bg-surface pt-3 pb-1">
         {onCancelar && (
           <button
             type="button"

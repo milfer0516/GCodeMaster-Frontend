@@ -202,6 +202,23 @@ const CATALOGO_EXTRA: CatalogoGlobal = {
   advertencia_general: "",
 };
 
+// Catálogo con MUCHAS plantillas en una sola familia: la lista expandida es
+// más alta que el modal. Prueba el scroll del paso 2 y que el botón de
+// registro sigue al alcance.
+const CATALOGO_LARGO: CatalogoGlobal = {
+  total: 12,
+  catalogo: Array.from({ length: 12 }, (_, i) => ({
+    id_utillaje_global: 100 + i,
+    familia: "copa",
+    nombre: `Copa ${i + 1} del lote grande`,
+    norma: "DIN 6350",
+    parametros: {},
+    advertencias: [],
+    descripcion: `Descripcion de la copa ${i + 1}.`,
+  })),
+  advertencia_general: "",
+};
+
 const FAMILIAS_MOCK = [
   { familia: "copa", etiqueta: "Copa / plato de garras", descripcion: "" },
   {
@@ -271,6 +288,96 @@ describe("RegistroUtillaje — vía USAR PLANTILLA (dos pasos)", () => {
     expect(await screen.findByText("Prensa / mordaza de maquina")).toBeTruthy();
     expect(screen.getByText("torre")).toBeTruthy();
     expect(screen.queryByText("Copa Ø160 DIN 6350")).toBeNull();
+  });
+
+  it("la plantilla elegida SOBREVIVE a plegar la lista y a cambiar de familia", async () => {
+    // El bug: volver al paso 1 borraba la seleccion y dejaba "Registrar
+    // utillaje" deshabilitado, sin forma de saber por que.
+    getCatalogoGlobalMock.mockResolvedValue(CATALOGO_EXTRA);
+    render(<RegistroUtillaje />);
+
+    fireEvent.click(await screen.findByText("Copa / plato de garras"));
+    fireEvent.click(await screen.findByText("Copa Ø160 DIN 6350"));
+
+    const boton = () =>
+      screen.getByText("Registrar utillaje").closest("button")!;
+    expect(boton().disabled).toBe(false);
+
+    // Plegar la lista (volver al paso 1): la seleccion sigue ahi y a la vista.
+    fireEvent.click(screen.getByText(/Cambiar familia/));
+    expect(await screen.findByText("Plantilla seleccionada")).toBeTruthy();
+    expect(boton().disabled).toBe(false);
+
+    // Entrar a OTRA familia solo a mirar tampoco la deshace.
+    fireEvent.click(screen.getByText("Prensa / mordaza de maquina"));
+    expect(screen.getByText("Plantilla seleccionada")).toBeTruthy();
+    expect(boton().disabled).toBe(false);
+
+    // "Quitar" es la unica via para deshacerla, y entonces si se deshabilita.
+    fireEvent.click(screen.getByText("Quitar"));
+    expect(screen.queryByText("Plantilla seleccionada")).toBeNull();
+    expect(boton().disabled).toBe(true);
+  });
+
+  it("SCROLL: con la lista larga expandida, la lista se desplaza en su caja y el botón queda en una barra fija (sticky)", async () => {
+    getCatalogoGlobalMock.mockResolvedValue(CATALOGO_LARGO);
+    render(<RegistroUtillaje />);
+
+    fireEvent.click(await screen.findByText("Copa / plato de garras"));
+    const ultima = await screen.findByText("Copa 12 del lote grande");
+
+    // La lista del paso 2 tiene scroll PROPIO: overflow-y-auto + max-h.
+    const lista = ultima.closest("button")!.parentElement!;
+    expect(lista.className).toContain("overflow-y-auto");
+    expect(lista.className).toMatch(/max-h-/);
+
+    // La barra de acciones es sticky: el botón no se va con el scroll.
+    const barra = screen.getByText("Registrar utillaje").closest("div")!;
+    expect(barra.className).toContain("sticky");
+    expect(barra.className).toContain("bottom-0");
+  });
+
+  it("las advertencias de medida se CIERRAN con su 'x' y el botón sigue clicable y registrando", async () => {
+    getCatalogoGlobalMock.mockResolvedValue(CATALOGO);
+    crearDesdePlantillaMock.mockResolvedValue({
+      mensaje: "ok",
+      id_utillaje: 20,
+      nombre: "Copa Ø160 DIN 6350",
+      familia: "copa",
+    });
+    const onRegistrado = vi.fn();
+    render(<RegistroUtillaje onRegistrado={onRegistrado} />);
+
+    // Advertencia general del catálogo, visible al entrar.
+    expect(await screen.findByText(/referencia de norma/)).toBeTruthy();
+
+    // Al elegir la plantilla aparece SU advertencia de medidas.
+    fireEvent.click(await screen.findByText("Copa / plato de garras"));
+    fireEvent.click(await screen.findByText("Copa Ø160 DIN 6350"));
+    expect(
+      await screen.findByText(/Verifique las medidas contra su utillaje real/),
+    ).toBeTruthy();
+
+    // Las DOS advertencias se descartan con su "x"…
+    const cierres = screen.getAllByRole("button", { name: "Cerrar aviso" });
+    expect(cierres).toHaveLength(2);
+    for (const c of cierres) fireEvent.click(c);
+
+    // …y ya no ocupan sitio ni empujan el botón fuera de la vista.
+    expect(screen.queryByText(/referencia de norma/)).toBeNull();
+    expect(
+      screen.queryByText(/Verifique las medidas contra su utillaje real/),
+    ).toBeNull();
+
+    // El botón sigue habilitado y dispara el registro con el MISMO contrato.
+    const boton = screen.getByText("Registrar utillaje").closest("button")!;
+    expect(boton.disabled).toBe(false);
+    fireEvent.click(boton);
+    await waitFor(() => expect(onRegistrado).toHaveBeenCalledTimes(1));
+    expect(crearDesdePlantillaMock).toHaveBeenCalledWith({
+      id_utillaje_global: 42,
+      nombre: "Copa Ø160 DIN 6350",
+    });
   });
 
   it("elige familia → plantilla y envía el cuerpo EXACTO del contrato (sin cambios)", async () => {
