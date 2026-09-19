@@ -96,6 +96,42 @@ export function camposIncompletos(
   );
 }
 
+// ── Normalización por TIPO de campo (inputs → valor del contrato) ───────────
+/**
+ * Convierte el valor crudo de un input en el valor que viaja en el JSON, según
+ * el TIPO declarado en el schema. Devuelve `undefined` cuando el campo no está
+ * declarado (vacío): "no declarado" es un estado legítimo que el backend
+ * reporta, y un valor inventado aquí sería una medida que nadie tomó.
+ *
+ * Es la ÚNICA fuente de la conversión por tipo: la usan tanto el reparto del
+ * montaje (construirParametrosYEnvolvente) como el alta de utillajes
+ * (construirParametrosUtillaje), así un tipo nuevo del contrato se soporta en
+ * un solo sitio.
+ */
+export function normalizarValorCampo(
+  campo: CampoSchema,
+  bruto: unknown,
+): unknown {
+  switch (campo.tipo) {
+    case "numero": {
+      const n = numeroDe(bruto);
+      return n === null ? undefined : n;
+    }
+    case "texto":
+      return typeof bruto === "string" && bruto.trim() !== ""
+        ? bruto.trim()
+        : undefined;
+    case "opcion":
+      return typeof bruto === "string" && bruto !== "" ? bruto : undefined;
+    case "opcion_multiple":
+      return Array.isArray(bruto) && bruto.length > 0 ? bruto : undefined;
+    case "puntos_xy": {
+      const puntos = puntosDeValor(bruto);
+      return puntos.length > 0 ? puntos : undefined;
+    }
+  }
+}
+
 // ── Construcción del sujecion_config ────────────────────────────────────────
 /**
  * Reparte los valores declarados entre `parametros_montaje` y `envolvente`
@@ -114,38 +150,14 @@ export function construirParametrosYEnvolvente(
   const envolvente: Record<string, number> = {};
 
   for (const campo of camposVisibles(campos, valores)) {
-    const bruto = valores[campo.nombre];
-
     if (campo.medida_desde) {
-      const n = numeroDe(bruto);
+      const n = numeroDe(valores[campo.nombre]);
       if (n !== null) envolvente[campo.nombre] = n;
       continue;
     }
 
-    switch (campo.tipo) {
-      case "numero": {
-        const n = numeroDe(bruto);
-        if (n !== null) parametros_montaje[campo.nombre] = n;
-        break;
-      }
-      case "texto":
-        if (typeof bruto === "string" && bruto.trim() !== "")
-          parametros_montaje[campo.nombre] = bruto.trim();
-        break;
-      case "opcion":
-        if (typeof bruto === "string" && bruto !== "")
-          parametros_montaje[campo.nombre] = bruto;
-        break;
-      case "opcion_multiple":
-        if (Array.isArray(bruto) && bruto.length > 0)
-          parametros_montaje[campo.nombre] = bruto;
-        break;
-      case "puntos_xy": {
-        const puntos = puntosDeValor(bruto);
-        if (puntos.length > 0) parametros_montaje[campo.nombre] = puntos;
-        break;
-      }
-    }
+    const valor = normalizarValorCampo(campo, valores[campo.nombre]);
+    if (valor !== undefined) parametros_montaje[campo.nombre] = valor;
   }
 
   return {
@@ -154,6 +166,27 @@ export function construirParametrosYEnvolvente(
     // reparto garantiza que son las de EnvolventeMontaje.
     envolvente: envolvente as unknown as EnvolventeMontaje,
   };
+}
+
+// ── Construcción de los `parametros` del ALTA de un utillaje ────────────────
+/**
+ * Aplana los valores de los `campos_utillaje` del schema de la familia en el
+ * dict `parametros` que espera POST /utillajes/manual
+ * (utillaje_schema.py:115-119). SIN reparto: aquí no hay envolvente, todas las
+ * claves van al mismo objeto, con clave = `campo.nombre` tal como llega del
+ * schema. Los campos no visibles (visible_si) y los no declarados no se
+ * envían: enviarlos es un 422 en el backend.
+ */
+export function construirParametrosUtillaje(
+  campos: CampoSchema[],
+  valores: ValoresCampos,
+): Record<string, unknown> {
+  const parametros: Record<string, unknown> = {};
+  for (const campo of camposVisibles(campos, valores)) {
+    const valor = normalizarValorCampo(campo, valores[campo.nombre]);
+    if (valor !== undefined) parametros[campo.nombre] = valor;
+  }
+  return parametros;
 }
 
 // ── Reparto de puntos alrededor de la pieza ─────────────────────────────────

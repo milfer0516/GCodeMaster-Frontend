@@ -10,8 +10,17 @@
 // Por qué el utillaje y no solo la familia: el backend rechaza con 400 un
 // `parametros_montaje` sin `id_utillaje` (cam_routes.py:507-514) — la
 // geometría del amarre la resuelve él desde la fila del parque.
+//
+// PARQUE VACÍO: el aviso ofrece registrar un utillaje AQUÍ MISMO, con el
+// componente compartido RegistroUtillaje (el mismo de la vista de gestión),
+// sin salir del wizard. Al registrar con éxito se RECARGA el parque y el
+// utillaje nuevo aparece en este selector: el paso de montaje queda
+// desbloqueado.
 // ─────────────────────────────────────────────────────────────────────────────
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+import { Plus } from "lucide-react";
+import { Modal } from "../../../../components/ui/Modal";
+import { RegistroUtillaje } from "../../../utillajes/components/RegistroUtillaje";
 import {
   getUtillajes,
   getFamiliasUtillaje,
@@ -26,8 +35,9 @@ export const PasoSelectorElemento = ({ onSelect }: Props) => {
   const [utillajes, setUtillajes] = useState<UtillajeResumen[] | null>(null);
   const [etiquetas, setEtiquetas] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
+  const [registroAbierto, setRegistroAbierto] = useState(false);
 
-  useEffect(() => {
+  const cargar = useCallback(() => {
     let vivo = true;
     Promise.all([getUtillajes(), getFamiliasUtillaje()])
       .then(([lista, familias]) => {
@@ -45,6 +55,8 @@ export const PasoSelectorElemento = ({ onSelect }: Props) => {
     };
   }, []);
 
+  useEffect(() => cargar(), [cargar]);
+
   if (error) {
     return <p className="text-sm text-red-400">{error}</p>;
   }
@@ -57,11 +69,38 @@ export const PasoSelectorElemento = ({ onSelect }: Props) => {
 
   if (utillajes.length === 0) {
     return (
-      <div className="rounded-xl border border-border bg-bg-primary px-4 py-3 text-sm text-text-muted">
-        No hay utillajes registrados en el parque de la empresa. Registre el
-        utillaje (prensa, bridas, copa…) en el módulo de utillajes para poder
-        declarar el montaje: el amarre se calcula con las medidas registradas,
-        no con valores escritos a mano aquí.
+      <div className="space-y-3">
+        <div className="rounded-xl border border-border bg-bg-primary px-4 py-3 text-sm text-text-muted">
+          No hay utillajes registrados en el parque de la empresa. Registre el
+          utillaje (prensa, bridas, copa…) para poder declarar el montaje: el
+          amarre se calcula con las medidas registradas, no con valores
+          escritos a mano aquí.
+        </div>
+        <button
+          type="button"
+          onClick={() => setRegistroAbierto(true)}
+          className="flex w-full items-center justify-center gap-2 rounded-xl bg-accent-blue px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-accent-blue/90"
+        >
+          <Plus className="h-4 w-4" /> Registrar un utillaje
+        </button>
+
+        <Modal
+          open={registroAbierto}
+          onClose={() => setRegistroAbierto(false)}
+          title="Registrar utillaje"
+          size="lg"
+        >
+          <RegistroUtillaje
+            onRegistrado={() => {
+              setRegistroAbierto(false);
+              // Refresca el parque: el utillaje nuevo aparece en ESTE selector
+              // y el paso de montaje queda desbloqueado sin salir del wizard.
+              setUtillajes(null);
+              cargar();
+            }}
+            onCancelar={() => setRegistroAbierto(false)}
+          />
+        </Modal>
       </div>
     );
   }

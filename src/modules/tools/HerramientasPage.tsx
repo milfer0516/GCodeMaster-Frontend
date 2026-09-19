@@ -1,34 +1,37 @@
 // src/modules/tools/HerramientasPage.tsx
 // ─────────────────────────────────────────────────────────────────────────────
-// Inventario de herramientas FÍSICAS de la empresa (Tier 3 — /tooling/instancias).
+// INVENTARIO — una sola pantalla con DOS secciones (diseño "GCodeMaster
+// inventario.html"): Herramientas (acento azul) y Utillajes de amarre (acento
+// verde). En pantalla ancha (≥900px, el breakpoint del diseño) van LADO A LADO
+// con divisor central y scroll independiente por columna; en estrecha se
+// APILAN a todo lo ancho y cada sección se puede plegar. Mobile-first: las
+// clases base son el apilado; `min-[900px]:` aplica el lado a lado.
 //
-// Cada fila es una pieza real del taller. Dos fresas Ø12 idénticas son dos filas
-// distintas, cada una con su longitud útil medida, su costo y su estado.
+// HERRAMIENTAS: misma lógica de siempre (instancias físicas, búsqueda en vivo
+// con `coincide`, agrupado por familia plegable, ficha ver/editar, retirar) —
+// solo cambia la disposición: filas nombre+código+Ø con insignia y menú de
+// acciones, como manda el diseño.
 //
-// La lista se agrupa POR FAMILIA y cada grupo se puede plegar, como un armario
-// de herramientas de verdad: todas las fresas juntas, todas las brocas juntas.
-// El buscador filtra EN VIVO sobre nombre, familia, diámetro y código.
+// UTILLAJES: vive en SeccionUtillajes (modules/utillajes), que reusa el
+// RegistroUtillaje compartido con el wizard.
 //
-// Ver / editar usan el MISMO componente de formulario que el alta
-// (HerramientaForm), cambiando solo el modo.
+// COLORES — todo a tokens del tema (globals.css), NADA hardcodeado; la pantalla
+// sigue el toggle oscuro/claro sola:
+//   marco #0d0f12          → bg-bg-primary      divisor/bordes → border-border
+//   tarjetas #14161a       → bg-bg-surface      texto          → text-text-*
+//   acento herramientas    → accent-blue        acento amarre  → accent-green
 // ─────────────────────────────────────────────────────────────────────────────
 import { useEffect, useMemo, useState } from "react";
-import {
-  Plus,
-  Pencil,
-  Trash2,
-  Search,
-  RefreshCw,
-  Ruler,
-  Eye,
-  ChevronDown,
-  ChevronRight,
-  X,
-} from "lucide-react";
+import { Wrench, X, Trash2 } from "lucide-react";
 import { AgregarHerramientaModal } from "./components/AgregarHerramientaModal";
 import { HerramientaForm } from "./components/HerramientaForm";
 import { HerramientaPreview3D } from "./components/HerramientaPreview3D";
 import { VisorConPanel } from "../../components/layout/VisorConPanel";
+import { SeccionInventario } from "./components/inventario/SeccionInventario";
+import { CajaBusqueda } from "./components/inventario/CajaBusqueda";
+import { AcordeonFamilia } from "./components/inventario/AcordeonFamilia";
+import { FilaItem } from "./components/inventario/FilaItem";
+import { SeccionUtillajes } from "../utillajes/components/SeccionUtillajes";
 import {
   getInstancias,
   getLibreria,
@@ -36,7 +39,6 @@ import {
   eliminarInstancia,
   familiaLabel,
   mensajeError,
-  ESTADOS_INSTANCIA,
   ESTADO_LABEL,
   type Instancia,
   type LibreriaEntrada,
@@ -61,16 +63,6 @@ function estadoBadge(estado: string) {
       return "bg-accent-red/10 text-accent-red border-accent-red/20";
   }
 }
-
-/**
- * SIN anchura. Antes empezaba por `w-full` y los filtros intentaban anularlo
- * con `w-auto` — pero en el CSS compilado `.w-full` va DESPUÉS de `.w-auto`,
- * así que ganaba siempre y los tres filtros salían a lo ancho, apilados por el
- * flex-wrap. El markup parecía correcto; el conflicto estaba en las clases.
- * La anchura se declara ahora en cada uso.
- */
-const inputCls =
-  "rounded-lg border border-border bg-bg-primary px-3 py-2 text-sm text-text-primary outline-none focus:border-accent-blue";
 
 /**
  * Normaliza para buscar: minúsculas, sin tildes y sin el símbolo Ø. Así
@@ -106,6 +98,15 @@ function coincide(i: Instancia, texto: string): boolean {
   return campos.some((c) => normalizar(c).includes(t));
 }
 
+/** Línea de medida en mono de la fila: Ø y, si ya se midió, longitud útil. */
+function detalleHerramienta(i: Instancia): string {
+  const partes: string[] = [];
+  if (i.diametro_mm != null) partes.push(`Ø ${i.diametro_mm} mm`);
+  if (i.longitud_util_real_mm != null)
+    partes.push(`útil ${i.longitud_util_real_mm} mm`);
+  return partes.join(" · ");
+}
+
 // ── COMPONENTE ────────────────────────────────────────────────────────────
 
 export function HerramientasPage() {
@@ -114,11 +115,10 @@ export function HerramientasPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
-  // Filtros
+  // Búsqueda en vivo de la sección (la única de la cabecera, como el diseño)
   const [busqueda, setBusqueda] = useState("");
-  const [filtroFamilia, setFiltroFamilia] = useState("");
-  const [filtroEstado, setFiltroEstado] = useState("");
   const [plegadas, setPlegadas] = useState<Set<string>>(new Set());
+  const [seccionAbierta, setSeccionAbierta] = useState(true);
 
   // Modales
   const [modalAgregar, setModalAgregar] = useState(false);
@@ -165,14 +165,8 @@ export function HerramientasPage() {
 
   // Filtrado EN VIVO — se recalcula en cada tecla, sin botón "buscar".
   const filtradas = useMemo(
-    () =>
-      instancias.filter(
-        (i) =>
-          coincide(i, busqueda) &&
-          (filtroFamilia ? i.familia === filtroFamilia : true) &&
-          (filtroEstado ? i.estado === filtroEstado : true),
-      ),
-    [instancias, busqueda, filtroFamilia, filtroEstado],
+    () => instancias.filter((i) => coincide(i, busqueda)),
+    [instancias, busqueda],
   );
 
   // Agrupado por familia — el armario de herramientas.
@@ -197,8 +191,6 @@ export function HerramientasPage() {
       return s;
     });
 
-  const todosPlegados = grupos.length > 0 && plegadas.size >= grupos.length;
-
   // ── ACCIONES ────────────────────────────────────────────────────────────
 
   const abrirFicha = (i: Instancia, modo: "ver" | "editar") => {
@@ -207,6 +199,12 @@ export function HerramientasPage() {
     setCampoConError(null);
     setErrorModal("");
     setModal(modo);
+  };
+
+  const abrirRetirar = (i: Instancia) => {
+    setSeleccionada(i);
+    setErrorModal("");
+    setModal("retirar");
   };
 
   const guardarEditar = async () => {
@@ -253,256 +251,118 @@ export function HerramientasPage() {
     }
   };
 
-  const hayFiltros = !!(busqueda || filtroFamilia || filtroEstado);
-
   // ── RENDER ──────────────────────────────────────────────────────────────
 
-  return (
-    // Ancho máximo legible y centrado: en un monitor de 24" una tabla de
-    // extremo a extremo obliga a barrer la cabeza para leer una fila.
-    <div className="mx-auto w-full max-w-[1400px] space-y-5">
-      {/* Encabezado */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-bold text-text-primary">
-            Inventario de Herramientas
-          </h1>
-          <p className="mt-0.5 text-sm text-text-muted">
-            {instancias.length} herramienta
-            {instancias.length !== 1 ? "s" : ""} física
-            {instancias.length !== 1 ? "s" : ""} en el taller
-            {hayFiltros && ` · ${filtradas.length} coinciden`}
-          </p>
-        </div>
+  const contenidoHerramientas = loading ? (
+    <div className="flex h-48 items-center justify-center">
+      <div className="h-7 w-7 animate-spin rounded-full border-2 border-accent-blue border-t-transparent" />
+    </div>
+  ) : error ? (
+    <div className="rounded-xl border border-accent-red/20 bg-accent-red/5 p-4 text-sm text-accent-red">
+      {error}
+    </div>
+  ) : grupos.length === 0 ? (
+    <div className="flex h-48 flex-col items-center justify-center gap-2 text-text-muted">
+      <p className="text-sm">
+        No hay herramientas{busqueda ? " con esa búsqueda" : " registradas"}.
+      </p>
+      {!busqueda && (
         <button
           onClick={() => setModalAgregar(true)}
-          className="flex items-center gap-2 rounded-xl bg-accent-blue px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-accent-blue/90 active:scale-[0.98]"
+          className="text-sm text-accent-blue hover:underline"
         >
-          <Plus className="h-4 w-4" /> Agregar herramienta
+          Agregar la primera herramienta
         </button>
-      </div>
-
-      {/* Filtros — UNA fila: el buscador se come el espacio sobrante, los
-          selectores ocupan lo suyo y las acciones se alinean a la derecha.
-          Solo se apila en pantallas estrechas (flex-col → sm:flex-row). */}
-      <div className="flex flex-col gap-2 rounded-xl border border-border bg-bg-surface p-2 sm:flex-row sm:items-center">
-        <div className="relative w-full min-w-[200px] sm:flex-1">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-muted" />
-          <input
-            type="text"
-            placeholder="Buscar por nombre, familia, Ø o código..."
-            value={busqueda}
-            onChange={(e) => setBusqueda(e.target.value)}
-            className={`${inputCls} w-full pl-9 pr-8`}
-          />
-          {busqueda && (
-            <button
-              onClick={() => setBusqueda("")}
-              className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-1 text-text-muted hover:text-text-primary"
-              aria-label="Limpiar búsqueda"
-            >
-              <X className="h-3.5 w-3.5" />
-            </button>
-          )}
-        </div>
-
-        <select
-          value={filtroFamilia}
-          onChange={(e) => setFiltroFamilia(e.target.value)}
-          className={`${inputCls} w-full sm:w-auto`}
-        >
-          <option value="">Todas las familias</option>
-          {familiasPresentes.map((f) => (
-            <option key={f} value={f}>
-              {familiaLabel(f)}
-            </option>
-          ))}
-        </select>
-
-        <select
-          value={filtroEstado}
-          onChange={(e) => setFiltroEstado(e.target.value)}
-          className={`${inputCls} w-full sm:w-auto`}
-        >
-          <option value="">Todos los estados</option>
-          {ESTADOS_INSTANCIA.map((e) => (
-            <option key={e} value={e}>
-              {ESTADO_LABEL[e]}
-            </option>
-          ))}
-        </select>
-
-        <button
-          onClick={() =>
-            setPlegadas(todosPlegados ? new Set() : new Set(grupos.map(([f]) => f)))
-          }
-          className="shrink-0 rounded-lg border border-border px-3 py-2 text-xs text-text-muted transition hover:text-accent-blue sm:ml-auto"
-        >
-          {todosPlegados ? "Expandir todo" : "Plegar todo"}
-        </button>
-
-        <button
-          onClick={cargar}
-          className="rounded-lg border border-border p-2 text-text-muted transition hover:text-accent-blue"
-          title="Recargar"
-        >
-          <RefreshCw className="h-4 w-4" />
-        </button>
-      </div>
-
-      {/* Lista agrupada por familia */}
-      {loading ? (
-        <div className="flex h-48 items-center justify-center">
-          <div className="h-7 w-7 animate-spin rounded-full border-2 border-accent-blue border-t-transparent" />
-        </div>
-      ) : error ? (
-        <div className="rounded-xl border border-accent-red/20 bg-accent-red/5 p-4 text-sm text-accent-red">
-          {error}
-        </div>
-      ) : grupos.length === 0 ? (
-        <div className="flex h-48 flex-col items-center justify-center gap-2 text-text-muted">
-          <p className="text-sm">
-            No hay herramientas{hayFiltros ? " con esos filtros" : " registradas"}.
-          </p>
-          {!hayFiltros && (
-            <button
-              onClick={() => setModalAgregar(true)}
-              className="text-sm text-accent-blue hover:underline"
-            >
-              Agregar la primera herramienta
-            </button>
-          )}
-        </div>
-      ) : (
-        <div className="space-y-3">
-          {grupos.map(([familia, lista]) => {
-            const plegado = plegadas.has(familia);
-            return (
-              <section
-                key={familia}
-                className="overflow-hidden rounded-xl border border-border bg-bg-surface"
-              >
-                <button
-                  onClick={() => alternarGrupo(familia)}
-                  className="flex w-full items-center gap-2 bg-bg-elevated px-4 py-2.5 text-left transition hover:bg-bg-elevated/70"
-                >
-                  {plegado ? (
-                    <ChevronRight className="h-4 w-4 text-text-muted" />
-                  ) : (
-                    <ChevronDown className="h-4 w-4 text-text-muted" />
-                  )}
-                  <span className="text-sm font-semibold text-text-primary">
-                    {familiaLabel(familia)}
-                  </span>
-                  <span className="rounded-full border border-border px-2 py-0.5 text-[11px] text-text-muted">
-                    {lista.length}
-                  </span>
-                </button>
-
-                {!plegado && (
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-sm">
-                      <thead className="border-b border-border">
-                        <tr>
-                          {[
-                            "Herramienta",
-                            "Ø mm",
-                            "Long. útil",
-                            "Carrusel",
-                            "Portaherr.",
-                            "Estado",
-                            "",
-                          ].map((h) => (
-                            <th
-                              key={h}
-                              className="whitespace-nowrap px-4 py-2 text-left text-[11px] font-semibold uppercase tracking-wider text-text-muted"
-                            >
-                              {h}
-                            </th>
-                          ))}
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-border">
-                        {lista.map((i) => (
-                          <tr
-                            key={i.id_herramienta_instancia}
-                            className="transition hover:bg-bg-elevated/50"
-                          >
-                            <td className="px-4 py-2.5 font-medium text-text-primary">
-                              {i.nombre ?? "—"}
-                              {i.codigo_interno && (
-                                <span className="ml-2 text-xs text-text-muted">
-                                  {i.codigo_interno}
-                                </span>
-                              )}
-                            </td>
-                            <td className="px-4 py-2.5 text-text-primary">
-                              {i.diametro_mm != null ? `Ø${i.diametro_mm}` : "—"}
-                            </td>
-                            <td className="whitespace-nowrap px-4 py-2.5">
-                              {i.longitud_util_real_mm != null ? (
-                                <span className="inline-flex items-center gap-1 text-text-primary">
-                                  <Ruler className="h-3 w-3 text-accent-blue" />
-                                  {i.longitud_util_real_mm} mm
-                                </span>
-                              ) : (
-                                // Vacío hasta que Operaciones registre el montaje.
-                                <span className="text-text-muted">—</span>
-                              )}
-                            </td>
-                            <td className="px-4 py-2.5 text-center text-text-muted">
-                              {i.posicion_carrusel ?? "—"}
-                            </td>
-                            <td className="px-4 py-2.5 text-text-muted">
-                              {i.portaherramienta_real ?? "—"}
-                            </td>
-                            <td className="px-4 py-2.5">
-                              <span
-                                className={`whitespace-nowrap rounded-full border px-2.5 py-0.5 text-xs font-medium ${estadoBadge(i.estado)}`}
-                              >
-                                {ESTADO_LABEL[i.estado] ?? i.estado}
-                              </span>
-                            </td>
-                            <td className="px-4 py-2.5">
-                              <div className="flex items-center gap-1">
-                                <button
-                                  onClick={() => abrirFicha(i, "ver")}
-                                  className="rounded-lg p-1.5 text-text-muted transition hover:bg-bg-elevated hover:text-accent-blue"
-                                  title="Ver ficha en 3D"
-                                >
-                                  <Eye className="h-4 w-4" />
-                                </button>
-                                <button
-                                  onClick={() => abrirFicha(i, "editar")}
-                                  className="rounded-lg p-1.5 text-text-muted transition hover:bg-bg-elevated hover:text-accent-blue"
-                                  title="Editar"
-                                >
-                                  <Pencil className="h-4 w-4" />
-                                </button>
-                                <button
-                                  onClick={() => {
-                                    setSeleccionada(i);
-                                    setErrorModal("");
-                                    setModal("retirar");
-                                  }}
-                                  className="rounded-lg p-1.5 text-text-muted transition hover:bg-bg-elevated hover:text-accent-red"
-                                  title="Retirar del inventario"
-                                >
-                                  <Trash2 className="h-4 w-4" />
-                                </button>
-                              </div>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
-              </section>
-            );
-          })}
-        </div>
       )}
+    </div>
+  ) : (
+    <div className="flex flex-col gap-2">
+      {grupos.map(([familia, lista]) => (
+        <AcordeonFamilia
+          key={familia}
+          nombre={familiaLabel(familia)}
+          cantidad={lista.length}
+          abierto={!plegadas.has(familia)}
+          onAlternar={() => alternarGrupo(familia)}
+        >
+          {lista.map((i) => (
+            <FilaItem
+              key={i.id_herramienta_instancia}
+              nombre={i.nombre ?? "—"}
+              codigo={i.codigo_interno ?? ""}
+              detalle={detalleHerramienta(i)}
+              badge={{
+                texto: ESTADO_LABEL[i.estado] ?? i.estado,
+                clases: estadoBadge(i.estado),
+              }}
+              acciones={[
+                { etiqueta: "Ver detalle", onClick: () => abrirFicha(i, "ver") },
+                { etiqueta: "Editar", onClick: () => abrirFicha(i, "editar") },
+                {
+                  etiqueta: "Eliminar",
+                  peligrosa: true,
+                  onClick: () => abrirRetirar(i),
+                },
+              ]}
+            />
+          ))}
+        </AcordeonFamilia>
+      ))}
+    </div>
+  );
+
+  return (
+    <div className="mx-auto w-full max-w-[1500px]">
+      {/* Marco del diseño: tarjeta redondeada que contiene las dos secciones */}
+      <div
+        data-testid="inventario-frame"
+        className="overflow-hidden rounded-2xl border border-border bg-bg-primary"
+      >
+        <div
+          data-testid="inventario-wrap"
+          className="flex flex-col min-[900px]:flex-row min-[900px]:items-stretch min-[900px]:h-[min(760px,calc(100vh_-_110px))]"
+        >
+          {/* ── SECCIÓN HERRAMIENTAS (acento azul) ── */}
+          <section
+            data-testid="seccion-herramientas"
+            className="min-w-0 flex-1 p-4 min-[900px]:overflow-y-auto min-[900px]:px-5 min-[900px]:py-[18px]"
+          >
+            <SeccionInventario
+              icono={Wrench}
+              titulo="Herramientas"
+              subtitulo="Herramientas de corte"
+              conteo={`${instancias.length} en el taller`}
+              etiquetaAccion="Agregar"
+              onAccion={() => setModalAgregar(true)}
+              acento="blue"
+              abierto={seccionAbierta}
+              onAlternar={() => setSeccionAbierta((v) => !v)}
+            >
+              <CajaBusqueda
+                placeholder="Buscar por nombre o código"
+                value={busqueda}
+                onChange={setBusqueda}
+              />
+              {contenidoHerramientas}
+            </SeccionInventario>
+          </section>
+
+          {/* Divisor central: solo en ancho (en estrecho hay border-t) */}
+          <div
+            data-testid="inventario-divider"
+            aria-hidden
+            className="hidden w-px bg-border min-[900px]:block"
+          />
+
+          {/* ── SECCIÓN UTILLAJES DE AMARRE (acento verde) ── */}
+          <section
+            data-testid="seccion-utillajes"
+            className="min-w-0 flex-1 border-t border-border p-4 min-[900px]:border-t-0 min-[900px]:overflow-y-auto min-[900px]:px-5 min-[900px]:py-[18px]"
+          >
+            <SeccionUtillajes />
+          </section>
+        </div>
+      </div>
 
       {/* ── MODAL AGREGAR (componente reutilizable) ── */}
       <AgregarHerramientaModal
