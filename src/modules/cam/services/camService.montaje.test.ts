@@ -54,7 +54,7 @@ function payload(): TrabajoPayload {
     materialKey: "acero",
     stockConfig: STOCK,
     partDims: { x: 100, y: 80, z: 40 },
-    datumConfig: { x: 0, y: 0, z: 0 },
+    datumConfig: { origen: "esquina_sup_izq" },
     montajeConfig: MONTAJE,
     contextoFabricacion: {
       estado: "desconocido",
@@ -102,5 +102,20 @@ describe("construirFormularioTrabajo — cuerpo saliente montaje_json", () => {
     const crudo = montajeJson as string;
     expect(crudo).not.toContain("posiciones_bridas");
     expect(crudo).not.toContain("z_apoyo_mm");
+  });
+});
+
+describe("construirFormularioTrabajo — cuerpo saliente datum_json", () => {
+  // El motor lee SOLO datum_cfg.get("origen") (cam_builder.py:3365-3366).
+  it("envía {origen} con la opción elegida y nada más (no {x,y,z})", () => {
+    const form = construirFormularioTrabajo(payload());
+    const crudo = form.get("datum_json") as string;
+    console.log("datum_json saliente:", crudo);
+    expect(JSON.parse(crudo)).toEqual({ origen: "esquina_sup_izq" });
+  });
+
+  it("sin datum elegido envía {} (no declarado), no un origen inventado", () => {
+    const form = construirFormularioTrabajo({ ...payload(), datumConfig: {} });
+    expect(form.get("datum_json")).toBe("{}");
   });
 });

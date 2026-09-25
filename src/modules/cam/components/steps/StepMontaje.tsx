@@ -1,5 +1,5 @@
 // src/modules/cam/components/steps/StepMontaje.tsx
-import { useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { Settings2 } from "lucide-react";
 import { useCamStore } from "../../store/camStore";
 import { CamViewer3D } from "../CamViewer3D";
@@ -10,6 +10,11 @@ import { EditorMontajeEspacial } from "../sujecion/EditorMontajeEspacial";
 import { WizardNavButtons } from "./WizardNavButtons";
 import { alturaTotalDeclarada } from "../../domain/camposMontaje";
 import type { SujecionConfig } from "../../store/camStore";
+import {
+  puntoDelDatum,
+  puntosDatumDeCaja,
+  type PuntoDatum,
+} from "../../domain/datum";
 
 const WCS_ITEMS = [
   { code: "G54" as const, descripcion: "Origen pieza 1 (más común)" },
@@ -61,6 +66,25 @@ export const StepMontaje = () => {
   // monte primero. La cascada máquina→mecanizabilidad la conserva setMaquina.
   const maquinaActiva = useCamStore((s) => s.maquina);
   const [modalAbierto, setModalAbierto] = useState(false);
+
+  // Cero de pieza. Los puntos elegibles salen de la caja envolvente del sólido
+  // que mecaniza el motor (domain/datum.ts); lo elegido es lo que viaja en
+  // datum_json. El modo datum es estado de ESTA pantalla: al salir del paso se
+  // pierde y el visor vuelve a su comportamiento normal.
+  const datumConfig = useCamStore((s) => s.datumConfig);
+  const setDatumConfig = useCamStore((s) => s.setDatumConfig);
+  const [modoDatum, setModoDatum] = useState(false);
+  const puntosDatum = useMemo(
+    () => puntosDatumDeCaja(meshData?.bounding_box),
+    [meshData],
+  );
+  const puntoElegido = puntoDelDatum(puntosDatum, datumConfig);
+  // Estable: el visor re-suscribe sus listeners si cambia.
+  const elegirPuntoDatum = useCallback(
+    (punto: PuntoDatum) => setDatumConfig(punto.datum),
+    [setDatumConfig],
+  );
+  const salirModoDatum = useCallback(() => setModoDatum(false), []);
 
   const dimensiones = analisis?.dimensiones ?? { x: 0, y: 0, z: 0 };
 
@@ -196,8 +220,50 @@ export const StepMontaje = () => {
         )}
       </Collapsible>
 
-      {/* WCS */}
-      <Collapsible titulo="Sistema de coordenadas (WCS)">
+      {/* Cero de pieza: DÓNDE va (datum) y CÓMO se llama en el control (WCS),
+          como UNA sola decisión. */}
+      <Collapsible titulo="Cero de pieza (datum y WCS)" defaultOpen>
+        <p className="mb-2 text-xs text-text-muted">
+          El cero del programa va en un punto que usted palpa en la máquina y
+          se guarda en un corrector de origen (G54–G57).
+        </p>
+
+        <div className="mb-3 rounded-xl border border-border bg-bg-primary px-3 py-2">
+          {puntoElegido ? (
+            <p className="text-sm text-text-primary">
+              El cero va en{" "}
+              <span className="font-semibold text-accent-blue">
+                {puntoElegido.etiqueta}
+              </span>{" "}
+              y se llama{" "}
+              <span className="font-semibold text-accent-blue">
+                {montajeConfig.wcs}
+              </span>
+              .
+            </p>
+          ) : (
+            <p className="text-sm text-text-muted">
+              Sin elegir. Si no elige, el motor pone el cero en el centro de la
+              cara de arriba.
+            </p>
+          )}
+        </div>
+
+        <button
+          onClick={() => setModoDatum((activo) => !activo)}
+          disabled={puntosDatum.length === 0}
+          className={`mb-3 w-full rounded-xl border px-4 py-2.5 min-h-[44px] text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-40 ${
+            modoDatum
+              ? "border-amber-400 bg-amber-400/10 text-amber-500"
+              : "border-accent-blue/50 text-accent-blue hover:bg-accent-blue/10"
+          }`}
+        >
+          {modoDatum ? "Terminar selección del cero" : "Seleccionar datum"}
+        </button>
+
+        <p className="mb-1.5 text-xs font-medium text-text-muted">
+          Corrector de origen en el control
+        </p>
         <div className="grid grid-cols-2 md:flex gap-2">
           {WCS_ITEMS.map(({ code, descripcion }) => (
             <div key={code} className="relative group">
@@ -219,6 +285,11 @@ export const StepMontaje = () => {
             </div>
           ))}
         </div>
+        <p className="mt-2 text-xs leading-snug text-amber-500">
+          Atención: el corrector elegido todavía no llega al programa. Antes
+          de registrar el cero, mire en el G-Code qué corrector (G54–G57)
+          llama y use ese.
+        </p>
       </Collapsible>
 
       {/* Notas */}
@@ -287,6 +358,11 @@ export const StepMontaje = () => {
               });
             }}
             faceIdDestacada={montajeConfig.face_id_apoyo}
+            modoDatum={modoDatum}
+            puntosDatum={puntosDatum}
+            datumSeleccionadoId={puntoElegido?.id ?? null}
+            onDatumPick={elegirPuntoDatum}
+            onSalirModoDatum={salirModoDatum}
           />
         }
         paneles={[

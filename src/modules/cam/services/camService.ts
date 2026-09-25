@@ -1,6 +1,7 @@
 // src/modules/cam/services/camService.ts
 import { api } from "../../../services/api";
 import type { StockConfig, ContextoFabricacion } from "../store/camStore";
+import type { DatumConfig } from "../domain/datum";
 import { cylTotals, type StockFaceDirection } from "../utils/stockFaces";
 
 export interface MaterialGlobal {
@@ -167,7 +168,9 @@ export interface TrabajoPayload {
   // (P8). Null/omitted for parts with no dominant cylinder (falls back to bbox).
   partCylinderOD?: number | null;
   partCylinderLen?: number | null;
-  datumConfig: object;
+  // Viaja en datum_json tal cual: {origen} o {} (no declarado). Tipado para que
+  // no pueda volver a salir una forma que el motor no lee (antes {x,y,z}).
+  datumConfig: DatumConfig;
   montajeConfig: object;
   // Declaración del operador en el paso Contexto. Viaja SIEMPRE (por defecto
   // DESCONOCIDO) para que el adaptador del motor construya el ManufacturingContext

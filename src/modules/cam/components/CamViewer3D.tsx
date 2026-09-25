@@ -11,6 +11,7 @@ import { formatMm } from "../../../utils/format";
 import type { SujecionConfig, StockConfig } from "../store/camStore";
 import type { StockFaceRole, StockPickRegion } from "../utils/stockFaces";
 import { cylTotals } from "../utils/stockFaces";
+import type { PuntoDatum } from "../domain/datum";
 
 // ── Props — mismas que el visor anterior para no romper StepOperaciones ──
 // DESPUÉS
@@ -67,7 +68,27 @@ interface Props {
     locked: boolean,
   ) => void;
   onStockFaceHover?: (faceIndex: number | null) => void;
+
+  // ── Modo DATUM (SOLO StepMontaje) ──
+  // Con `modoDatum` el visor deja de atender las interacciones normales (clic =
+  // dimensión, doble clic = acción del paso, picking de stock) y SOLO permite
+  // elegir uno de `puntosDatum`. Al salir del modo (false) vuelven intactas.
+  // El visor no sabe qué es una esquina ni un agujero: dibuja las filas que le
+  // pasan (posición en el marco del sólido del motor) y reporta la elegida.
+  modoDatum?: boolean;
+  puntosDatum?: PuntoDatum[];
+  datumSeleccionadoId?: string | null;
+  onDatumPick?: (punto: PuntoDatum) => void;
+  onSalirModoDatum?: () => void;
 }
+
+// Colores de los marcadores de datum (siempre visibles sobre la pieza).
+const COLOR_DATUM_LIBRE = 0xe2e8f0; // blanco grisáceo — punto elegible
+const COLOR_DATUM_HOVER = 0x93c5fd; // azul claro — bajo el cursor
+const COLOR_DATUM_ELEGIDO = 0xfbbf24; // ámbar — el cero elegido
+// Default ESTABLE: un `[]` literal en la firma sería un array nuevo en cada
+// render y rehace los marcadores sin motivo.
+const SIN_PUNTOS_DATUM: PuntoDatum[] = [];
 
 // Colores del stock por rol + estado (hover/activo). El VISOR no decide roles:
 // recibe el rol ya derivado por el dominio y solo lo pinta.
@@ -395,6 +416,11 @@ export function CamViewer3D({
   activeStockFaceIndex = null,
   onStockFaceClick,
   onStockFaceHover,
+  modoDatum = false,
+  puntosDatum = SIN_PUNTOS_DATUM,
+  datumSeleccionadoId = null,
+  onDatumPick,
+  onSalirModoDatum,
 }: Props) {
   const mountRef = useRef<HTMLDivElement>(null);
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
@@ -418,6 +444,10 @@ export function CamViewer3D({
   const [faceInfo, setFaceInfo] = useState<FaceMetadata | null>(null);
   // Índice de cara de stock bajo el cursor (para resaltar + label de valor).
   const [stockHover, setStockHover] = useState<number | null>(null);
+  // Marcadores de datum: grupo HIJO de la malla de la pieza (hereda su giro,
+  // escala de lectura y posición) y el id del punto bajo el cursor.
+  const datumGroupRef = useRef<THREE.Group | null>(null);
+  const [datumHover, setDatumHover] = useState<string | null>(null);
 
   const {
     archivo,
@@ -849,6 +879,9 @@ export function CamViewer3D({
   useEffect(() => {
     if (!rendererRef.current || !cameraRef.current) return;
     if (!meshRef.current) return;
+    // En modo datum los clics SOLO eligen un punto (efecto 5d). Sin listeners
+    // aquí; al salir del modo el efecto se re-ejecuta y los restaura tal cual.
+    if (modoDatum) return;
 
     const el = mountRef.current!;
     const renderer = rendererRef.current;
@@ -984,7 +1017,155 @@ export function CamViewer3D({
     faceIdDestacada,
     onToggle,
     onFaceClick,
+    modoDatum,
   ]);
+
+  // ── 5c. Marcadores de datum ─────────────────────────────────────────────
+  // Esferas en las posiciones de `puntosDatum`, como HIJAS de la malla de la
+  // pieza: las posiciones están en el marco del sólido del motor, que es el
+  // marco local de la malla (mismo sólido teselado), así que heredan el giro de
+  // apoyo, la escala de lectura y el centrado sin recalcular nada. Se dibujan
+  // sin test de profundidad para que se vean aunque la pieza las tape.
+  // En modo datum se ven todas; fuera de él, solo la elegida (si la hay).
+  // Va DESPUÉS del efecto 3 para colgarse de la malla recién construida.
+  useEffect(() => {
+    const mesh = meshRef.current;
+    if (!mesh || !meshData) return;
+
+    const visibles = modoDatum
+      ? puntosDatum
+      : puntosDatum.filter((p) => p.id === datumSeleccionadoId);
+    if (visibles.length === 0) return;
+
+    const bb = meshData.bounding_box;
+    const diagonal = Math.sqrt(
+      (bb.max[0] - bb.min[0]) ** 2 +
+        (bb.max[1] - bb.min[1]) ** 2 +
+        (bb.max[2] - bb.min[2]) ** 2,
+    );
+    const radio = Math.max(diagonal * 0.02, 1);
+
+    const group = new THREE.Group();
+    group.renderOrder = 10;
+    visibles.forEach((punto) => {
+      const elegido = punto.id === datumSeleccionadoId;
+      const enHover = modoDatum && punto.id === datumHover;
+      const color = elegido
+        ? COLOR_DATUM_ELEGIDO
+        : enHover
+          ? COLOR_DATUM_HOVER
+          : COLOR_DATUM_LIBRE;
+      const esfera = new THREE.Mesh(
+        new THREE.SphereGeometry(elegido || enHover ? radio * 1.35 : radio, 20, 14),
+        new THREE.MeshBasicMaterial({
+          color,
+          depthTest: false,
+          transparent: true,
+          opacity: 0.95,
+        }),
+      );
+      esfera.position.set(punto.posicion[0], punto.posicion[1], punto.posicion[2]);
+      esfera.renderOrder = 10;
+      esfera.userData.idPuntoDatum = punto.id;
+      group.add(esfera);
+    });
+
+    mesh.add(group);
+    datumGroupRef.current = group;
+
+    return () => {
+      group.parent?.remove(group);
+      group.traverse((obj) => {
+        if (obj instanceof THREE.Mesh) {
+          obj.geometry.dispose();
+          (obj.material as THREE.Material).dispose();
+        }
+      });
+      if (datumGroupRef.current === group) datumGroupRef.current = null;
+    };
+  }, [
+    meshData,
+    maquina,
+    mostrarMesa,
+    modoDatum,
+    puntosDatum,
+    datumSeleccionadoId,
+    datumHover,
+  ]);
+
+  // ── 5d. Picking de datum (SOLO en modo datum) ───────────────────────────
+  // Único consumidor de clics mientras dura el modo. Al entrar se limpia lo que
+  // el modo normal dejó a medias (panel de dimensión y cara en hover), para que
+  // no quede una cara resaltada que ya no responde.
+  useEffect(() => {
+    if (!modoDatum) return;
+    if (!rendererRef.current || !cameraRef.current || !mountRef.current) return;
+
+    const el = mountRef.current;
+    const renderer = rendererRef.current;
+    const camera = cameraRef.current;
+    const raycaster = new THREE.Raycaster();
+    const mouse = new THREE.Vector2();
+
+    setFaceInfo(null);
+    if (hoveredRef.current !== null && meshData) {
+      const face = meshData.faces[hoveredRef.current];
+      const mat = materialsRef.current[hoveredRef.current];
+      if (face && mat) {
+        const aspecto = aspectoDeCara(
+          face,
+          operaciones,
+          seleccionadas,
+          opEnfocada,
+          false,
+          face.face_id === faceIdDestacada,
+        );
+        mat.color.copy(aspecto.color);
+        mat.emissive.set(aspecto.emissive);
+        mat.transparent = aspecto.transparent;
+        mat.opacity = aspecto.opacity;
+      }
+      hoveredRef.current = null;
+    }
+    el.style.cursor = "crosshair";
+
+    const puntoBajoCursor = (e: MouseEvent): PuntoDatum | null => {
+      const group = datumGroupRef.current;
+      if (!group) return null;
+      const rect = el.getBoundingClientRect();
+      mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+      mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+      raycaster.setFromCamera(mouse, camera);
+      const hits = raycaster.intersectObjects(group.children, false);
+      if (hits.length === 0) return null;
+      const id = hits[0].object.userData.idPuntoDatum as string | undefined;
+      return puntosDatum.find((p) => p.id === id) ?? null;
+    };
+
+    const handleMove = (e: MouseEvent) => {
+      const punto = puntoBajoCursor(e);
+      const id = punto?.id ?? null;
+      setDatumHover((prev) => (prev === id ? prev : id));
+      el.style.cursor = punto ? "pointer" : "crosshair";
+    };
+
+    const handleClick = (e: MouseEvent) => {
+      const punto = puntoBajoCursor(e);
+      if (punto) onDatumPick?.(punto);
+    };
+
+    renderer.domElement.addEventListener("mousemove", handleMove);
+    renderer.domElement.addEventListener("click", handleClick);
+    return () => {
+      renderer.domElement.removeEventListener("mousemove", handleMove);
+      renderer.domElement.removeEventListener("click", handleClick);
+      setDatumHover(null);
+      el.style.cursor = "grab";
+    };
+    // Solo se re-suscribe al entrar/salir del modo o si cambian los puntos o el
+    // callback; los colores de cara se leen en el instante de entrar.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [modoDatum, puntosDatum, onDatumPick]);
 
   // ── 6. Dibujar stock (wireframe + translúcido) ──────────────────────────
   useEffect(() => {
@@ -1218,6 +1399,7 @@ export function CamViewer3D({
   // (dirección/rol/bloqueo) la hace el dominio (resolveStockFace).
   useEffect(() => {
     if (!onStockFaceClick && !onStockFaceHover) return;
+    if (modoDatum) return; // en modo datum los clics solo eligen el cero
     if (!rendererRef.current || !cameraRef.current || !mountRef.current) return;
 
     const el = mountRef.current;
@@ -1270,7 +1452,7 @@ export function CamViewer3D({
       renderer.domElement.removeEventListener("mousemove", handleMove);
       renderer.domElement.removeEventListener("click", handleClick);
     };
-  }, [onStockFaceClick, onStockFaceHover, stockFacesByBoxIndex]);
+  }, [onStockFaceClick, onStockFaceHover, stockFacesByBoxIndex, modoDatum]);
 
   // ── 7. Dibujar la MESA física (Fase 1 — plano + rejilla métrica) ───────
   // Sigue el MISMO patrón que el stock (efecto 6): construye un THREE.Group en
@@ -1505,6 +1687,45 @@ export function CamViewer3D({
           style={{ pointerEvents: "none" }}
         >
           {formatFaceDimension(faceInfo)}
+        </div>
+      )}
+
+      {/* Aviso del modo datum. Solo la tarjeta recibe eventos (botón Listo);
+          el resto del visor sigue orbitando con normalidad. */}
+      {modoDatum && (
+        <div className="pointer-events-none absolute inset-x-2 top-2 flex justify-center">
+          <div className="pointer-events-auto w-full max-w-md rounded-xl border border-amber-400/50 bg-black/80 px-4 py-3 text-white shadow-lg backdrop-blur-sm">
+            <p className="text-sm font-semibold text-amber-300">
+              Elija el cero de la pieza
+            </p>
+            <p className="mt-1 text-xs leading-snug text-white/85">
+              Toque una esquina de arriba o el centro de la cara de arriba. Tiene
+              que ser un punto que usted pueda tocar en la máquina con el reloj
+              comparador o el palpador de bordes. No vale cualquier punto de la
+              pieza: solo los marcados.
+            </p>
+            <div className="mt-2 flex items-center justify-between gap-3">
+              <p className="min-w-0 truncate text-xs font-medium">
+                {(() => {
+                  const hover = puntosDatum.find((p) => p.id === datumHover);
+                  const elegido = puntosDatum.find(
+                    (p) => p.id === datumSeleccionadoId,
+                  );
+                  if (hover) return hover.etiqueta;
+                  if (elegido) return `Elegido: ${elegido.etiqueta}`;
+                  return puntosDatum.length === 0
+                    ? "La geometría aún no está cargada."
+                    : "Ningún punto elegido todavía.";
+                })()}
+              </p>
+              <button
+                onClick={onSalirModoDatum}
+                className="shrink-0 rounded-lg bg-amber-400 px-3 py-1.5 text-xs font-semibold text-black transition hover:bg-amber-300 min-h-[36px]"
+              >
+                Listo
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

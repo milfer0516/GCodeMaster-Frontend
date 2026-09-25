@@ -20,6 +20,7 @@ import {
   type RespuestaMDESetup,
 } from "../domain/mdeRecomendaciones";
 import type { RespuestaMecanizabilidad } from "../domain/mecanizabilidad";
+import { DATUM_NO_DECLARADO, type DatumConfig } from "../domain/datum";
 
 export type { Setup };
 export type { StockFace, CylStock };
@@ -98,11 +99,9 @@ export interface ContextoFabricacion {
   proceso_origen: ProcessOrigin;
 }
 
-export interface DatumConfig {
-  x: number;
-  y: number;
-  z: number;
-}
+// El datum (cero del programa) vive en domain/datum.ts: allí están la forma que
+// viaja en datum_json ({origen}) y la tabla de puntos que el operario elige.
+export type { DatumConfig } from "../domain/datum";
 
 // La familia del utillaje elegido. Ya NO es una lista cerrada escrita a mano:
 // las familias las sirve el backend (GET /utillajes/familias) y una familia
@@ -355,7 +354,10 @@ const MONTAJE_INICIAL: MontajeConfig = {
   montaje_espacial: null,
 };
 
-const DATUM_INICIAL: DatumConfig = { x: 0, y: 0, z: 0 };
+// Sin datum elegido NO se inventa uno: viaja `{}` (no declarado) y el motor
+// aplica su default técnico, como hasta ahora. Antes viajaba {x,y,z}, que el
+// motor nunca leyó (solo lee `origen`).
+const DATUM_INICIAL: DatumConfig = DATUM_NO_DECLARADO;
 
 // Por defecto "No estoy seguro" → DESCONOCIDO: el paso nunca bloquea y no
 // declarar es una respuesta válida (el MDE degrada igual que hoy).
@@ -418,6 +420,9 @@ export const useCamStore = create<CamState>((set) => ({
       setup: null,
       // Cascade: sin Setup no hay offsets de stock válidos.
       stockConfig: resetStockMeasurements(state.stockConfig),
+      // Cascade: el datum se eligió mirando OTRA pieza. Arrastrarlo enviaría un
+      // cero que el operario no decidió para esta geometría.
+      datumConfig: DATUM_INICIAL,
     }));
   },
   setOperaciones: (operaciones) => set({ operaciones }),
