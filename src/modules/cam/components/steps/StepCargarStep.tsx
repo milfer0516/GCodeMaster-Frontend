@@ -283,7 +283,7 @@ export const StepCargarStep = () => {
         </div>
 
         {/* Navegación: es el primer paso del wizard — no hay "Atrás". */}
-        <WizardNavButtons nextStep="montaje" nextLabel="Configurar montaje" />
+        <WizardNavButtons nextLabel="Configurar montaje" />
       </div>
     );
   }

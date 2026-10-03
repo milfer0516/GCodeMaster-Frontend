@@ -52,7 +52,6 @@ function badgeSujecion(cfg: SujecionConfig): string {
 }
 
 export const StepMontaje = () => {
-  const setStep = useCamStore((s) => s.setStep);
   const analisis = useCamStore((s) => s.analisis);
   console.log("tipo_pieza:", analisis?.tipo_pieza);
   console.log("caras_planas count:", analisis?.caras_planas?.length);
@@ -60,7 +59,6 @@ export const StepMontaje = () => {
   const setMontajeConfig = useCamStore((s) => s.setMontajeConfig);
   const setMontajeEspacial = useCamStore((s) => s.setMontajeEspacial);
   const meshData = useCamStore((s) => s.meshData);
-  const confirmMontaje = useCamStore((s) => s.confirmMontaje);
 
   // La máquina se carga UNA vez a nivel del wizard (CamWizardPage) al entrar al
   // flujo CAM; aquí solo se LEE del store. Así sus dimensiones (mesa_x/y_mm) están
@@ -127,7 +125,6 @@ export const StepMontaje = () => {
   const completarSellado = useCamStore((s) => s.completarSellado);
   const fallarSellado = useCamStore((s) => s.fallarSellado);
   const editarCaraApoyo = useCamStore((s) => s.editarCaraApoyo);
-  const cerrarMontaje = useCamStore((s) => s.cerrarMontaje);
   const sellando = estadoOrientacion === "sellando";
   const sellada = estadoOrientacion === "sellada";
 
@@ -162,8 +159,6 @@ export const StepMontaje = () => {
       );
     }
   };
-
-  const puedeAvanzar = montajeConfig.sujecion_config !== null && sellada;
 
   const handleConfirmarSujecion = (config: SujecionConfig) => {
     setMontajeConfig({
@@ -511,30 +506,9 @@ export const StepMontaje = () => {
           },
         ]}
         navegacion={
-          <WizardNavButtons
-            prevStep="cargar"
-            nextStep="material"
-            nextLabel="Seleccionar material"
-            canAdvance={puedeAvanzar}
-            onNext={() => {
-              // Confirmación explícita del montaje: aquí se construye el Setup
-              // persistente (fuente de verdad en frame OCC/máquina) que consumirán
-              // el visor y, en fases siguientes, Stock/operaciones/G-code.
-              confirmMontaje();
-              // A partir de aquí la orientación sellada queda fija: Montaje (y
-              // Cargar) dejan de ser alcanzables desde el stepper y "Atrás".
-              cerrarMontaje();
-              // El veredicto de mecanizabilidad NO se pide aquí: el paso
-              // Operaciones es el único disparador (useEffect con guarda de los
-              // tres valores idJob/face/idMaquina). Pedirlo también en este punto
-              // —sin esa guarda— lanzaba una evaluación con id_maquina posiblemente
-              // nulo que pisaba el veredicto bueno con 'desconocido'.
-              console.log(
-                "montajeConfig al confirmar:",
-                JSON.stringify(montajeConfig, null, 2),
-              );
-            }}
-          />
+          // Al avanzar, el registro (domain/pasos.ts) confirma el montaje y
+          // cierra Montaje y Cargar.
+          <WizardNavButtons nextLabel="Seleccionar material" />
         }
       />
 

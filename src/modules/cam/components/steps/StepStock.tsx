@@ -79,7 +79,7 @@ export const StepStock = () => {
   const meshData = useCamStore((s) => s.meshData);
   const stockConfig = useCamStore((s) => s.stockConfig);
   const setStockConfig = useCamStore((s) => s.setStockConfig);
-  const setStep = useCamStore((s) => s.setStep);
+  const irA = useCamStore((s) => s.irA);
   const montajeCerrado = useCamStore((s) => s.montajeCerrado);
   const montajeConfig = useCamStore((s) => s.montajeConfig);
   // Setup persistente = ÚNICA fuente de la orientación de montaje (frame máquina).
@@ -213,7 +213,7 @@ export const StepStock = () => {
               (cara de apoyo). Vuelve al paso de Montaje y confírmalo antes de
               configurar el material bruto.
             </p>
-            {/* Con Montaje cerrado, setStep("montaje") no hace nada: en vez
+            {/* Con Montaje cerrado, irA("montaje") no hace nada: en vez
                 de un botón muerto, se dice cómo cambiarlo. */}
             {montajeCerrado ? (
               <p className="mt-3 text-xs md:text-sm text-amber-200/80">
@@ -222,7 +222,7 @@ export const StepStock = () => {
               </p>
             ) : (
               <button
-                onClick={() => setStep("montaje")}
+                onClick={() => irA("montaje")}
                 className="mt-3 rounded-xl border border-amber-500/60 bg-amber-500/20 px-4 py-2 text-sm font-medium text-amber-100 hover:bg-amber-500/30 transition"
               >
                 ← Volver a Montaje
@@ -596,11 +596,7 @@ export const StepStock = () => {
         // coincide con la pieza. El motor valida raw ≥ pieza y devuelve su error
         // en español; aquí nunca se envía un stock físicamente imposible porque
         // los offsets no pueden ser negativos.
-        <WizardNavButtons
-          prevStep="material"
-          nextStep="contexto"
-          canAdvance={true}
-        />
+        <WizardNavButtons />
       }
     />
   );

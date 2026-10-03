@@ -53,7 +53,7 @@ export const StepResumen = () => {
                 {engineResponse.error}
               </p>
               <button
-                onClick={() => useCamStore.getState().setStep("stock")}
+                onClick={() => useCamStore.getState().irA("stock")}
                 className="mt-4 rounded-xl border border-red-500/60 bg-red-500/20 px-4 py-2 text-sm font-medium text-red-100 hover:bg-red-500/30 transition"
               >
                 ← Volver a configurar material bruto
@@ -62,11 +62,7 @@ export const StepResumen = () => {
           </div>
         </div>
 
-        <WizardNavButtons
-          prevStep="operaciones"
-          nextStep="simulacion"
-          canAdvance={false}
-        />
+        <WizardNavButtons />
       </div>
     );
   }
@@ -223,11 +219,7 @@ export const StepResumen = () => {
         </div>
       )}
 
-      <WizardNavButtons
-        prevStep="operaciones"
-        nextStep="simulacion"
-        canAdvance={true}
-      />
+      <WizardNavButtons />
     </div>
   );
 };

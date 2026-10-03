@@ -24,22 +24,21 @@ import {
 } from "../domain/mdeRecomendaciones";
 import type { RespuestaMecanizabilidad } from "../domain/mecanizabilidad";
 import { DATUM_NO_DECLARADO, type DatumConfig } from "../domain/datum";
+import {
+  PASO_INICIAL,
+  pasoAnterior,
+  pasoCerrado,
+  pasoPorId,
+  pasoSiguiente,
+  type CamStep,
+} from "../domain/pasos";
 
 export type { Setup };
 export type { StockFace, CylStock };
 export type { EstadoPieza, ProcessOrigin };
 
-// DESPUÉS
-export type CamStep =
-  | "cargar"
-  | "montaje"
-  | "material"
-  | "stock"
-  | "contexto"
-  | "operaciones"
-  | "resumen"
-  | "simulacion"
-  | "resultado";
+// Los pasos del wizard (ids, orden, reglas) viven en domain/pasos.ts.
+export type { CamStep };
 
 export interface Operacion {
   id: string;
@@ -67,22 +66,6 @@ export type EstadoConsulta = "sin_analisis" | "analizando" | "listo" | "error";
  * se puede cambiar hasta pulsar "Editar cara de apoyo".
  */
 export type EstadoOrientacion = "editando" | "sellando" | "sellada";
-
-/**
- * Pasos que ya no se pueden visitar una vez que el operario avanzó desde
- * Montaje con la orientación sellada: la orientación queda fija para el resto
- * del trabajo. `cargar` también, porque desde ahí el único avance es Montaje.
- */
-export const PASOS_CERRADOS_TRAS_MONTAJE: readonly CamStep[] = [
-  "cargar",
-  "montaje",
-];
-
-export const MOTIVO_PASO_CERRADO =
-  "La orientación de la pieza quedó fija al pasar de Montaje. Para cambiarla, cancele y empiece un trabajo nuevo.";
-
-export const pasoCerrado = (paso: CamStep, montajeCerrado: boolean) =>
-  montajeCerrado && PASOS_CERRADOS_TRAS_MONTAJE.includes(paso);
 
 /** Nombre histórico de la consulta al MDE. Mismo estado, mismos valores. */
 export type EstadoAnalisisMDE = EstadoConsulta;
@@ -246,9 +229,13 @@ export interface SetupResultado {
   ops: string[];
 }
 
-interface CamState {
-  // Navegación
+export interface CamState {
+  // Navegación (el orden y las reglas de cada paso: domain/pasos.ts)
   step: CamStep;
+  // "Siguiente" en curso: se está ejecutando el alSalir del paso.
+  avanzando: boolean;
+  // Por qué no se pudo avanzar (mensaje del alSalir). Se muestra en el paso.
+  errorAvance: string | null;
 
   // Paso 1 — Archivo y Análisis (carga del STEP + resultado de /cam/analyze
   // en el mismo paso del wizard)
@@ -335,7 +322,12 @@ interface CamState {
   } | null;
 
   // Acciones
-  setStep: (step: CamStep) => void;
+  // Única forma de cambiar de paso. Respeta los pasos cerrados.
+  irA: (step: CamStep) => void;
+  // "Siguiente": comprueba puedeAvanzar, espera alSalir y SOLO si termina bien
+  // pasa al siguiente paso del registro. "Atrás": el anterior del registro.
+  avanzar: () => Promise<void>;
+  retroceder: () => void;
   setArchivo: (archivo: File | null) => void;
   setAnalisis: (idJob: number, analisis: Record<string, any>) => void;
   setMontajeConfig: (config: Partial<MontajeConfig>) => void;
@@ -439,9 +431,11 @@ const CONTEXTO_INICIAL: ContextoFabricacion = {
   proceso_origen: procesoOrigenDe("desconocido"),
 };
 
-export const useCamStore = create<CamState>((set) => ({
+export const useCamStore = create<CamState>((set, get) => ({
   // DESPUÉS — agrega montajeConfig después de datumConfig
-  step: "cargar",
+  step: PASO_INICIAL,
+  avanzando: false,
+  errorAvance: null,
   archivo: null,
   nombreArchivo: "",
   idJob: null,
@@ -469,14 +463,45 @@ export const useCamStore = create<CamState>((set) => ({
   gcodeSetups: [],
   engineResponse: null,
 
-  setStep: (step) =>
+  irA: (step) =>
     set((state) => {
       if (pasoCerrado(step, state.montajeCerrado)) {
-        console.warn(`[camStore] setStep: el paso "${step}" está cerrado.`);
+        console.warn(`[camStore] irA: el paso "${step}" está cerrado.`);
         return {};
       }
-      return { step };
+      return { step, errorAvance: null };
     }),
+  avanzar: async () => {
+    const estado = get();
+    if (estado.avanzando) return;
+    const desde = estado.step;
+    const paso = pasoPorId(desde);
+    const siguiente = pasoSiguiente(desde);
+    if (!siguiente || !paso.puedeAvanzar(estado)) return;
+
+    set({ avanzando: true, errorAvance: null });
+    try {
+      if ("alSalir" in paso) await paso.alSalir(get);
+    } catch (err) {
+      // Se queda en el paso y lo dice: nunca un avance silencioso.
+      set({
+        avanzando: false,
+        errorAvance:
+          err instanceof Error && err.message
+            ? err.message
+            : "No se pudo continuar al siguiente paso.",
+      });
+      return;
+    }
+    set({ avanzando: false });
+    // Si mientras tanto el operario cambió de paso (stepper, Atrás), no se le
+    // arrastra a otro lado.
+    if (get().step === desde) get().irA(siguiente.id);
+  },
+  retroceder: () => {
+    const anterior = pasoAnterior(get().step);
+    if (anterior) get().irA(anterior.id);
+  },
   setArchivo: (archivo) => set({ archivo, nombreArchivo: archivo?.name ?? "" }),
   setAnalisis: (idJob, analisis) => {
     const ops = convertirOperaciones(analisis);
@@ -766,7 +791,9 @@ export const useCamStore = create<CamState>((set) => ({
   setMeshError: (meshError) => set({ meshError, meshLoading: false }),
   reset: () =>
     set({
-      step: "cargar",
+      step: PASO_INICIAL,
+      avanzando: false,
+      errorAvance: null,
       archivo: null,
       nombreArchivo: "",
       idJob: null,

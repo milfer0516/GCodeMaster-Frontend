@@ -1,11 +1,13 @@
 // src/modules/cam/pages/CamWizardPage.tsx
-import { useEffect } from "react";
+import { useEffect, type ComponentType } from "react";
+import { useCamStore } from "../store/camStore";
 import {
-  useCamStore,
-  pasoCerrado,
+  PASOS,
   MOTIVO_PASO_CERRADO,
+  indiceDePaso,
+  pasoCerrado,
   type CamStep,
-} from "../store/camStore";
+} from "../domain/pasos";
 import { getMaquinas } from "../../../services/maquinasService";
 import { StepCargarStep } from "../components/steps/StepCargarStep";
 import { StepOperaciones } from "../components/steps/StepOperaciones";
@@ -17,26 +19,30 @@ import { StepSimulacion } from "../components/steps/StepSimulacion";
 import { StepResultado } from "../components/steps/StepResultado";
 import { StepMontaje } from "../components/steps/StepMontaje";
 
-const PASOS = [
-  { key: "cargar", label: "Archivo y Análisis" },
-  { key: "montaje", label: "Montaje" },
-  { key: "material", label: "Material" },
-  { key: "stock", label: "Stock" },
-  { key: "contexto", label: "Contexto" },
-  { key: "operaciones", label: "Operaciones" },
-  { key: "resumen", label: "Resumen" },
-  { key: "simulacion", label: "Simulación" },
-  { key: "resultado", label: "G-Code" },
-];
+// Pantalla de cada paso. El ORDEN, las etiquetas y las reglas están en el
+// registro (domain/pasos.ts); este mapa solo dice qué componente pinta cada id.
+// Record<CamStep, …> obliga a que cada paso del registro tenga su pantalla.
+const PANTALLA_DE_PASO: Record<CamStep, ComponentType> = {
+  cargar: StepCargarStep,
+  montaje: StepMontaje,
+  material: StepMaterial,
+  stock: StepStock,
+  contexto: StepContexto,
+  operaciones: StepOperaciones,
+  resumen: StepResumen,
+  simulacion: StepSimulacion,
+  resultado: StepResultado,
+};
 
 export function CamWizardPage() {
   const step = useCamStore((s) => s.step);
-  const setStep = useCamStore((s) => s.setStep);
+  const irA = useCamStore((s) => s.irA);
   const reset = useCamStore((s) => s.reset);
   const maquina = useCamStore((s) => s.maquina);
   const setMaquina = useCamStore((s) => s.setMaquina);
   const montajeCerrado = useCamStore((s) => s.montajeCerrado);
-  const pasoActual = PASOS.findIndex((p) => p.key === step);
+  const pasoActual = indiceDePaso(step);
+  const Pantalla = PANTALLA_DE_PASO[step];
 
   // Cargar la máquina registrada UNA sola vez al entrar al flujo CAM, a nivel del
   // wizard (no dentro de un paso). Así sus dimensiones (mesa_x/y_mm) están en el
@@ -65,7 +71,8 @@ export function CamWizardPage() {
             Genera G-Code a partir de tu archivo STEP
           </p>
         </div>
-        {step !== "cargar" && step !== "resultado" && (
+        {/* Ni en el primer paso ni en el último (mismo criterio de siempre). */}
+        {pasoActual > 0 && pasoActual < PASOS.length - 1 && (
           <button
             onClick={reset}
             className="text-xs text-text-muted hover:text-accent-red transition min-h-[44px] px-2"
@@ -80,14 +87,14 @@ export function CamWizardPage() {
         {PASOS.map((p, i) => {
           // Pasos ya hechos pero cerrados: la orientación quedó fija al salir
           // de Montaje, así que Cargar y Montaje no se pueden volver a abrir.
-          const cerrado = pasoCerrado(p.key as CamStep, montajeCerrado);
+          const cerrado = pasoCerrado(p.id, montajeCerrado);
           return (
-            <div key={p.key} className="flex items-center gap-1">
+            <div key={p.id} className="flex items-center gap-1">
               <div className="flex flex-col items-center">
                 <div
                   onClick={() => {
                     if (i < pasoActual && !cerrado) {
-                      setStep(p.key as any);
+                      irA(p.id);
                     }
                   }}
                   title={i < pasoActual && cerrado ? MOTIVO_PASO_CERRADO : undefined}
@@ -128,15 +135,7 @@ export function CamWizardPage() {
 
       {/* ── Contenido del paso ── */}
       <div className="rounded-xl md:rounded-2xl border border-border bg-bg-surface p-4 md:p-6">
-        {step === "cargar" && <StepCargarStep />}
-        {step === "montaje" && <StepMontaje />}
-        {step === "material" && <StepMaterial />}
-        {step === "stock" && <StepStock />}
-        {step === "contexto" && <StepContexto />}
-        {step === "operaciones" && <StepOperaciones />}
-        {step === "resumen" && <StepResumen />}
-        {step === "simulacion" && <StepSimulacion />}
-        {step === "resultado" && <StepResultado />}
+        <Pantalla />
       </div>
     </div>
   );

@@ -9,11 +9,7 @@ export const StepSimulacion = () => {
         <p className="text-sm">Paso de simulación (pendiente de implementar)</p>
         <p className="text-xs mt-2">Visor de trayectorias 3D (Pro)</p>
       </div>
-      <WizardNavButtons
-        prevStep="resumen"
-        nextStep="resultado"
-        canAdvance={true}
-      />
+      <WizardNavButtons />
     </div>
   );
 };

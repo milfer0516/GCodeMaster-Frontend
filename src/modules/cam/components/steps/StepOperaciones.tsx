@@ -744,11 +744,7 @@ export const StepOperaciones = () => {
         />
 
         <div className="ml-auto">
-          <WizardNavButtons
-            prevStep="contexto"
-            nextStep="resumen"
-            canAdvance={seleccionadas.length > 0}
-          />
+          <WizardNavButtons />
         </div>
       </div>
 

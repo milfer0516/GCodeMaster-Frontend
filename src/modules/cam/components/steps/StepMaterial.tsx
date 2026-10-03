@@ -2,11 +2,7 @@
 import { useEffect, useState } from "react";
 import { useCamStore } from "../../store/camStore";
 import { WizardNavButtons } from "./WizardNavButtons";
-import {
-  getMateriales,
-  asignarMaterialJob,
-  type MaterialGlobal,
-} from "../../services/camService";
+import { getMateriales, type MaterialGlobal } from "../../services/camService";
 import { Loader2 } from "lucide-react";
 
 // ISO 513 color coding per material group
@@ -195,13 +191,13 @@ export const StepMaterial = () => {
   // Selectores individuales para evitar re-renders (patrón StepMontaje)
   const material = useCamStore((s) => s.material);
   const setMaterial = useCamStore((s) => s.setMaterial);
-  const idJob = useCamStore((s) => s.idJob);
-  const setStep = useCamStore((s) => s.setStep);
+  // Guardado del material en curso: lo hace el alSalir del paso (domain/pasos.ts)
+  // al pulsar "Siguiente"; si falla, el error se muestra junto a los botones.
+  const saving = useCamStore((s) => s.avanzando);
 
   const [materiales, setMateriales] = useState<MaterialGlobal[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [saving, setSaving] = useState(false);
 
   // Cargar catálogo de materiales al montar
   useEffect(() => {
@@ -249,20 +245,6 @@ export const StepMaterial = () => {
     });
   };
 
-  const handleNext = async () => {
-    if (!material || !idJob) return;
-
-    try {
-      setSaving(true);
-      await asignarMaterialJob(idJob, material.id_material);
-      setStep("stock");
-    } catch (err) {
-      console.error("Error asignando material:", err);
-      setError("No se pudo asignar el material al trabajo");
-      setSaving(false);
-    }
-  };
-
   // Estado de carga
   if (loading) {
     return (
@@ -290,11 +272,8 @@ export const StepMaterial = () => {
             Reintentar
           </button>
         </div>
-        <WizardNavButtons
-          prevStep="montaje"
-          nextStep="stock"
-          canAdvance={false}
-        />
+        {/* El catálogo no cargó: no se avanza desde esta pantalla. */}
+        <WizardNavButtons bloqueado />
       </div>
     );
   }
@@ -333,12 +312,7 @@ export const StepMaterial = () => {
       </div>
 
       {/* Navegación */}
-      <WizardNavButtons
-        prevStep="montaje"
-        nextStep="stock"
-        canAdvance={!!material && !saving}
-        onNext={handleNext}
-      />
+      <WizardNavButtons />
 
       {/* Indicador de guardado */}
       {saving && (

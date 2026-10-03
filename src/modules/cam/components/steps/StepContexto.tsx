@@ -141,11 +141,7 @@ export const StepContexto = () => {
       )}
 
       {/* Nunca bloquea: siempre hay un estado declarado (por defecto DESCONOCIDO). */}
-      <WizardNavButtons
-        prevStep="stock"
-        nextStep="operaciones"
-        canAdvance={true}
-      />
+      <WizardNavButtons />
     </div>
   );
 };
