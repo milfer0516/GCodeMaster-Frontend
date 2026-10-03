@@ -1,7 +1,8 @@
 // src/modules/cam/components/steps/StepMontaje.tsx
 import { useCallback, useMemo, useState } from "react";
-import { Settings2 } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Loader2, Settings2 } from "lucide-react";
 import { useCamStore } from "../../store/camStore";
+import { sellarCaraApoyo } from "../../services/camService";
 import { CamViewer3D } from "../CamViewer3D";
 import { Collapsible } from "../../../../components/ui/Collapsible";
 import { LayoutPasoVisor } from "../../../../components/layout/LayoutPasoVisor";
@@ -110,7 +111,55 @@ export const StepMontaje = () => {
       };
     });
 
-  const puedeAvanzar = montajeConfig.sujecion_config !== null;
+  // ── Sellado de la cara de apoyo ──
+  // El motor orienta la pieza sobre la cara elegida (/cam/analyze-setup) y es
+  // la única fuente de la rotación. Solo se puede sellar una cara PLANA: las
+  // que el análisis lista en caras_planas.
+  const archivo = useCamStore((s) => s.archivo);
+  const idJob = useCamStore((s) => s.idJob);
+  const estadoOrientacion = useCamStore((s) => s.estadoOrientacion);
+  const errorOrientacion = useCamStore((s) => s.errorOrientacion);
+  const iniciarSellado = useCamStore((s) => s.iniciarSellado);
+  const completarSellado = useCamStore((s) => s.completarSellado);
+  const fallarSellado = useCamStore((s) => s.fallarSellado);
+  const editarCaraApoyo = useCamStore((s) => s.editarCaraApoyo);
+  const cerrarMontaje = useCamStore((s) => s.cerrarMontaje);
+  const sellando = estadoOrientacion === "sellando";
+  const sellada = estadoOrientacion === "sellada";
+
+  const faceIdApoyo = montajeConfig.face_id_apoyo;
+  const esCaraPlana =
+    faceIdApoyo !== null &&
+    carasPlanas.some((c: any) => c.face_index === faceIdApoyo);
+  // Por qué la cara elegida NO se puede sellar (null = sí se puede).
+  let motivoNoSellable: string | null = null;
+  if (faceIdApoyo === null) {
+    motivoNoSellable = "Elija primero una cara de apoyo.";
+  } else if (!esCaraPlana) {
+    const tipo = meshData?.faces.find((f) => f.face_id === faceIdApoyo)
+      ?.surface_type;
+    motivoNoSellable = `La cara elegida${
+      tipo ? ` es de tipo "${tipo}" y` : ""
+    } no es plana: la pieza no puede apoyarse sobre ella. Elija una cara plana.`;
+  } else if (!archivo || idJob === null) {
+    motivoNoSellable = "Falta el archivo STEP cargado. Vuelva a cargar la pieza.";
+  }
+
+  const establecerCaraApoyo = async () => {
+    if (motivoNoSellable || !archivo || idJob === null || faceIdApoyo === null)
+      return;
+    iniciarSellado();
+    try {
+      const respuesta = await sellarCaraApoyo(archivo, idJob, faceIdApoyo);
+      completarSellado(respuesta, faceIdApoyo, idJob);
+    } catch (err: any) {
+      fallarSellado(
+        err?.message ?? "No se pudo establecer la cara de apoyo.",
+      );
+    }
+  };
+
+  const puedeAvanzar = montajeConfig.sujecion_config !== null && sellada;
 
   const handleConfirmarSujecion = (config: SujecionConfig) => {
     setMontajeConfig({
@@ -122,8 +171,14 @@ export const StepMontaje = () => {
 
   // Controles del paso (los Collapsibles). El MARCO — envoltura con scroll,
   // cabeceras, plegado y cajón — lo aporta LayoutPasoVisor; aquí solo el contenido.
+  // Mientras el motor orienta la pieza, todos los controles del paso quedan
+  // deshabilitados (el fieldset deshabilita los botones/campos que contiene).
   const controlesMontaje = (
-    <>
+    <fieldset
+      disabled={sellando}
+      aria-busy={sellando}
+      className="m-0 min-w-0 space-y-3 border-0 p-0"
+    >
       {/* Sujeción */}
       <Collapsible titulo="Sistema de sujeción" defaultOpen>
         {montajeConfig.sujecion_config ? (
@@ -178,45 +233,105 @@ export const StepMontaje = () => {
       </Collapsible>
 
       {/* Cara de apoyo */}
-      <Collapsible titulo="Cara de apoyo">
-        <p className="mb-2 text-xs text-text-muted">
-          Doble clic en la cara del visor; un clic muestra su dimensión.
-        </p>
-        {carasParaSelector.length === 0 ? (
-          <p className="text-xs text-text-muted">
-            No hay caras de apoyo detectadas.
-          </p>
+      <Collapsible titulo="Cara de apoyo" defaultOpen>
+        {sellada ? (
+          <div className="space-y-3">
+            <div className="rounded-xl border border-green-500/40 bg-green-500/10 px-3 py-2">
+              <p className="flex items-center gap-2 text-sm font-semibold text-green-400">
+                <CheckCircle2 className="h-4 w-4 shrink-0" />
+                Cara de apoyo establecida
+              </p>
+              <p className="mt-0.5 text-xs text-text-muted">
+                {carasParaSelector.find((c) => c.face_id === faceIdApoyo)
+                  ?.label ?? `ID ${faceIdApoyo}`}
+              </p>
+            </div>
+            <p className="flex items-start gap-2 rounded-xl border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs leading-snug text-amber-500">
+              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+              Al pasar al siguiente paso la orientación queda fija y no podrá
+              cambiarla. Mientras siga en este paso puede usar Editar cara de
+              apoyo.
+            </p>
+            <button
+              type="button"
+              onClick={editarCaraApoyo}
+              className="w-full rounded-xl border border-border px-4 py-2.5 min-h-[44px] text-sm font-medium text-text-muted transition hover:border-accent-blue/50 hover:text-text-primary"
+            >
+              Editar cara de apoyo
+            </button>
+          </div>
         ) : (
-          <select
-            value={montajeConfig.face_id_apoyo ?? ""}
-            onChange={(e) => {
-              const faceId =
-                e.target.value === "" ? null : Number(e.target.value);
-              const cara = carasParaSelector.find(
-                (c) => c.face_id === faceId,
-              );
-              setMontajeConfig({
-                face_id_apoyo: faceId,
-                face_normal_apoyo: cara ? cara.normal : null,
-              });
-            }}
-            className="w-full rounded-xl border border-border bg-bg-primary px-3 py-2 text-sm text-text-primary focus:border-accent-blue focus:outline-none"
-          >
-            <option value="">Seleccionar cara de apoyo…</option>
-            {carasParaSelector.map((c) => (
-              <option key={c.face_id} value={c.face_id}>
-                {c.label}
-              </option>
-            ))}
-          </select>
-        )}
-        {montajeConfig.face_id_apoyo !== null && (
-          <p className="mt-1 text-xs text-accent-blue">
-            ✓ Cara seleccionada:{" "}
-            {carasParaSelector.find(
-              (c) => c.face_id === montajeConfig.face_id_apoyo,
-            )?.label ?? `ID ${montajeConfig.face_id_apoyo}`}
-          </p>
+          <>
+            <p className="mb-2 text-xs text-text-muted">
+              Doble clic en la cara del visor; un clic muestra su dimensión.
+            </p>
+            {carasParaSelector.length === 0 ? (
+              <p className="text-xs text-text-muted">
+                No hay caras de apoyo detectadas.
+              </p>
+            ) : (
+              <select
+                value={montajeConfig.face_id_apoyo ?? ""}
+                onChange={(e) => {
+                  const faceId =
+                    e.target.value === "" ? null : Number(e.target.value);
+                  const cara = carasParaSelector.find(
+                    (c) => c.face_id === faceId,
+                  );
+                  setMontajeConfig({
+                    face_id_apoyo: faceId,
+                    face_normal_apoyo: cara ? cara.normal : null,
+                  });
+                }}
+                className="w-full rounded-xl border border-border bg-bg-primary px-3 py-2 text-sm text-text-primary focus:border-accent-blue focus:outline-none"
+              >
+                <option value="">Seleccionar cara de apoyo…</option>
+                {carasParaSelector.map((c) => (
+                  <option key={c.face_id} value={c.face_id}>
+                    {c.label}
+                  </option>
+                ))}
+              </select>
+            )}
+            {montajeConfig.face_id_apoyo !== null && (
+              <p className="mt-1 text-xs text-accent-blue">
+                ✓ Cara seleccionada:{" "}
+                {carasParaSelector.find(
+                  (c) => c.face_id === montajeConfig.face_id_apoyo,
+                )?.label ?? `ID ${montajeConfig.face_id_apoyo}`}
+              </p>
+            )}
+            {faceIdApoyo !== null && motivoNoSellable && (
+              <p className="mt-2 text-xs leading-snug text-amber-500">
+                {motivoNoSellable}
+              </p>
+            )}
+            {errorOrientacion && (
+              <p className="mt-2 rounded-lg border border-accent-red/40 bg-accent-red/10 px-2.5 py-1.5 text-xs leading-snug text-accent-red">
+                {errorOrientacion}
+              </p>
+            )}
+            <button
+              type="button"
+              onClick={establecerCaraApoyo}
+              disabled={motivoNoSellable !== null || sellando}
+              className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl bg-accent-blue px-4 py-2.5 min-h-[44px] text-sm font-semibold text-white transition hover:bg-accent-blue/90 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              {sellando && <Loader2 className="h-4 w-4 animate-spin" />}
+              {sellando ? "Orientando la pieza…" : "Establecer cara de apoyo"}
+            </button>
+            {sellando && (
+              <p className="mt-1.5 text-center text-xs text-text-muted">
+                El motor está orientando la pieza sobre la cara elegida. Puede
+                tardar unos segundos.
+              </p>
+            )}
+            {!sellando && (
+              <p className="mt-1.5 text-xs text-text-muted">
+                Para continuar al siguiente paso, establezca la cara de apoyo.
+              </p>
+            )}
+          </>
         )}
       </Collapsible>
 
@@ -320,7 +435,7 @@ export const StepMontaje = () => {
           />
         </Collapsible>
       )}
-    </>
+    </fieldset>
   );
 
   return (
@@ -345,6 +460,9 @@ export const StepMontaje = () => {
             sujecionConfig={montajeConfig.sujecion_config}
             piezaBoundingBox={dimensiones}
             onFaceClick={(faceId) => {
+              // Sellada o sellándose, la cara de apoyo no se cambia desde el
+              // visor (solo con "Editar cara de apoyo").
+              if (estadoOrientacion !== "editando") return;
               const caraPlana = carasPlanas.find(
                 (c: any) => c.face_index === faceId,
               );
@@ -385,6 +503,9 @@ export const StepMontaje = () => {
               // persistente (fuente de verdad en frame OCC/máquina) que consumirán
               // el visor y, en fases siguientes, Stock/operaciones/G-code.
               confirmMontaje();
+              // A partir de aquí la orientación sellada queda fija: Montaje (y
+              // Cargar) dejan de ser alcanzables desde el stepper y "Atrás".
+              cerrarMontaje();
               // El veredicto de mecanizabilidad NO se pide aquí: el paso
               // Operaciones es el único disparador (useEffect con guarda de los
               // tres valores idJob/face/idMaquina). Pedirlo también en este punto

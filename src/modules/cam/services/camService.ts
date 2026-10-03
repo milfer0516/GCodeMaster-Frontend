@@ -89,6 +89,113 @@ export async function tessellateStep(
   return data as MeshData;
 }
 
+// ── Sellar la cara de apoyo (orientación de mecanizado) ──────────────────
+// El MOTOR es la única fuente de verdad de la rotación: orienta la pieza sobre
+// la cara elegida y devuelve todo ya en el marco de MECANIZADO (Z arriba, cara
+// de apoyo sobre la mesa, centrada en XY, base en Z=0). Tras sellar, el
+// frontend no calcula ninguna rotación: pinta `mesh_data` tal cual.
+export interface RespuestaOrientacionSellada {
+  exito: boolean;
+  face_id_apoyo: number;
+  normal_apoyo: [number, number, number];
+  // Medidas de la pieza ya rotada (core/cam_builder.py del motor).
+  dimensiones_marco: { x: number; y: number; z: number };
+  // Análisis en el marco de mecanizado (incluye `operaciones`).
+  analisis: Record<string, any>;
+  // Mismo formato que /cam/tessellate, ya orientado.
+  mesh_data: MeshData;
+  // Transformación aplicada por el motor. El frontend no la consume.
+  matriz: unknown;
+}
+
+// Mensajes legibles por `codigo` del backend. Un código desconocido no se
+// adivina: se muestra el detalle que mandó el backend.
+const MENSAJES_SELLADO: Record<string, string> = {
+  face_id_apoyo_fuera_de_rango:
+    "La cara elegida no existe en esta pieza. Vuelva a elegir la cara de apoyo.",
+  cara_apoyo_no_plana:
+    "La cara elegida no es plana: la pieza no puede apoyarse sobre ella. Elija una cara plana.",
+};
+
+export class ErrorSellado extends Error {
+  constructor(
+    message: string,
+    public readonly codigo: string | null = null,
+  ) {
+    super(message);
+    this.name = "ErrorSellado";
+  }
+}
+
+function errorDeSellado(err: any): ErrorSellado {
+  if (err?.code === "ECONNABORTED") {
+    return new ErrorSellado(
+      "El motor tardó demasiado en orientar la pieza. Inténtelo de nuevo.",
+    );
+  }
+  const status: number | undefined = err?.response?.status;
+  const detail = err?.response?.data?.detail;
+  if (!err?.response) {
+    return new ErrorSellado(
+      "No se pudo contactar con el servidor para orientar la pieza.",
+    );
+  }
+  if (typeof detail === "string" && detail.trim()) {
+    return new ErrorSellado(detail);
+  }
+  if (detail && typeof detail === "object") {
+    const codigo: string | null =
+      typeof detail.codigo === "string" ? detail.codigo : null;
+    if (codigo && MENSAJES_SELLADO[codigo]) {
+      return new ErrorSellado(MENSAJES_SELLADO[codigo], codigo);
+    }
+    const errores = Array.isArray(detail.errores)
+      ? detail.errores.map((e: unknown) => String(e)).join(" · ")
+      : "";
+    return new ErrorSellado(
+      `No se pudo establecer la cara de apoyo${codigo ? ` (${codigo})` : ""}${
+        errores ? `: ${errores}` : "."
+      }`,
+      codigo,
+    );
+  }
+  return new ErrorSellado(
+    `No se pudo establecer la cara de apoyo (error ${status ?? "desconocido"}).`,
+  );
+}
+
+export async function sellarCaraApoyo(
+  archivo: File,
+  idJob: number,
+  faceId: number,
+): Promise<RespuestaOrientacionSellada> {
+  if (!Number.isInteger(faceId)) {
+    throw new ErrorSellado(`Cara de apoyo inválida: ${faceId}`);
+  }
+  const form = new FormData();
+  form.append("step_file", archivo);
+  form.append("id_job", String(idJob));
+  // Entero en texto plano ("12"): nunca JSON-quoted ni float.
+  form.append("face_id_apoyo", String(faceId));
+
+  try {
+    const { data } = await api.post("/cam/analyze-setup", form, {
+      headers: { "Content-Type": "multipart/form-data" },
+      // Sellar una pieza tipo brida tarda ~10 s; margen amplio.
+      timeout: 180_000,
+    });
+    if (!data?.exito || !data?.mesh_data) {
+      throw new ErrorSellado(
+        "El motor no devolvió la pieza orientada. Inténtelo de nuevo.",
+      );
+    }
+    return data as RespuestaOrientacionSellada;
+  } catch (err) {
+    if (err instanceof ErrorSellado) throw err;
+    throw errorDeSellado(err);
+  }
+}
+
 // ── Transform frontend StockConfig to engine's bruto_medido payload ──────
 // SINGLE SOURCE OF TRUTH = per-region offsets. The overall totals the engine
 // requires (x/y/z or Ø/length) are DERIVED here from part dims + offsets — they

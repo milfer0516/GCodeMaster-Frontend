@@ -452,7 +452,7 @@ export function CamViewer3D({
   const {
     archivo,
     idJob,
-    meshData,
+    meshData: meshDataTeselado,
     meshLoading,
     meshError,
     setMeshData,
@@ -464,6 +464,12 @@ export function CamViewer3D({
   const analisis = useCamStore((s) => s.analisis); // normales confiables (caras_planas) para la rotación de apoyo
   const setup = useCamStore((s) => s.setup); // montaje confirmado (verdad en frame OCC)
 
+  // Con la cara de apoyo SELLADA, la pieza que se pinta es la que devolvió el
+  // motor, ya en el marco de mecanizado. Pasa por el mismo camino de carga
+  // (efecto 3) que la teselación; el efecto 4b no le aplica ninguna rotación.
+  const orientacionSellada = useCamStore((s) => s.orientacionSellada);
+  const meshData = orientacionSellada?.mesh_data ?? meshDataTeselado;
+
   // Limpiar la cara de info cuando cambia la geometría cargada
   useEffect(() => {
     setFaceInfo(null);
@@ -471,7 +477,7 @@ export function CamViewer3D({
 
   // ── 1. Cargar mesh OCC la primera vez que se monta ──────────────────────
   useEffect(() => {
-    if (!archivo || !idJob || meshData || meshLoading) return;
+    if (!archivo || !idJob || meshDataTeselado || meshLoading) return;
 
     const cargar = async () => {
       setMeshLoading(true);
@@ -725,7 +731,8 @@ export function CamViewer3D({
 
   // ── 4b. Rotar mesh con animación suave según cara de apoyo ─────────────
   useEffect(() => {
-    if (!meshRef.current || !meshData || faceIdDestacada === null) return;
+    if (!meshRef.current || !meshData) return;
+    if (!orientacionSellada && faceIdDestacada === null) return;
     if (!controlsRef.current) return;
 
     let qTarget: THREE.Quaternion;
@@ -743,7 +750,22 @@ export function CamViewer3D({
     const setupAplicable =
       !!setup?.confirmed && setup.supportFace.faceId === faceIdDestacada;
 
-    if (setupAplicable && setup) {
+    if (orientacionSellada) {
+      // ── Camino sellado (motor) ──
+      // `meshData` ES la malla del motor, ya en el marco de mecanizado (Z
+      // arriba, apoyo en la mesa, XY centrado, base en Z=0). Aquí no se
+      // calcula rotación alguna: solo la base del visor (OCC Z → Three.js Y)
+      // y las traslaciones de centrado/apoyo, igual que en los otros caminos.
+      const bb = meshData.bounding_box;
+      const zApoyo = sujecionConfig?.envolvente?.part_bottom_z_mm ?? 0;
+      qTarget = VIEWER_BASE_Q.clone();
+      // Tras la base, (x, y, z) OCC → (x, z, −y) display.
+      posXTarget = -bb.center[0];
+      posYTarget = -bb.min[2] + zApoyo;
+      posZTarget = bb.center[1];
+      centerYMundo = zApoyo + (bb.max[2] - bb.min[2]) / 2;
+      pivotY = zApoyo;
+    } else if (setupAplicable && setup) {
       // ── Camino Setup (dominio → display) ──
       qTarget = occToDisplay(setup.rotationOCC);
       const posV = new THREE.Vector3(
@@ -873,7 +895,7 @@ export function CamViewer3D({
     animId = requestAnimationFrame(animar);
 
     return () => cancelAnimationFrame(animId);
-  }, [faceIdDestacada, meshData, sujecionConfig, analisis, setup, maquina, mostrarMesa]);
+  }, [faceIdDestacada, meshData, sujecionConfig, analisis, setup, maquina, mostrarMesa, orientacionSellada]);
 
   // ── 5. Picking por cara — hover y click ────────────────────────────────
   useEffect(() => {

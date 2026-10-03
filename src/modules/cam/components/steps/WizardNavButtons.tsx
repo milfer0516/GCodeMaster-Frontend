@@ -1,6 +1,10 @@
 // src/modules/cam/components/steps/WizardNavButtons.tsx
 import { ChevronLeft, ChevronRight } from "lucide-react";
-import { useCamStore } from "../../store/camStore";
+import {
+  useCamStore,
+  pasoCerrado,
+  MOTIVO_PASO_CERRADO,
+} from "../../store/camStore";
 import type { CamStep } from "../../store/camStore";
 
 interface WizardNavButtonsProps {
@@ -19,6 +23,10 @@ export function WizardNavButtons({
   onNext,
 }: WizardNavButtonsProps) {
   const setStep = useCamStore((s) => s.setStep);
+  const montajeCerrado = useCamStore((s) => s.montajeCerrado);
+  // Tras avanzar desde Montaje con la orientación sellada, volver a Montaje
+  // (o a Cargar) ya no está permitido.
+  const atrasCerrado = !!prevStep && pasoCerrado(prevStep, montajeCerrado);
 
   const handleNext = () => {
     if (onNext) {
@@ -28,14 +36,23 @@ export function WizardNavButtons({
   };
 
   return (
-    <div className="flex justify-between">
+    <div className="flex justify-between gap-3">
       {prevStep ? (
-        <button
-          onClick={() => setStep(prevStep)}
-          className="flex items-center gap-2 rounded-xl border border-border px-4 md:px-5 py-3 md:py-2.5 min-h-[44px] text-sm font-medium text-text-muted transition hover:border-accent-blue/50 hover:text-text-primary"
-        >
-          <ChevronLeft className="h-4 w-4" /> <span className="hidden sm:inline">Atrás</span>
-        </button>
+        <div className="flex min-w-0 items-center gap-2">
+          <button
+            onClick={() => setStep(prevStep)}
+            disabled={atrasCerrado}
+            title={atrasCerrado ? MOTIVO_PASO_CERRADO : undefined}
+            className="flex shrink-0 items-center gap-2 rounded-xl border border-border px-4 md:px-5 py-3 md:py-2.5 min-h-[44px] text-sm font-medium text-text-muted transition hover:border-accent-blue/50 hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-border disabled:hover:text-text-muted"
+          >
+            <ChevronLeft className="h-4 w-4" /> <span className="hidden sm:inline">Atrás</span>
+          </button>
+          {atrasCerrado && (
+            <p className="text-[11px] leading-snug text-text-muted">
+              Montaje ya no se puede modificar: la orientación quedó fija.
+            </p>
+          )}
+        </div>
       ) : (
         <div />
       )}

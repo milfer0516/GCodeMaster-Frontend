@@ -1,6 +1,9 @@
 // src/modules/cam/store/camStore.ts
 import { create } from "zustand";
-import type { MeshData } from "../services/camService";
+import type {
+  MeshData,
+  RespuestaOrientacionSellada,
+} from "../services/camService";
 import type { Maquina } from "../../../services/maquinasService";
 import { computeSetup, type Setup } from "../utils/computeSetup";
 import {
@@ -56,6 +59,30 @@ export interface Operacion {
  * operador.
  */
 export type EstadoConsulta = "sin_analisis" | "analizando" | "listo" | "error";
+
+/**
+ * Ciclo de la cara de apoyo. `editando`: el operario elige cara libremente.
+ * `sellando`: el motor está orientando la pieza (/cam/analyze-setup).
+ * `sellada`: el motor devolvió la pieza en el marco de mecanizado; la cara no
+ * se puede cambiar hasta pulsar "Editar cara de apoyo".
+ */
+export type EstadoOrientacion = "editando" | "sellando" | "sellada";
+
+/**
+ * Pasos que ya no se pueden visitar una vez que el operario avanzó desde
+ * Montaje con la orientación sellada: la orientación queda fija para el resto
+ * del trabajo. `cargar` también, porque desde ahí el único avance es Montaje.
+ */
+export const PASOS_CERRADOS_TRAS_MONTAJE: readonly CamStep[] = [
+  "cargar",
+  "montaje",
+];
+
+export const MOTIVO_PASO_CERRADO =
+  "La orientación de la pieza quedó fija al pasar de Montaje. Para cambiarla, cancele y empiece un trabajo nuevo.";
+
+export const pasoCerrado = (paso: CamStep, montajeCerrado: boolean) =>
+  montajeCerrado && PASOS_CERRADOS_TRAS_MONTAJE.includes(paso);
 
 /** Nombre histórico de la consulta al MDE. Mismo estado, mismos valores. */
 export type EstadoAnalisisMDE = EstadoConsulta;
@@ -232,6 +259,16 @@ interface CamState {
 
   montajeConfig: MontajeConfig;
 
+  // Orientación SELLADA por el motor (/cam/analyze-setup), guardada tal cual.
+  // null mientras se edita. Es la única fuente de la rotación tras sellar.
+  orientacionSellada: RespuestaOrientacionSellada | null;
+  estadoOrientacion: EstadoOrientacion;
+  errorOrientacion: string | null;
+  // true al avanzar desde Montaje con la orientación sellada: desde ese
+  // momento Montaje (y Cargar) dejan de ser alcanzables. Solo un trabajo nuevo
+  // (setAnalisis / reset) lo libera.
+  montajeCerrado: boolean;
+
   // Setup persistente (montaje confirmado) — fuente de verdad en frame OCC/máquina.
   // Se crea en confirmMontaje() y se invalida al cambiar cara/sujeción/mesh.
   setup: Setup | null;
@@ -304,6 +341,15 @@ interface CamState {
   setMontajeConfig: (config: Partial<MontajeConfig>) => void;
   setMontajeEspacial: (espacial: MontajeEspacial | null) => void;
   confirmMontaje: () => void;
+  iniciarSellado: () => void;
+  completarSellado: (
+    respuesta: RespuestaOrientacionSellada,
+    faceId: number,
+    idJob: number,
+  ) => void;
+  fallarSellado: (mensaje: string) => void;
+  editarCaraApoyo: () => void;
+  cerrarMontaje: () => void;
   invalidateSetup: () => void;
   setOperaciones: (ops: Operacion[]) => void;
   toggleOperacion: (id: string) => void;
@@ -342,6 +388,30 @@ const resetStockMeasurements = (s: StockConfig): StockConfig => ({
   ...STOCK_INICIAL,
   tipo: s.tipo,
 });
+
+// Cascada de un cambio de cara de apoyo: el Setup confirmado (y con él los
+// offsets de stock) y el veredicto de mecanizabilidad dependen de la cara. La
+// usan setMontajeConfig (cara distinta) y editarCaraApoyo (orientación
+// desellada), para que ambas invaliden exactamente lo mismo.
+const invalidarPorCambioDeCara = (state: {
+  setup: Setup | null;
+  stockConfig: StockConfig;
+}) => ({
+  ...(state.setup !== null
+    ? { setup: null, stockConfig: resetStockMeasurements(state.stockConfig) }
+    : {}),
+  mecanizabilidad: null,
+  mecanizabilidadEstado: "sin_analisis" as EstadoConsulta,
+  mecanizabilidadError: null,
+});
+
+// Estado inicial del ciclo de la cara de apoyo (sin sellar, sin cerrar).
+const ORIENTACION_INICIAL = {
+  orientacionSellada: null,
+  estadoOrientacion: "editando" as EstadoOrientacion,
+  errorOrientacion: null,
+  montajeCerrado: false,
+};
 
 const MONTAJE_INICIAL: MontajeConfig = {
   tipo_sujecion: null,
@@ -390,12 +460,20 @@ export const useCamStore = create<CamState>((set) => ({
   datumConfig: DATUM_INICIAL,
   contextoFabricacion: CONTEXTO_INICIAL,
   montajeConfig: MONTAJE_INICIAL,
+  ...ORIENTACION_INICIAL,
   setup: null,
   ordenSetups: "superior_primero",
   gcodeSetups: [],
   engineResponse: null,
 
-  setStep: (step) => set({ step }),
+  setStep: (step) =>
+    set((state) => {
+      if (pasoCerrado(step, state.montajeCerrado)) {
+        console.warn(`[camStore] setStep: el paso "${step}" está cerrado.`);
+        return {};
+      }
+      return { step };
+    }),
   setArchivo: (archivo) => set({ archivo, nombreArchivo: archivo?.name ?? "" }),
   setAnalisis: (idJob, analisis) => {
     const ops = convertirOperaciones(analisis);
@@ -423,6 +501,9 @@ export const useCamStore = create<CamState>((set) => ({
       // Cascade: el datum se eligió mirando OTRA pieza. Arrastrarlo enviaría un
       // cero que el operario no decidió para esta geometría.
       datumConfig: DATUM_INICIAL,
+      // Cascade: la orientación sellada era de OTRA pieza; un trabajo nuevo
+      // vuelve a abrir Montaje.
+      ...ORIENTACION_INICIAL,
     }));
   },
   setOperaciones: (operaciones) => set({ operaciones }),
@@ -489,6 +570,19 @@ export const useCamStore = create<CamState>((set) => ({
 
   setMontajeConfig: (config) =>
     set((state) => {
+      // Con la orientación sellada (o sellándose) la cara de apoyo NO cambia:
+      // solo "Editar cara de apoyo" la vuelve a abrir.
+      if (
+        state.estadoOrientacion !== "editando" &&
+        "face_id_apoyo" in config &&
+        config.face_id_apoyo !== state.montajeConfig.face_id_apoyo
+      ) {
+        console.warn(
+          "[camStore] setMontajeConfig: cara de apoyo bloqueada mientras está sellada.",
+        );
+        const { face_id_apoyo: _f, face_normal_apoyo: _n, ...resto } = config;
+        config = resto;
+      }
       // Cambiar la cara de apoyo o la sujeción invalida el Setup confirmado:
       // no debe quedar un Setup obsoleto (con orientación vieja) filtrándose
       // hacia Stock/operaciones. face_id_apoyo/sujecion_config son las entradas
@@ -499,31 +593,25 @@ export const useCamStore = create<CamState>((set) => ({
       const cambiaSujecion =
         "sujecion_config" in config &&
         config.sujecion_config !== state.montajeConfig.sujecion_config;
-      const invalidar = state.setup !== null && (cambiaCara || cambiaSujecion);
+      const invalidarPorSujecion = state.setup !== null && cambiaSujecion;
 
       return {
         montajeConfig: { ...state.montajeConfig, ...config },
         // Cascade Setup → StockFaces: invalidar el Setup limpia las StockFaces
         // para que no queden sobre-materiales huérfanos en un frame que ya no
         // existe (se regeneran en el próximo confirmMontaje).
-        ...(invalidar
+        ...(invalidarPorSujecion
           ? {
               setup: null,
               stockConfig: resetStockMeasurements(state.stockConfig),
             }
           : {}),
-        // Cascade cara de apoyo → mecanizabilidad. Va con `cambiaCara`, NO con
-        // `invalidar`: el veredicto depende de la cara de apoyo, no de que
-        // hubiera un Setup confirmado. Si se colgara de `invalidar`, cambiar la
-        // cara antes de confirmar el montaje dejaría en pantalla veredictos de
-        // la cara anterior sin que fallara nada.
-        ...(cambiaCara
-          ? {
-              mecanizabilidad: null,
-              mecanizabilidadEstado: "sin_analisis" as EstadoConsulta,
-              mecanizabilidadError: null,
-            }
-          : {}),
+        // Cascade cara de apoyo → Setup + mecanizabilidad. La mecanizabilidad
+        // va con `cambiaCara` aunque no haya Setup confirmado: el veredicto
+        // depende de la cara de apoyo, y colgarlo de la existencia del Setup
+        // dejaría en pantalla veredictos de la cara anterior sin que fallara
+        // nada.
+        ...(cambiaCara ? invalidarPorCambioDeCara(state) : {}),
       };
     }),
   // El editor espacial escribe el modelo completo (pieza + zonas + elementos)
@@ -565,6 +653,60 @@ export const useCamStore = create<CamState>((set) => ({
         stockConfig: { ...resetStockMeasurements(state.stockConfig), stockFaces },
       };
     }),
+  // Sellado de la cara de apoyo. La llamada al motor la hace la pantalla
+  // (como el resto de consultas); el store solo guarda el ciclo y la respuesta.
+  iniciarSellado: () =>
+    set((state) =>
+      state.estadoOrientacion === "editando" &&
+      state.montajeConfig.face_id_apoyo !== null
+        ? { estadoOrientacion: "sellando", errorOrientacion: null }
+        : {},
+    ),
+  // Solo se aplica si sigue esperando ESA cara de ESE trabajo: una respuesta
+  // que llegue tras cancelar o cambiar de pieza se descarta en vez de sellar
+  // una orientación que ya no corresponde.
+  completarSellado: (respuesta, faceId, idJob) =>
+    set((state) => {
+      if (
+        state.estadoOrientacion !== "sellando" ||
+        state.montajeConfig.face_id_apoyo !== faceId ||
+        state.idJob !== idJob ||
+        respuesta.face_id_apoyo !== faceId
+      ) {
+        console.warn(
+          "[camStore] completarSellado: respuesta descartada (ya no corresponde).",
+        );
+        return {};
+      }
+      return {
+        orientacionSellada: respuesta,
+        estadoOrientacion: "sellada",
+        errorOrientacion: null,
+      };
+    }),
+  fallarSellado: (mensaje) =>
+    set((state) =>
+      state.estadoOrientacion === "sellando"
+        ? { estadoOrientacion: "editando", errorOrientacion: mensaje }
+        : {},
+    ),
+  // Vuelve a la selección libre. Limpia la orientación sellada y lo mismo que
+  // limpia un cambio de cara (misma cascada). No disponible una vez cerrado.
+  editarCaraApoyo: () =>
+    set((state) =>
+      state.montajeCerrado
+        ? {}
+        : {
+            orientacionSellada: null,
+            estadoOrientacion: "editando",
+            errorOrientacion: null,
+            ...invalidarPorCambioDeCara(state),
+          },
+    ),
+  cerrarMontaje: () =>
+    set((state) =>
+      state.estadoOrientacion === "sellada" ? { montajeCerrado: true } : {},
+    ),
   invalidateSetup: () =>
     set((state) => ({
       setup: null,
@@ -636,6 +778,7 @@ export const useCamStore = create<CamState>((set) => ({
       datumConfig: DATUM_INICIAL,
       contextoFabricacion: CONTEXTO_INICIAL,
       montajeConfig: MONTAJE_INICIAL,
+      ...ORIENTACION_INICIAL,
       setup: null,
       ordenSetups: "superior_primero",
       gcodeSetups: [],

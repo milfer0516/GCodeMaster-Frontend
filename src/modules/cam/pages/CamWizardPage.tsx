@@ -1,6 +1,11 @@
 // src/modules/cam/pages/CamWizardPage.tsx
 import { useEffect } from "react";
-import { useCamStore } from "../store/camStore";
+import {
+  useCamStore,
+  pasoCerrado,
+  MOTIVO_PASO_CERRADO,
+  type CamStep,
+} from "../store/camStore";
 import { getMaquinas } from "../../../services/maquinasService";
 import { StepCargarStep } from "../components/steps/StepCargarStep";
 import { StepOperaciones } from "../components/steps/StepOperaciones";
@@ -30,6 +35,7 @@ export function CamWizardPage() {
   const reset = useCamStore((s) => s.reset);
   const maquina = useCamStore((s) => s.maquina);
   const setMaquina = useCamStore((s) => s.setMaquina);
+  const montajeCerrado = useCamStore((s) => s.montajeCerrado);
   const pasoActual = PASOS.findIndex((p) => p.key === step);
 
   // Cargar la máquina registrada UNA sola vez al entrar al flujo CAM, a nivel del
@@ -71,43 +77,54 @@ export function CamWizardPage() {
 
       {/* ── Stepper ── */}
       <div className="flex items-center gap-1 overflow-x-auto pb-1">
-        {PASOS.map((p, i) => (
-          <div key={p.key} className="flex items-center gap-1">
-            <div className="flex flex-col items-center">
-              <div
-                onClick={() => {
-                  if (i < pasoActual) {
-                    setStep(p.key as any);
-                  }
-                }}
-                className={`flex h-7 w-7 md:h-8 md:w-8 items-center justify-center rounded-full text-xs font-bold transition-colors ${
-                  i < pasoActual
-                    ? "bg-green-500 text-white cursor-pointer hover:bg-green-600"
-                    : i === pasoActual
-                      ? "bg-accent-blue text-white"
-                      : "border border-border bg-bg-surface text-text-muted"
-                }`}
-              >
-                {i < pasoActual ? "✓" : i + 1}
+        {PASOS.map((p, i) => {
+          // Pasos ya hechos pero cerrados: la orientación quedó fija al salir
+          // de Montaje, así que Cargar y Montaje no se pueden volver a abrir.
+          const cerrado = pasoCerrado(p.key as CamStep, montajeCerrado);
+          return (
+            <div key={p.key} className="flex items-center gap-1">
+              <div className="flex flex-col items-center">
+                <div
+                  onClick={() => {
+                    if (i < pasoActual && !cerrado) {
+                      setStep(p.key as any);
+                    }
+                  }}
+                  title={i < pasoActual && cerrado ? MOTIVO_PASO_CERRADO : undefined}
+                  className={`flex h-7 w-7 md:h-8 md:w-8 items-center justify-center rounded-full text-xs font-bold transition-colors ${
+                    i < pasoActual && cerrado
+                      ? "bg-green-500/50 text-white cursor-not-allowed"
+                      : i < pasoActual
+                        ? "bg-green-500 text-white cursor-pointer hover:bg-green-600"
+                        : i === pasoActual
+                          ? "bg-accent-blue text-white"
+                          : "border border-border bg-bg-surface text-text-muted"
+                  }`}
+                >
+                  {i < pasoActual ? "✓" : i + 1}
+                </div>
+                <span
+                  className={`mt-1 whitespace-nowrap text-[9px] md:text-[10px] ${
+                    i === pasoActual ? "text-accent-blue" : "text-text-muted"
+                  }`}
+                >
+                  {p.label}
+                </span>
               </div>
-              <span
-                className={`mt-1 whitespace-nowrap text-[9px] md:text-[10px] ${
-                  i === pasoActual ? "text-accent-blue" : "text-text-muted"
-                }`}
-              >
-                {p.label}
-              </span>
+              {i < PASOS.length - 1 && (
+                <div
+                  className={`mb-4 h-px w-4 md:w-6 flex-1 ${
+                    i < pasoActual ? "bg-green-500" : "bg-border"
+                  }`}
+                />
+              )}
             </div>
-            {i < PASOS.length - 1 && (
-              <div
-                className={`mb-4 h-px w-4 md:w-6 flex-1 ${
-                  i < pasoActual ? "bg-green-500" : "bg-border"
-                }`}
-              />
-            )}
-          </div>
-        ))}
+          );
+        })}
       </div>
+      {montajeCerrado && (
+        <p className="-mt-2 text-[11px] text-text-muted">{MOTIVO_PASO_CERRADO}</p>
+      )}
 
       {/* ── Contenido del paso ── */}
       <div className="rounded-xl md:rounded-2xl border border-border bg-bg-surface p-4 md:p-6">
