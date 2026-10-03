@@ -76,10 +76,13 @@ export const StepMontaje = () => {
   const datumConfig = useCamStore((s) => s.datumConfig);
   const setDatumConfig = useCamStore((s) => s.setDatumConfig);
   const [modoDatum, setModoDatum] = useState(false);
-  const puntosDatum = useMemo(
-    () => puntosDatumDeCaja(meshData?.bounding_box),
-    [meshData],
-  );
+  // Los puntos se dibujan como hijos de la malla que pinta el visor; sellada,
+  // esa malla es la del motor (marco de mecanizado), así que la caja debe ser
+  // la SUYA: con la caja original los puntos flotan fuera de la pieza.
+  const orientacionSellada = useCamStore((s) => s.orientacionSellada);
+  const cajaDatum =
+    orientacionSellada?.mesh_data.bounding_box ?? meshData?.bounding_box;
+  const puntosDatum = useMemo(() => puntosDatumDeCaja(cajaDatum), [cajaDatum]);
   const puntoElegido = puntoDelDatum(puntosDatum, datumConfig);
   // Estable: el visor re-suscribe sus listeners si cambia.
   const elegirPuntoDatum = useCallback(
@@ -255,7 +258,12 @@ export const StepMontaje = () => {
             </p>
             <button
               type="button"
-              onClick={editarCaraApoyo}
+              onClick={() => {
+                // Sin orientación sellada no hay puntos válidos: el modo datum
+                // se cierra junto con la cara.
+                setModoDatum(false);
+                editarCaraApoyo();
+              }}
               className="w-full rounded-xl border border-border px-4 py-2.5 min-h-[44px] text-sm font-medium text-text-muted transition hover:border-accent-blue/50 hover:text-text-primary"
             >
               Editar cara de apoyo
@@ -367,7 +375,7 @@ export const StepMontaje = () => {
 
         <button
           onClick={() => setModoDatum((activo) => !activo)}
-          disabled={puntosDatum.length === 0}
+          disabled={!sellada || puntosDatum.length === 0}
           className={`mb-3 w-full rounded-xl border px-4 py-2.5 min-h-[44px] text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-40 ${
             modoDatum
               ? "border-amber-400 bg-amber-400/10 text-amber-500"
@@ -376,6 +384,12 @@ export const StepMontaje = () => {
         >
           {modoDatum ? "Terminar selección del cero" : "Seleccionar datum"}
         </button>
+        {!sellada && (
+          <p className="-mt-1.5 mb-2 text-xs leading-snug text-amber-500">
+            Primero establezca la cara de apoyo: los puntos se calculan sobre
+            la pieza ya orientada.
+          </p>
+        )}
         <p className="-mt-1.5 mb-3 text-xs leading-snug text-text-muted">
           {INSTRUCCION_ELEGIR_DATUM}
         </p>
@@ -404,7 +418,7 @@ export const StepMontaje = () => {
             </div>
           ))}
         </div>
-        <p className="mt-2 text-xs leading-snug text-amber-500">
+        <p className="mt-2 text-xs leading-snug text-text-muted">
           El programa usa el corrector elegido (se activa después de cada
           cambio de herramienta). Registre el cero de la pieza en ese mismo
           corrector del control antes de correr el programa.

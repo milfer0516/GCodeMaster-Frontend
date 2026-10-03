@@ -403,6 +403,9 @@ const invalidarPorCambioDeCara = (state: {
   mecanizabilidad: null,
   mecanizabilidadEstado: "sin_analisis" as EstadoConsulta,
   mecanizabilidadError: null,
+  // Los puntos del cero salen de la pieza orientada sobre ESA cara: con otra
+  // cara (o sin sellar) el punto elegido ya no está donde el operario lo vio.
+  datumConfig: DATUM_INICIAL,
 });
 
 // Estado inicial del ciclo de la cara de apoyo (sin sellar, sin cerrar).
@@ -504,6 +507,13 @@ export const useCamStore = create<CamState>((set) => ({
       // Cascade: la orientación sellada era de OTRA pieza; un trabajo nuevo
       // vuelve a abrir Montaje.
       ...ORIENTACION_INICIAL,
+      // Cascade: los face_id son de OTRA pieza. Arrastrar la cara dejaría
+      // preseleccionada (y sellable) una cara que el operario no eligió aquí.
+      montajeConfig: {
+        ...state.montajeConfig,
+        face_id_apoyo: MONTAJE_INICIAL.face_id_apoyo,
+        face_normal_apoyo: MONTAJE_INICIAL.face_normal_apoyo,
+      },
     }));
   },
   setOperaciones: (operaciones) => set({ operaciones }),

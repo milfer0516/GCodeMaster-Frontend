@@ -484,7 +484,6 @@ export function CamViewer3D({
   // Mesa física (Fase 1): grupo propio, NUNCA referenciado por los raycasters
   // de pieza/stock ⇒ excluido del picking por construcción.
   const tableGroupRef = useRef<THREE.Group | null>(null);
-  const didFitTableRef = useRef(false);
 
   // Cara seleccionada con click simple para mostrar su dimensión en el panel
   const [faceInfo, setFaceInfo] = useState<FaceMetadata | null>(null);
@@ -656,17 +655,9 @@ export function CamViewer3D({
 
   // ── 3. Cargar mesh en escena cuando meshData está disponible ────────────
   useEffect(() => {
-    if (
-      !meshData ||
-      !sceneRef.current ||
-      !cameraRef.current ||
-      !controlsRef.current
-    )
-      return;
+    if (!meshData || !sceneRef.current) return;
 
     const scene = sceneRef.current;
-    const camera = cameraRef.current;
-    const controls = controlsRef.current;
 
     // Eliminar mesh anterior si existe
     if (meshRef.current) {
@@ -702,7 +693,6 @@ export function CamViewer3D({
     // Para centrar XZ y apoyar la base en Y=0:
     const center = meshData.bounding_box.center;
     const bbMin = meshData.bounding_box.min;
-    const halfHeight = (meshData.bounding_box.max[2] - bbMin[2]) / 2;
 
     // Escala de LECTURA (SOLO display). Amplía la pieza sobre la mesa sin tocar
     // dato alguno: se aplica al transform three.js (mesh.scale) y, para que la
@@ -720,32 +710,8 @@ export function CamViewer3D({
     scene.add(mesh);
     meshRef.current = mesh;
 
-    // Ajustar cámara al tamaño real de la pieza. En los pasos con mesa (Montaje y
-    // Stock) este encuadre por pieza queda inmediatamente sobrescrito por el fit
-    // a la mesa (efecto 7a-fit), que ahora gobierna AMBOS: así Stock encuadra la
-    // pieza+stock ya escalados igual que Montaje. En Operaciones (sin mesa) este
-    // encuadre por pieza es el definitivo, exactamente como siempre.
-    const bbMax = meshData.bounding_box.max;
-    const diagonal = Math.sqrt(
-      (bbMax[0] - bbMin[0]) ** 2 +
-        (bbMax[1] - bbMin[1]) ** 2 +
-        (bbMax[2] - bbMin[2]) ** 2,
-    );
-    // El centro visual del mesh en Three.js tras la rotación y posicionamiento
-    const meshCenterY = halfHeight;
-    camera.position.set(
-      diagonal * 1.0,
-      meshCenterY + diagonal * 0.8,
-      diagonal * 1.0,
-    );
-    controls.target.set(0, meshCenterY, 0);
-    camera.near = diagonal * 0.001;
-    camera.far = diagonal * 20;
-    camera.updateProjectionMatrix();
-    controls.minDistance = diagonal * 0.1;
-    controls.maxDistance = diagonal * 6;
-    controls.target.set(0, meshCenterY, 0);
-    controls.update();
+    // La cámara NO se toca aquí: la encuadra solo el efecto 7a-fit, con la
+    // misma escala de lectura `s`.
     // maquina/mostrarMesa: la escala de lectura depende de mesa_x/y y de si se
     // muestra la mesa; reconstruir desde meshData (ya cacheado, sin re-teselar)
     // al llegar la máquina.
@@ -1409,41 +1375,6 @@ export function CamViewer3D({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [stockConfig, meshData, setup, stockFacesByBoxIndex, maquina, mostrarMesa]);
 
-  // ── 6a-fit. Auto-fit camera to frame both part and stock envelope ───────
-  // Encuadre de RESPALDO por envolvente pieza+stock. En los pasos con mesa lo
-  // sobrescribe el fit a la mesa (7a-fit), que es el que gobierna Montaje Y Stock;
-  // este solo queda como fit visible cuando aún no hay máquina/mesa (7a-fit no
-  // corre) y la pieza va a tamaño real. Encuadra UNA VEZ por Setup (guard
-  // didFitSetupIdRef), nunca en cada tecla del formulario/popover (antes dependía
-  // de `stockConfig` y la pieza "saltaba"); tras eso la cámara solo se mueve al
-  // orbitar.
-  const didFitSetupIdRef = useRef<string | null>(null);
-  useEffect(() => {
-    if (!setup || !stockConfig || !cameraRef.current || !controlsRef.current) return;
-    if (didFitSetupIdRef.current === setup.id) return;
-    didFitSetupIdRef.current = setup.id;
-
-    const camera = cameraRef.current;
-    const controls = controlsRef.current;
-    const rbb = setup.rotatedBBox;
-
-    // Encuadre inicial basado en la PIEZA: los offsets arrancan en 0 (skin-tight),
-    // así que el stock coincide con la pieza en el primer render. La cámara solo
-    // vuelve a moverse cuando el operador orbita (este efecto corre una vez/Setup).
-    const maxDim = Math.max(rbb.width, rbb.depth, rbb.height);
-
-    // Position camera to frame the entire envelope
-    const distance = maxDim * 1.8;
-    camera.position.set(distance, distance * 0.75, distance);
-    camera.lookAt(0, 0, maxDim * 0.3); // Look slightly above center
-
-    // Update controls limits based on new scale
-    controls.minDistance = maxDim * 0.2;
-    controls.maxDistance = maxDim * 8;
-    controls.target.set(0, 0, maxDim * 0.3);
-    controls.update();
-  }, [stockConfig, setup]);
-
   // ── 6b. Resaltar cara de stock activa / en hover (sin reconstruir) ──────
   useEffect(() => {
     const mats = stockMaterialsRef.current;
@@ -1642,48 +1573,71 @@ export function CamViewer3D({
     tableGroupRef.current = group;
   }, [mostrarMesa, maquina, setup]);
 
-  // ── 7a-fit. Encuadre a la MESA (Montaje y Stock) ────────────────────────
-  // La mesa es mucho mayor que la pieza; el fit de la pieza ([meshData]) la
-  // dejaría fuera de cuadro. Se usa SIEMPRE que se muestra la mesa (mostrarMesa):
-  // Montaje Y Stock. Como ambos escalan la pieza con la MISMA escala de lectura
-  // (pieceDisplayScale) y el stock verde con ese mismo factor (efecto 6), la
-  // pieza+stock llenan una buena porción de la mesa y ésta queda de contexto —
-  // idéntico encuadre en los dos pasos. En pasos sin mesa (Operaciones) retorna y
-  // el encuadre por pieza (efecto 3) queda INTACTO. Encuadra UNA sola vez (guard
-  // didFitTableRef) para no pelear con el orbit.
+  // ── 7a-fit. Encuadre ÚNICO de la cámara ─────────────────────────────────
+  // El ÚNICO sitio que coloca la cámara tras el arranque. Usa la MISMA escala de
+  // lectura con la que se dibuja la pieza (pieceDisplayScale), así que la
+  // distancia corresponde al tamaño que se ve en pantalla.
+  //   · Con mesa (Montaje y Stock): encuadra mesa + pieza escalada.
+  //   · Sin mesa (Operaciones): encuadra la pieza (s=1).
+  // Se re-encuadra SOLO cuando cambia la malla mostrada (sellar, editar la cara,
+  // pieza nueva: `meshData` es la sellada o la teselada) o cuando la escala
+  // misma cambia (llega la máquina con sus medidas de mesa). Cualquier otro
+  // cambio —modo datum, sujeción, stock, selección— NO mueve la cámara, para no
+  // pisar lo que el operario orbitó a mano.
+  const encuadreRef = useRef<{ mesh: MeshData; clave: string } | null>(null);
   useEffect(() => {
-    if (!mostrarMesa || !maquina || !meshData) return;
-    if (!cameraRef.current || !controlsRef.current) return;
-    if (didFitTableRef.current) return;
-    const mesaX = maquina.mesa_x_mm;
-    const mesaY = maquina.mesa_y_mm;
-    if (!mesaX || !mesaY || mesaX <= 0 || mesaY <= 0) return;
-    didFitTableRef.current = true;
+    if (!meshData || !cameraRef.current || !controlsRef.current) return;
+    const mesaX = mostrarMesa ? (maquina?.mesa_x_mm ?? 0) : 0;
+    const mesaY = mostrarMesa ? (maquina?.mesa_y_mm ?? 0) : 0;
+    const hayMesa = mesaX > 0 && mesaY > 0;
+    const clave = hayMesa ? `${mesaX}x${mesaY}` : "sin-mesa";
+    const previo = encuadreRef.current;
+    if (previo && previo.mesh === meshData && previo.clave === clave) return;
+    encuadreRef.current = { mesh: meshData, clave };
 
     const camera = cameraRef.current;
     const controls = controlsRef.current;
-    const zApoyo = setup?.zApoyoMm ?? 0;
+    const s = pieceDisplayScale(meshData, maquina, mostrarMesa);
+    const bb = meshData.bounding_box;
+    // Medidas de la pieza TAL COMO SE DIBUJA (escaladas).
+    const piezaH = Math.max(0, bb.max[2] - bb.min[2]) * s;
+    const diagonal =
+      Math.sqrt(
+        (bb.max[0] - bb.min[0]) ** 2 +
+          (bb.max[1] - bb.min[1]) ** 2 +
+          (bb.max[2] - bb.min[2]) ** 2,
+      ) * s;
+    // Plano de apoyo: el mismo pivote con el que el efecto 4b coloca la pieza.
+    const zApoyo =
+      sujecionConfig?.envolvente?.part_bottom_z_mm ?? setup?.zApoyoMm ?? 0;
 
-    // Extensión vertical de la pieza (frame OCC Z → viewer Y) para dejarla dentro
-    // de cuadro apoyada sobre la mesa. Sin datos, 0 (solo la mesa manda el fit).
-    const piezaH = meshData
-      ? Math.max(0, meshData.bounding_box.max[2] - meshData.bounding_box.min[2])
-      : 0;
+    if (!hayMesa) {
+      // Encuadre por pieza (el que hacía el efecto 3), ahora escalado.
+      const centroY = zApoyo + piezaH / 2;
+      camera.position.set(diagonal, centroY + diagonal * 0.8, diagonal);
+      camera.near = diagonal * 0.001;
+      camera.far = diagonal * 20;
+      camera.updateProjectionMatrix();
+      controls.target.set(0, centroY, 0);
+      controls.minDistance = diagonal * 0.1;
+      controls.maxDistance = diagonal * 6;
+      controls.update();
+      return;
+    }
 
     // Aspect REAL del elemento renderizado (no el de la cámara, que puede estar
     // obsoleto en el instante del fit). Se sincroniza en la cámara ANTES de
     // encuadrar, para que la proyección con la que se dibuja coincida con la que
-    // se usó para calcular la distancia (antes la "matemática" no cuadraba con
-    // los píxeles porque el aspect no estaba sincronizado).
+    // se usó para calcular la distancia.
     const elFit = mountRef.current;
     const wFit = elFit?.clientWidth ?? 0;
     const hFit = elFit?.clientHeight ?? 0;
     const aspect = wFit > 0 && hFit > 0 ? wFit / hFit : camera.aspect || 1;
     camera.aspect = aspect;
 
-    // Fit estándar por esfera envolvente de la MESA + PIEZA (mm reales, ratio
-    // mesa_x:mesa_y intacto). Se elige el semiángulo MÁS restrictivo (vertical u
-    // horizontal según el aspect) para que la mesa quepa también a lo ancho.
+    // Fit estándar por esfera envolvente de la MESA + PIEZA escalada (mm reales,
+    // ratio mesa_x:mesa_y intacto). Se elige el semiángulo MÁS restrictivo
+    // (vertical u horizontal según el aspect) para que la mesa quepa a lo ancho.
     const R = 0.5 * Math.sqrt(mesaX * mesaX + mesaY * mesaY + piezaH * piezaH);
     const vHalf = THREE.MathUtils.degToRad(camera.fov) / 2;
     const hHalf = Math.atan(Math.tan(vHalf) * aspect);
@@ -1693,15 +1647,13 @@ export function CamViewer3D({
     // plano (no una esfera), así que su silueta llena bastante menos que la
     // esfera; al acercar la cámara la mesa DOMINA la vista (~80-90% de la
     // dimensión menor) en vez de quedar diminuta rodeada de vacío. Valor ajustado
-    // por el resultado RENDERADO, no por una fórmula: el encuadre "correcto" a la
-    // esfera dejaba la mesa pequeña. Ante la duda, más cerca (mesa más grande);
-    // errar por "demasiado grande" es lo pedido, "demasiado pequeña" es el bug.
+    // por el resultado RENDERADO, no por una fórmula.
     const FACTOR = 0.5;
     const distance = (R / Math.sin(fitHalf)) * FACTOR;
 
-    // Objetivo: centro de la mesa (Y=zApoyo) elevado media altura de pieza para
-    // encuadrar ambos. Dirección de vista isométrica EXISTENTE; solo cambia la
-    // DISTANCIA (tamaño aparente), nunca la geometría ni la proporción.
+    // Objetivo: centro de la mesa elevado media altura de pieza (escalada).
+    // Dirección de vista isométrica de siempre; solo la DISTANCIA depende del
+    // tamaño.
     const target = new THREE.Vector3(0, zApoyo + piezaH / 2, 0);
     const dir = new THREE.Vector3(1, 0.8, 1).normalize();
     camera.position.copy(target).addScaledVector(dir, distance);
@@ -1714,7 +1666,9 @@ export function CamViewer3D({
     controls.minDistance = R * 0.3;
     controls.maxDistance = distance * 4;
     controls.update();
-  }, [mostrarMesa, maquina, meshData, setup]);
+    // sujecionConfig/setup solo se LEEN (pivote de apoyo); el guard de arriba
+    // impide que su cambio re-encuadre.
+  }, [mostrarMesa, maquina, meshData, sujecionConfig, setup]);
 
   // ── Render ─────────────────────────────────────────────────────────────
   if (meshLoading) {

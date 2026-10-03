@@ -80,6 +80,7 @@ export const StepStock = () => {
   const stockConfig = useCamStore((s) => s.stockConfig);
   const setStockConfig = useCamStore((s) => s.setStockConfig);
   const setStep = useCamStore((s) => s.setStep);
+  const montajeCerrado = useCamStore((s) => s.montajeCerrado);
   const montajeConfig = useCamStore((s) => s.montajeConfig);
   // Setup persistente = ÚNICA fuente de la orientación de montaje (frame máquina).
   const setup = useCamStore((s) => s.setup);
@@ -212,12 +213,21 @@ export const StepStock = () => {
               (cara de apoyo). Vuelve al paso de Montaje y confírmalo antes de
               configurar el material bruto.
             </p>
-            <button
-              onClick={() => setStep("montaje")}
-              className="mt-3 rounded-xl border border-amber-500/60 bg-amber-500/20 px-4 py-2 text-sm font-medium text-amber-100 hover:bg-amber-500/30 transition"
-            >
-              ← Volver a Montaje
-            </button>
+            {/* Con Montaje cerrado, setStep("montaje") no hace nada: en vez
+                de un botón muerto, se dice cómo cambiarlo. */}
+            {montajeCerrado ? (
+              <p className="mt-3 text-xs md:text-sm text-amber-200/80">
+                El montaje ya quedó fijo. Para cambiarlo, use Cancelar y empiece
+                de nuevo.
+              </p>
+            ) : (
+              <button
+                onClick={() => setStep("montaje")}
+                className="mt-3 rounded-xl border border-amber-500/60 bg-amber-500/20 px-4 py-2 text-sm font-medium text-amber-100 hover:bg-amber-500/30 transition"
+              >
+                ← Volver a Montaje
+              </button>
+            )}
           </div>
         </div>
       </div>
