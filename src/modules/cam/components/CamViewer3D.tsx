@@ -11,7 +11,7 @@ import { formatMm } from "../../../utils/format";
 import type { SujecionConfig, StockConfig } from "../store/camStore";
 import type { StockFaceRole, StockPickRegion } from "../utils/stockFaces";
 import { cylTotals } from "../utils/stockFaces";
-import type { PuntoDatum } from "../domain/datum";
+import { INSTRUCCION_ELEGIR_DATUM, type PuntoDatum } from "../domain/datum";
 
 // ── Props — mismas que el visor anterior para no romper StepOperaciones ──
 // DESPUÉS
@@ -394,6 +394,52 @@ function makeBackgroundTexture(): THREE.Texture {
   const tex = new THREE.CanvasTexture(canvas);
   tex.colorSpace = THREE.SRGBColorSpace;
   return tex;
+}
+
+// Tarjeta del modo datum. "Cómo elegir" arranca plegado en cada entrada al
+// modo (el estado vive aquí y se pierde al desmontarse).
+function TarjetaModoDatum({
+  elegido,
+  onListo,
+}: {
+  elegido: string | null;
+  onListo?: () => void;
+}) {
+  const [verInstruccion, setVerInstruccion] = useState(false);
+  return (
+    <div className="pointer-events-none absolute left-2 top-2 z-10 w-[min(280px,calc(100%-1rem))]">
+      <div className="pointer-events-auto rounded-lg border border-amber-400/50 bg-black/60 px-3 py-2 text-white shadow-lg backdrop-blur-sm">
+        <p className="text-xs font-semibold text-amber-300">
+          Elija el cero de la pieza
+        </p>
+        <p className="mt-0.5 truncate text-xs text-white/85">
+          {elegido ? `Punto elegido: ${elegido}` : "Ningún punto elegido"}
+        </p>
+        {verInstruccion && (
+          <p className="mt-1.5 text-xs leading-snug text-white/85">
+            {INSTRUCCION_ELEGIR_DATUM}
+          </p>
+        )}
+        <div className="mt-1.5 flex items-center justify-between gap-2">
+          <button
+            type="button"
+            onClick={() => setVerInstruccion((v) => !v)}
+            aria-expanded={verInstruccion}
+            className="text-xs text-amber-300 underline-offset-2 hover:underline"
+          >
+            {verInstruccion ? "▾ Cómo elegir" : "▸ Cómo elegir"}
+          </button>
+          <button
+            type="button"
+            onClick={onListo}
+            className="shrink-0 rounded-md bg-amber-400 px-3 py-1 text-xs font-semibold text-black transition hover:bg-amber-300 min-h-[32px]"
+          >
+            Listo
+          </button>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 // ── Componente principal ───────────────────────────────────────────────────
@@ -1712,43 +1758,17 @@ export function CamViewer3D({
         </div>
       )}
 
-      {/* Aviso del modo datum. Solo la tarjeta recibe eventos (botón Listo);
-          el resto del visor sigue orbitando con normalidad. */}
+      {/* Tarjeta del modo datum — esquina superior izquierda, compacta, para
+          no tapar la pieza ni los puntos. El contenedor no recibe eventos:
+          solo la tarjeta, así un clic sobre una esfera nunca queda bloqueado. */}
       {modoDatum && (
-        <div className="pointer-events-none absolute inset-x-2 top-2 flex justify-center">
-          <div className="pointer-events-auto w-full max-w-md rounded-xl border border-amber-400/50 bg-black/80 px-4 py-3 text-white shadow-lg backdrop-blur-sm">
-            <p className="text-sm font-semibold text-amber-300">
-              Elija el cero de la pieza
-            </p>
-            <p className="mt-1 text-xs leading-snug text-white/85">
-              Toque una esquina de arriba o el centro de la cara de arriba. Tiene
-              que ser un punto que usted pueda tocar en la máquina con el reloj
-              comparador o el palpador de bordes. No vale cualquier punto de la
-              pieza: solo los marcados.
-            </p>
-            <div className="mt-2 flex items-center justify-between gap-3">
-              <p className="min-w-0 truncate text-xs font-medium">
-                {(() => {
-                  const hover = puntosDatum.find((p) => p.id === datumHover);
-                  const elegido = puntosDatum.find(
-                    (p) => p.id === datumSeleccionadoId,
-                  );
-                  if (hover) return hover.etiqueta;
-                  if (elegido) return `Elegido: ${elegido.etiqueta}`;
-                  return puntosDatum.length === 0
-                    ? "La geometría aún no está cargada."
-                    : "Ningún punto elegido todavía.";
-                })()}
-              </p>
-              <button
-                onClick={onSalirModoDatum}
-                className="shrink-0 rounded-lg bg-amber-400 px-3 py-1.5 text-xs font-semibold text-black transition hover:bg-amber-300 min-h-[36px]"
-              >
-                Listo
-              </button>
-            </div>
-          </div>
-        </div>
+        <TarjetaModoDatum
+          elegido={
+            puntosDatum.find((p) => p.id === datumSeleccionadoId)?.etiqueta ??
+            null
+          }
+          onListo={onSalirModoDatum}
+        />
       )}
 
       {/* Label de la cara de stock en hover — muestra su sobre-material actual.

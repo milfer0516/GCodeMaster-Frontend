@@ -127,3 +127,10 @@ export function puntoDelDatum(
   if (Object.keys(datum).length === 0) return null; // no declarado
   return puntos.find((p) => mismoDatum(p.datum, datum)) ?? null;
 }
+
+/** Cómo elegir el cero: UN solo texto para la tarjeta del visor y el panel. */
+export const INSTRUCCION_ELEGIR_DATUM =
+  "Toque una esquina de arriba o el centro de la cara de arriba. Tiene que " +
+  "ser un punto que usted pueda tocar en la máquina con el reloj comparador " +
+  "o el palpador de bordes. No vale cualquier punto de la pieza: solo los " +
+  "marcados.";

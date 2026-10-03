@@ -12,6 +12,7 @@ import { WizardNavButtons } from "./WizardNavButtons";
 import { alturaTotalDeclarada } from "../../domain/camposMontaje";
 import type { SujecionConfig } from "../../store/camStore";
 import {
+  INSTRUCCION_ELEGIR_DATUM,
   puntoDelDatum,
   puntosDatumDeCaja,
   type PuntoDatum,
@@ -375,6 +376,9 @@ export const StepMontaje = () => {
         >
           {modoDatum ? "Terminar selección del cero" : "Seleccionar datum"}
         </button>
+        <p className="-mt-1.5 mb-3 text-xs leading-snug text-text-muted">
+          {INSTRUCCION_ELEGIR_DATUM}
+        </p>
 
         <p className="mb-1.5 text-xs font-medium text-text-muted">
           Corrector de origen en el control
@@ -401,9 +405,9 @@ export const StepMontaje = () => {
           ))}
         </div>
         <p className="mt-2 text-xs leading-snug text-amber-500">
-          Atención: el corrector elegido todavía no llega al programa. Antes
-          de registrar el cero, mire en el G-Code qué corrector (G54–G57)
-          llama y use ese.
+          El programa usa el corrector elegido (se activa después de cada
+          cambio de herramienta). Registre el cero de la pieza en ese mismo
+          corrector del control antes de correr el programa.
         </p>
       </Collapsible>
 
