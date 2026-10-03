@@ -146,7 +146,10 @@ export const PasoValidacionMaquina = ({
         </p>
       )}
 
-      <div className="flex justify-between pt-1">
+      {/* Acciones fijas al pie del cuerpo con scroll de ModalSujecion.
+          pb-5/-mb-5 compensan el py-5 del cuerpo: sin scroll el aspecto no
+          cambia; con scroll los botones no quedan pegados al borde. */}
+      <div className="sticky bottom-0 z-10 -mb-5 flex justify-between bg-bg-card pb-5 pt-1">
         <button
           onClick={onBack}
           className="flex items-center gap-1 text-sm text-text-muted hover:text-text-primary transition"

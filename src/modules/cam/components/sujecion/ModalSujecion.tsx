@@ -51,9 +51,13 @@ export const ModalSujecion = ({ maquina, dimensiones, onConfirm, onClose }: Prop
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-      <div className="w-full max-w-lg rounded-2xl border border-border bg-bg-card shadow-2xl">
+      {/* Mismo patrón que components/ui/Modal: el panel se acota al viewport
+          (la envoltura tiene p-4) y va en flex columna para que SOLO el cuerpo
+          se desplace; cabecera y stepper quedan fijos. dvh y no vh: en móvil
+          sigue al alto visible real (barra del navegador, teclado). */}
+      <div className="flex max-h-[calc(100dvh-2rem)] w-full max-w-lg flex-col rounded-2xl border border-border bg-bg-card shadow-2xl">
         {/* Header */}
-        <div className="flex items-center justify-between border-b border-border px-6 py-4">
+        <div className="flex shrink-0 items-center justify-between border-b border-border px-6 py-4">
           <div>
             <h3 className="text-base font-semibold text-text-primary">
               Configurar sujeción
@@ -71,7 +75,7 @@ export const ModalSujecion = ({ maquina, dimensiones, onConfirm, onClose }: Prop
         </div>
 
         {/* Stepper */}
-        <div className="flex items-center gap-1 px-6 pt-5">
+        <div className="flex shrink-0 items-center gap-1 px-6 pt-5">
           {PASOS.map(({ n, label }, idx) => (
             <div key={n} className="flex flex-1 items-center gap-1 min-w-0">
               <span
@@ -97,8 +101,11 @@ export const ModalSujecion = ({ maquina, dimensiones, onConfirm, onClose }: Prop
           ))}
         </div>
 
-        {/* Contenido del paso activo */}
-        <div className="px-6 py-5">
+        {/* Contenido del paso activo: ES la zona con scroll. min-h-0 deja que
+            el hijo flex encoja por debajo de su contenido. scroll-pb reserva
+            el alto de la barra de acciones fija (sticky) de los pasos 2 y 3,
+            para que al enfocar un campo el navegador no lo deje debajo de ella. */}
+        <div className="min-h-0 overflow-y-auto overscroll-contain scroll-pb-20 px-6 py-5">
           {paso === 1 && (
             <PasoSelectorElemento onSelect={handleSeleccion} />
           )}
