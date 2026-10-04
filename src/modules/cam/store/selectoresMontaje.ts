@@ -7,17 +7,6 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import type { CamState } from "./camStore";
 import type { EstadoMontaje } from "../domain/montaje";
-import { puntoDelDatum, puntosDatumDeCaja } from "../domain/datum";
-
-/**
- * La caja sobre la que se calculan los puntos de datum. Los puntos se dibujan
- * como hijos de la malla que pinta el visor; sellada, esa malla es la del
- * motor (marco de mecanizado), así que la caja debe ser la SUYA: con la caja
- * original los puntos flotan fuera de la pieza.
- */
-export function cajaDatumDe(s: CamState) {
-  return s.orientacionSellada?.mesh_data.bounding_box ?? s.meshData?.bounding_box;
-}
 
 /** Foto plana (solo primitivos: apta para useShallow) que leen las reglas. */
 export function estadoMontajeDe(s: CamState): EstadoMontaje {
@@ -39,9 +28,5 @@ export function estadoMontajeDe(s: CamState): EstadoMontaje {
     elementosColocados:
       s.montajeConfig.montaje_espacial?.elementos_fisicos.length ?? null,
     notas: s.montajeConfig.notas,
-    etiquetaDatum:
-      puntoDelDatum(puntosDatumDeCaja(cajaDatumDe(s)), s.datumConfig)
-        ?.etiqueta ?? null,
-    wcs: s.montajeConfig.wcs,
   };
 }

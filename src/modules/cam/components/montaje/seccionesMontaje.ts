@@ -18,7 +18,6 @@ import { SeccionCaraApoyo } from "./SeccionCaraApoyo";
 import { SeccionSujecion } from "./SeccionSujecion";
 import { SeccionColocacion } from "./SeccionColocacion";
 import { SeccionNotas } from "./SeccionNotas";
-import { SeccionCeroCorrector } from "./SeccionCeroCorrector";
 
 const CONTENIDO: Record<IdSeccionMontaje, ComponentType> = {
   llegada: SeccionLlegadaPieza,
@@ -26,7 +25,6 @@ const CONTENIDO: Record<IdSeccionMontaje, ComponentType> = {
   sujecion: SeccionSujecion,
   colocacion: SeccionColocacion,
   notas: SeccionNotas,
-  cero: SeccionCeroCorrector,
 };
 
 export type SeccionMontajeUI = SeccionMontaje<ComponentType> & {

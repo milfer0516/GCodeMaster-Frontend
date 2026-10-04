@@ -2,8 +2,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // Barra de secciones de Montaje: un botón por sección VISIBLE, en el orden del
 // registro y agrupados como los grupos de las reglas. Cada botón: icono de
-// estado (forma distinta por estado), candado si la sección queda fija, título
-// y, si el grupo la tiene, su etiqueta corta.
+// estado (forma distinta por estado), candado si la sección queda fija y título.
 //
 // No conoce ninguna sección concreta: recorre SECCIONES_MONTAJE. En pantallas
 // estrechas se desplaza en horizontal SIN desplazar la página.
@@ -83,11 +82,6 @@ export function BarraSecciones({ estado, abierta, onAbrir, refBoton }: Props) {
                         aria-label="Queda fija al avanzar"
                         className="h-3.5 w-3.5 shrink-0 text-text-muted"
                       />
-                    )}
-                    {grupo.etiqueta && (
-                      <span className="rounded-md border border-border px-1.5 py-px text-[10px] font-medium uppercase tracking-wide text-text-muted">
-                        {grupo.etiqueta}
-                      </span>
                     )}
                   </button>
                 );

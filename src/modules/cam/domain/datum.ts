@@ -134,3 +134,19 @@ export const INSTRUCCION_ELEGIR_DATUM =
   "ser un punto que usted pueda tocar en la máquina con el reloj comparador " +
   "o el palpador de bordes. No vale cualquier punto de la pieza: solo los " +
   "marcados.";
+
+/** Una línea para el estado del cero: "<punto o Sin elegir> · <WCS>". */
+export function resumenCeroDePieza(
+  etiquetaDatum: string | null,
+  wcs: string,
+): string {
+  return `${etiquetaDatum ?? "Sin elegir"} · ${wcs}`;
+}
+
+/**
+ * Aviso cuando el stock tiene sobre-material: los puntos se calculan sobre la
+ * caja de la pieza (no del bruto), así que el cero queda sobre la pieza
+ * terminada. Solo informa: no cambia nada de lo que viaja.
+ */
+export const NOTA_SOBREMEDIDA_CERO =
+  "Hay sobremedida: este cero queda sobre la pieza terminada y no sobre el bruto.";

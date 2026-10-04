@@ -44,30 +44,16 @@ export interface EstadoMontaje {
   /** Elementos físicos colocados en la mesa; null = la pieza no se ha colocado. */
   elementosColocados: number | null;
   notas: string;
-  /** Etiqueta del punto de datum elegido; null = sin elegir. */
-  etiquetaDatum: string | null;
-  wcs: string;
 }
 
-export type GrupoMontaje = "pieza" | "sosten" | "provisional";
+export type GrupoMontaje = "pieza" | "sosten";
 
-/**
- * Los grupos del panel, en orden, con el título que ve el operario y, si lo
- * tiene, la etiqueta corta que acompaña a cada sección del grupo.
- */
-export const GRUPOS_MONTAJE: ReadonlyArray<{
-  id: GrupoMontaje;
-  titulo: string;
-  etiqueta?: string;
-}> = [
-  { id: "pieza", titulo: "La pieza" },
-  { id: "sosten", titulo: "Cómo se sostiene" },
-  {
-    id: "provisional",
-    titulo: "Cero y corrector (provisional)",
-    etiqueta: "provisional",
-  },
-];
+/** Los grupos del panel, en orden, con el título que ve el operario. */
+export const GRUPOS_MONTAJE: ReadonlyArray<{ id: GrupoMontaje; titulo: string }> =
+  [
+    { id: "pieza", titulo: "La pieza" },
+    { id: "sosten", titulo: "Cómo se sostiene" },
+  ];
 
 /** El contrato de una sección. `Contenido` lo pone la capa de UI. */
 export interface SeccionMontaje<Contenido = unknown> {
@@ -184,14 +170,6 @@ export const REGLAS_MONTAJE = [
     obligatoria: false,
     faltantes: NINGUNO,
     resumen: (e) => e.notas.trim().split("\n")[0] || "Sin notas",
-  },
-  {
-    id: "cero",
-    grupo: "provisional",
-    titulo: "Cero y corrector",
-    obligatoria: false,
-    faltantes: NINGUNO,
-    resumen: (e) => `${e.etiquetaDatum ?? "Sin elegir"} · ${e.wcs}`,
   },
 ] as const satisfies readonly ReglasSeccionMontaje[];
 

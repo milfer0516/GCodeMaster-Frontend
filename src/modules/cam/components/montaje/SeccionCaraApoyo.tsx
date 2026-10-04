@@ -6,7 +6,6 @@
 // sellar una cara PLANA: las que el análisis lista en caras_planas.
 import { AlertTriangle, CheckCircle2, Loader2 } from "lucide-react";
 import { useCamStore } from "../../store/camStore";
-import { useModoDatum } from "./contextoMontaje";
 import { useSellarCaraApoyo } from "./hooksMontaje";
 
 export function SeccionCaraApoyo() {
@@ -14,7 +13,6 @@ export function SeccionCaraApoyo() {
   const montajeConfig = useCamStore((s) => s.montajeConfig);
   const setMontajeConfig = useCamStore((s) => s.setMontajeConfig);
   const meshData = useCamStore((s) => s.meshData);
-  const { setModoDatum } = useModoDatum();
 
   const carasPlanas = analisis?.caras_planas ?? [];
   const carasParaSelector = [...carasPlanas]
@@ -85,12 +83,7 @@ export function SeccionCaraApoyo() {
           </p>
           <button
             type="button"
-            onClick={() => {
-              // Sin orientación sellada no hay puntos válidos: el modo datum
-              // se cierra junto con la cara.
-              setModoDatum(false);
-              editarCaraApoyo();
-            }}
+            onClick={editarCaraApoyo}
             className="w-full rounded-xl border border-border px-4 py-2.5 min-h-[44px] text-sm font-medium text-text-muted transition hover:border-accent-blue/50 hover:text-text-primary"
           >
             Editar cara de apoyo

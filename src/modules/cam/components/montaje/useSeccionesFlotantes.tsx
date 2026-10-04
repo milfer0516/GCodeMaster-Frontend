@@ -7,7 +7,6 @@
 //
 //   · Abrir mueve el foco al panel; cerrar (X, Escape, mismo botón) lo devuelve
 //     al botón de la sección.
-//   · Entrar en el modo datum cierra el panel; salir de él no lo reabre.
 //
 // Cambiar la presentación (acordeón, barra, …) es cambiar ESTE archivo y sus
 // dos piezas: las reglas (domain/montaje.ts) y el registro no se tocan.
@@ -32,7 +31,7 @@ function hayCapaModal(): boolean {
   return document.querySelector(".fixed.inset-0") !== null;
 }
 
-export function useSeccionesFlotantes({ modoDatum }: { modoDatum: boolean }): {
+export function useSeccionesFlotantes(): {
   barra: ReactNode;
   panel: ReactNode;
 } {
@@ -65,11 +64,6 @@ export function useSeccionesFlotantes({ modoDatum }: { modoDatum: boolean }): {
       devolverFocoA.current = null;
     }
   }, [abierta]);
-
-  // El modo datum necesita el visor despejado: cierra el panel (no lo reabre).
-  useEffect(() => {
-    if (modoDatum) setAbierta(null);
-  }, [modoDatum]);
 
   // Escape cierra: con el foco en el panel, o sin foco en ningún control (tras
   // tocar el visor). Nunca mientras haya una capa modal encima.

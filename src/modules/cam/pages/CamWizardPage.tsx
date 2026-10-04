@@ -59,63 +59,63 @@ export function CamWizardPage() {
   }, [maquina, setMaquina]);
 
   return (
-    <div className="space-y-4 md:space-y-6">
-      {/* ── Header ── */}
-      {/* "Cancelar proceso" vive en la barra de acciones de cada paso
-          (WizardNavButtons), con confirmación. */}
-      <div>
-        <h1 className="text-lg md:text-xl font-bold text-text-primary">CAM Wizard</h1>
-        <p className="mt-0.5 text-xs md:text-sm text-text-muted">
-          Genera G-Code a partir de tu archivo STEP
-        </p>
-      </div>
+    <div className="space-y-3">
+      {/* ── Header compacto: título a la izquierda y pasos a la derecha en UNA
+          fila; en anchos estrechos los pasos bajan debajo del título.
+          "Cancelar proceso" vive en la barra de acciones de cada paso
+          (WizardNavButtons), con confirmación. ── */}
+      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+        <h1 className="shrink-0 text-lg md:text-xl font-bold text-text-primary">
+          Generar G-Code
+        </h1>
 
-      {/* ── Stepper ── */}
-      <div className="flex items-center gap-1 overflow-x-auto pb-1">
-        {PASOS.map((p, i) => {
-          // Pasos ya hechos pero cerrados: la orientación quedó fija al salir
-          // de Montaje, así que Cargar y Montaje no se pueden volver a abrir.
-          const cerrado = pasoCerrado(p.id, montajeCerrado);
-          return (
-            <div key={p.id} className="flex items-center gap-1">
-              <div className="flex flex-col items-center">
-                <div
-                  onClick={() => {
-                    if (i < pasoActual && !cerrado) {
-                      irA(p.id);
-                    }
-                  }}
-                  title={i < pasoActual && cerrado ? MOTIVO_PASO_CERRADO : undefined}
-                  className={`flex h-7 w-7 md:h-8 md:w-8 items-center justify-center rounded-full text-xs font-bold transition-colors ${
-                    i < pasoActual && cerrado
-                      ? "bg-green-500/50 text-white cursor-not-allowed"
-                      : i < pasoActual
-                        ? "bg-green-500 text-white cursor-pointer hover:bg-green-600"
-                        : i === pasoActual
-                          ? "bg-accent-blue text-white"
-                          : "border border-border bg-bg-surface text-text-muted"
-                  }`}
-                >
-                  {i < pasoActual ? "✓" : i + 1}
+        {/* ── Stepper ── */}
+        <div className="flex min-w-0 max-w-full items-center gap-1 overflow-x-auto pb-1">
+          {PASOS.map((p, i) => {
+            // Pasos ya hechos pero cerrados: la orientación quedó fija al salir
+            // de Montaje, así que Cargar y Montaje no se pueden volver a abrir.
+            const cerrado = pasoCerrado(p.id, montajeCerrado);
+            return (
+              <div key={p.id} className="flex items-center gap-1">
+                <div className="flex flex-col items-center">
+                  <div
+                    onClick={() => {
+                      if (i < pasoActual && !cerrado) {
+                        irA(p.id);
+                      }
+                    }}
+                    title={i < pasoActual && cerrado ? MOTIVO_PASO_CERRADO : undefined}
+                    className={`flex h-7 w-7 md:h-8 md:w-8 items-center justify-center rounded-full text-xs font-bold transition-colors ${
+                      i < pasoActual && cerrado
+                        ? "bg-green-500/50 text-white cursor-not-allowed"
+                        : i < pasoActual
+                          ? "bg-green-500 text-white cursor-pointer hover:bg-green-600"
+                          : i === pasoActual
+                            ? "bg-accent-blue text-white"
+                            : "border border-border bg-bg-surface text-text-muted"
+                    }`}
+                  >
+                    {i < pasoActual ? "✓" : i + 1}
+                  </div>
+                  <span
+                    className={`mt-1 whitespace-nowrap text-[9px] md:text-[10px] ${
+                      i === pasoActual ? "text-accent-blue" : "text-text-muted"
+                    }`}
+                  >
+                    {p.label}
+                  </span>
                 </div>
-                <span
-                  className={`mt-1 whitespace-nowrap text-[9px] md:text-[10px] ${
-                    i === pasoActual ? "text-accent-blue" : "text-text-muted"
-                  }`}
-                >
-                  {p.label}
-                </span>
+                {i < PASOS.length - 1 && (
+                  <div
+                    className={`mb-4 h-px w-4 md:w-6 flex-1 ${
+                      i < pasoActual ? "bg-green-500" : "bg-border"
+                    }`}
+                  />
+                )}
               </div>
-              {i < PASOS.length - 1 && (
-                <div
-                  className={`mb-4 h-px w-4 md:w-6 flex-1 ${
-                    i < pasoActual ? "bg-green-500" : "bg-border"
-                  }`}
-                />
-              )}
-            </div>
-          );
-        })}
+            );
+          })}
+        </div>
       </div>
       {montajeCerrado && (
         <p className="-mt-2 text-[11px] text-text-muted">{MOTIVO_PASO_CERRADO}</p>

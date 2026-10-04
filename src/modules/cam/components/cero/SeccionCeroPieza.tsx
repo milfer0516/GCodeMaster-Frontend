@@ -1,12 +1,15 @@
-// src/modules/cam/components/montaje/SeccionCeroCorrector.tsx
+// src/modules/cam/components/cero/SeccionCeroPieza.tsx
 //
-// "Cero y corrector" — sección PROVISIONAL del paso Montaje: DÓNDE va el cero
-// (datum) y CÓMO se llama en el control (WCS), como UNA sola decisión. En una
-// fase siguiente pasa al paso Stock.
+// "Cero de pieza (datum y WCS)": DÓNDE va el cero (datum) y CÓMO se llama en el
+// control (WCS), como UNA sola decisión. No depende del paso que la aloja: el
+// anfitrión le da el modo datum por ContextoModoDatum.
 import { useCamStore } from "../../store/camStore";
-import { INSTRUCCION_ELEGIR_DATUM } from "../../domain/datum";
-import { useModoDatum } from "./contextoMontaje";
-import { usePuntosDatum } from "./hooksMontaje";
+import {
+  INSTRUCCION_ELEGIR_DATUM,
+  NOTA_SOBREMEDIDA_CERO,
+} from "../../domain/datum";
+import { useModoDatum } from "./contextoModoDatum";
+import { useHaySobremedida, usePuntosDatum } from "./hooksCero";
 
 const WCS_ITEMS = [
   { code: "G54" as const, descripcion: "Origen pieza 1 (más común)" },
@@ -15,22 +18,26 @@ const WCS_ITEMS = [
   { code: "G57" as const, descripcion: "Origen pieza 4" },
 ];
 
-export function SeccionCeroCorrector() {
+export function SeccionCeroPieza() {
   const montajeConfig = useCamStore((s) => s.montajeConfig);
   const setMontajeConfig = useCamStore((s) => s.setMontajeConfig);
   const sellada = useCamStore((s) => s.estadoOrientacion === "sellada");
   const { modoDatum, setModoDatum } = useModoDatum();
   const { puntosDatum, puntoElegido } = usePuntosDatum();
+  const haySobremedida = useHaySobremedida();
 
   return (
     <>
-      <p className="mb-2 rounded-lg border border-border bg-bg-elevated/50 px-2.5 py-1.5 text-xs leading-snug text-text-muted">
-        Esta configuración pasará al paso Stock.
-      </p>
       <p className="mb-2 text-xs text-text-muted">
         El cero del programa va en un punto que usted palpa en la máquina y
         se guarda en un corrector de origen (G54–G57).
       </p>
+
+      {haySobremedida && (
+        <p className="mb-2 rounded-lg border border-amber-500/40 bg-amber-500/10 px-2.5 py-1.5 text-xs leading-snug text-amber-500">
+          {NOTA_SOBREMEDIDA_CERO}
+        </p>
+      )}
 
       <div className="mb-3 rounded-xl border border-border bg-bg-primary px-3 py-2">
         {puntoElegido ? (

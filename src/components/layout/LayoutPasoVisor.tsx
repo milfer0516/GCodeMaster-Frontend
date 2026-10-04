@@ -5,7 +5,7 @@
 // los controles de cada panel y la navegación); este componente aporta el MARCO:
 //
 //   ┌───────────────────────────────────────────────┐
-//   │ encabezado …                    [☰ panel](móvil)│
+//   │ título …                        [☰ panel](móvil)│
 //   ├──────────────────────────────┬────────────────┤
 //   │                              │  ▾ Panel (☰)    │
 //   │        visorContent          │   contenido…    │  ← aside(s) a la DERECHA
@@ -57,8 +57,10 @@ interface Props {
   /** Slot de navegación inferior (p.ej. <WizardNavButtons … />). Se envuelve en
    *  la barra sticky; se pasa como nodo para conservar su markup/behaviour EXACTO. */
   navegacion?: ReactNode;
-  /** Bloque de título/descripción del paso, a la izquierda de los disparadores. */
-  encabezado?: ReactNode;
+  /** Título del paso, a la izquierda de los disparadores. */
+  titulo: string;
+  /** Línea de descripción bajo el título. Opcional: sin ella, el visor gana alto. */
+  subtitulo?: ReactNode;
   /** Fila entre el encabezado y el visor. */
   barraSuperior?: ReactNode;
   /** Capa dentro del área del visor (posicionada en absoluto por quien la pasa). */
@@ -81,7 +83,8 @@ export function LayoutPasoVisor({
   visorContent,
   paneles,
   navegacion,
-  encabezado,
+  titulo,
+  subtitulo,
   barraSuperior,
   superposicionVisor,
   sinColumnaControles = false,
@@ -117,9 +120,14 @@ export function LayoutPasoVisor({
   return (
     <div className="flex flex-col gap-4">
       {/* ── Cabecera: encabezado del paso + disparadores de cajón (móvil) ── */}
-      {(encabezado || panelesVisibles.length > 0) && (
+      {(titulo || panelesVisibles.length > 0) && (
         <div className="flex items-start justify-between gap-3">
-          {encabezado}
+          <div className="min-w-0">
+            <h2 className="text-lg font-semibold text-text-primary">{titulo}</h2>
+            {subtitulo && (
+              <p className="mt-0.5 text-sm text-text-muted">{subtitulo}</p>
+            )}
+          </div>
           {panelesVisibles.length > 0 && (
             <div className="flex shrink-0 gap-2 lg:hidden">
               {panelesVisibles.map((p) => (

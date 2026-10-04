@@ -1,10 +1,13 @@
 // src/modules/cam/components/steps/StepStock.tsx
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useCamStore } from "../../store/camStore";
 import { CamViewer3D } from "../CamViewer3D";
 import { Collapsible } from "../../../../components/ui/Collapsible";
 import { LayoutPasoVisor } from "../../../../components/layout/LayoutPasoVisor";
 import { WizardNavButtons } from "./WizardNavButtons";
+import { SeccionCeroPieza } from "../cero/SeccionCeroPieza";
+import { ContextoModoDatum } from "../cero/contextoModoDatum";
+import { usePuntosDatum, useResumenCero } from "../cero/hooksCero";
 import {
   Package,
   Box,
@@ -94,6 +97,18 @@ export const StepStock = () => {
   } | null>(null);
 
   const closePopover = () => setPopover(null);
+
+  // Cero de pieza (datum y WCS). El modo datum es estado de ESTA pantalla: al
+  // salir del paso se pierde. La sección lo lee por ContextoModoDatum; el visor
+  // lo recibe por props (en modo datum no atiende el picking de caras de stock).
+  const [modoDatum, setModoDatum] = useState(false);
+  const salirModoDatum = useCallback(() => setModoDatum(false), []);
+  const contextoModoDatum = useMemo(
+    () => ({ modoDatum, setModoDatum }),
+    [modoDatum],
+  );
+  const { puntosDatum, puntoElegido, elegirPuntoDatum } = usePuntosDatum();
+  const resumenCero = useResumenCero();
 
   // La FORMA del bruto la declara el operario en Montaje ("¿Cómo llega la
   // pieza?") y vive en stockConfig.tipo. Aquí se puede cambiar, pero nunca se
@@ -308,6 +323,11 @@ export const StepStock = () => {
           facePickingEnabled ? (popover?.faceIndex ?? null) : null
         }
         onStockFaceClick={facePickingEnabled ? onStockFaceClick : undefined}
+        modoDatum={modoDatum}
+        puntosDatum={puntosDatum}
+        datumSeleccionadoId={puntoElegido?.id ?? null}
+        onDatumPick={elegirPuntoDatum}
+        onSalirModoDatum={salirModoDatum}
       />
 
       {/* Popover contextual anclado a la región pinchada */}
@@ -551,41 +571,43 @@ export const StepStock = () => {
           </div>
         </div>
       </Collapsible>
+
+      {/* Cero de pieza: opcional (sin elegir, el motor usa su default). */}
+      <Collapsible
+        titulo="Cero de pieza (datum y WCS)"
+        distintivo={
+          <span className="min-w-0 truncate text-xs text-text-muted">
+            {resumenCero}
+          </span>
+        }
+      >
+        <SeccionCeroPieza />
+      </Collapsible>
     </>
   );
 
   return (
-    <LayoutPasoVisor
-      encabezado={
-        <div>
-          <h2 className="text-base md:text-lg font-bold text-text-primary">
-            Material Bruto Disponible
-          </h2>
-          <p className="mt-1 text-xs md:text-sm text-text-muted">
-            Haz clic en cada cara/región del sólido, o usa los campos, para
-            capturar el sobre-material que sobresale (medido con calibre). Todo
-            empieza vacío — el sistema nunca inventa una medida. El tamaño
-            resultante se calcula solo.
-          </p>
-        </div>
-      }
-      visorContent={visorContent}
-      paneles={[
-        {
-          id: "stock",
-          titulo: "Material bruto",
-          abiertoInicial: true,
-          contenido: controlesStock,
-        },
-      ]}
-      navegacion={
-        // Sin offsets es válido (p.ej. una brida a solo taladrar): el stock
-        // coincide con la pieza. El motor valida raw ≥ pieza y devuelve su error
-        // en español; aquí nunca se envía un stock físicamente imposible porque
-        // los offsets no pueden ser negativos.
-        <WizardNavButtons />
-      }
-    />
+    <ContextoModoDatum.Provider value={contextoModoDatum}>
+      <LayoutPasoVisor
+        titulo="Material Bruto Disponible"
+        visorContent={visorContent}
+        paneles={[
+          {
+            id: "stock",
+            titulo: "Material bruto",
+            abiertoInicial: true,
+            contenido: controlesStock,
+          },
+        ]}
+        navegacion={
+          // Sin offsets es válido (p.ej. una brida a solo taladrar): el stock
+          // coincide con la pieza. El motor valida raw ≥ pieza y devuelve su error
+          // en español; aquí nunca se envía un stock físicamente imposible porque
+          // los offsets no pueden ser negativos.
+          <WizardNavButtons />
+        }
+      />
+    </ContextoModoDatum.Provider>
   );
 };
 
