@@ -35,7 +35,6 @@ const PANTALLA_DE_PASO: Record<CamStep, ComponentType> = {
 export function CamWizardPage() {
   const step = useCamStore((s) => s.step);
   const irA = useCamStore((s) => s.irA);
-  const reset = useCamStore((s) => s.reset);
   const maquina = useCamStore((s) => s.maquina);
   const setMaquina = useCamStore((s) => s.setMaquina);
   const montajeCerrado = useCamStore((s) => s.montajeCerrado);
@@ -62,22 +61,13 @@ export function CamWizardPage() {
   return (
     <div className="space-y-4 md:space-y-6">
       {/* ── Header ── */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-lg md:text-xl font-bold text-text-primary">CAM Wizard</h1>
-          <p className="mt-0.5 text-xs md:text-sm text-text-muted">
-            Genera G-Code a partir de tu archivo STEP
-          </p>
-        </div>
-        {/* Ni en el primer paso ni en el último (mismo criterio de siempre). */}
-        {pasoActual > 0 && pasoActual < PASOS.length - 1 && (
-          <button
-            onClick={reset}
-            className="text-xs text-text-muted hover:text-accent-red transition min-h-[44px] px-2"
-          >
-            ✕ Cancelar
-          </button>
-        )}
+      {/* "Cancelar proceso" vive en la barra de acciones de cada paso
+          (WizardNavButtons), con confirmación. */}
+      <div>
+        <h1 className="text-lg md:text-xl font-bold text-text-primary">CAM Wizard</h1>
+        <p className="mt-0.5 text-xs md:text-sm text-text-muted">
+          Genera G-Code a partir de tu archivo STEP
+        </p>
       </div>
 
       {/* ── Stepper ── */}

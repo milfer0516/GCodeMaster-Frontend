@@ -1,19 +1,18 @@
 // src/modules/cam/components/steps/StepMontaje.tsx
 //
-// Paso Montaje: compone el visor y el panel de secciones. Los controles viven
-// en las secciones (components/montaje/), registradas en seccionesMontaje.ts.
-// Aquí solo queda el visor, el estado del modo datum (local a esta pantalla) y
-// la nota de lo que falta para avanzar.
+// Paso Montaje: compone el visor con la barra de secciones y su panel flotante
+// (useSeccionesFlotantes). Los controles viven en las secciones
+// (components/montaje/), registradas en seccionesMontaje.ts. Aquí solo queda el
+// visor y el estado del modo datum (local a esta pantalla). Lo que falta para
+// avanzar lo pinta la barra de acciones (WizardNavButtons).
 import { useCallback, useMemo, useState } from "react";
-import { useShallow } from "zustand/react/shallow";
 import { useCamStore } from "../../store/camStore";
 import { CamViewer3D } from "../CamViewer3D";
 import { LayoutPasoVisor } from "../../../../components/layout/LayoutPasoVisor";
 import { WizardNavButtons } from "./WizardNavButtons";
-import { PanelMontaje } from "../montaje/PanelMontaje";
+import { useSeccionesFlotantes } from "../montaje/useSeccionesFlotantes";
 import { ContextoMontajeLocal } from "../montaje/contextoMontaje";
 import { usePuntosDatum } from "../montaje/hooksMontaje";
-import { pendientesDeMontaje } from "../../domain/pasos";
 
 export const StepMontaje = () => {
   const analisis = useCamStore((s) => s.analisis);
@@ -31,9 +30,7 @@ export const StepMontaje = () => {
   const contextoLocal = useMemo(() => ({ modoDatum, setModoDatum }), [modoDatum]);
   const { puntosDatum, puntoElegido, elegirPuntoDatum } = usePuntosDatum();
 
-  // Lo que falta para avanzar: misma lista que decide puedeAvanzar y que marca
-  // "Pendiente" en las secciones (domain/montaje.ts vía domain/pasos.ts).
-  const pendientes = useCamStore(useShallow(pendientesDeMontaje));
+  const { barra, panel } = useSeccionesFlotantes({ modoDatum });
 
   const dimensiones = analisis?.dimensiones ?? { x: 0, y: 0, z: 0 };
   const carasPlanas = analisis?.caras_planas ?? [];
@@ -83,27 +80,14 @@ export const StepMontaje = () => {
             onSalirModoDatum={salirModoDatum}
           />
         }
-        paneles={[
-          {
-            id: "controles",
-            titulo: "Controles",
-            tituloMovil: "Controles de montaje",
-            abiertoInicial: true,
-            contenido: <PanelMontaje />,
-          },
-        ]}
+        barraSuperior={barra}
+        superposicionVisor={panel}
+        sinColumnaControles
+        paneles={[]}
         navegacion={
-          <>
-            {/* Misma lista que decide puedeAvanzar (domain/pasos.ts). */}
-            {pendientes.length > 0 && (
-              <p className="mb-2 text-xs text-text-muted">
-                Para continuar falta: {pendientes.join(", ")}.
-              </p>
-            )}
-            {/* Al avanzar, el registro (domain/pasos.ts) confirma el montaje y
-                cierra Montaje y Cargar. */}
-            <WizardNavButtons nextLabel="Seleccionar material" />
-          </>
+          // Al avanzar, el registro (domain/pasos.ts) confirma el montaje y
+          // cierra Montaje y Cargar.
+          <WizardNavButtons />
         }
       />
     </ContextoMontajeLocal.Provider>

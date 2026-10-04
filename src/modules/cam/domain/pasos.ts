@@ -7,6 +7,10 @@
 // Montaje, la condición para avanzar de cada paso y lo que se hace al avanzar.
 // Mover, unir o renombrar un paso es editar ESTA lista.
 //
+// · faltantes(estado): OPCIONAL. Lo que falta para avanzar, en palabras del
+//   operario (vacío = se puede avanzar). La barra de acciones lo muestra en
+//   "Para continuar falta: …". Si el paso lo tiene, su puedeAvanzar SE DERIVA
+//   de él (conFaltantes): no hay dos condiciones que puedan desalinearse.
 // · puedeAvanzar(estado): función PURA sobre una foto del store. Solo lee.
 // · alSalir(get): se ejecuta al pulsar "Siguiente", ANTES de cambiar de paso.
 //   Si lanza, el operario se queda en el paso y ve el mensaje del error. No se
@@ -33,8 +37,17 @@ interface PasoDef {
   label: string;
   /** Tras avanzar desde Montaje con la orientación sellada, ya no se visita. */
   cerradoTrasMontaje?: boolean;
+  faltantes?: (estado: CamState) => string[];
   puedeAvanzar: (estado: CamState) => boolean;
   alSalir?: (get: () => CamState) => Promise<void>;
+}
+
+/** Un paso cuya condición de avance es "no falta nada". */
+function conFaltantes(faltantes: (estado: CamState) => string[]) {
+  return {
+    faltantes,
+    puedeAvanzar: (estado: CamState) => faltantes(estado).length === 0,
+  };
 }
 
 export const PASOS = [
@@ -42,14 +55,16 @@ export const PASOS = [
     id: "cargar",
     label: "Archivo y Análisis",
     cerradoTrasMontaje: true,
-    // La navegación solo aparece con el análisis a la vista (archivo + análisis).
-    puedeAvanzar: (e) => Boolean(e.analisis && e.archivo),
+    // Hace falta el análisis a la vista (archivo + análisis).
+    ...conFaltantes((e) =>
+      e.analisis && e.archivo ? [] : ["análisis de la pieza"],
+    ),
   },
   {
     id: "montaje",
     label: "Montaje",
     cerradoTrasMontaje: true,
-    puedeAvanzar: (e) => pendientesDeMontaje(e).length === 0,
+    ...conFaltantes(pendientesDeMontaje),
     alSalir: async (get) => {
       // Confirmación explícita del montaje: aquí se construye el Setup
       // persistente (fuente de verdad en frame OCC/máquina) que consumirán
@@ -72,7 +87,7 @@ export const PASOS = [
   {
     id: "material",
     label: "Material",
-    puedeAvanzar: (e) => e.material !== null,
+    ...conFaltantes((e) => (e.material !== null ? [] : ["material"])),
     // El material elegido se persiste en el trabajo (PUT /cam/job/{id}/material).
     // Sin trabajo o con el guardado fallido NO se avanza: /cam/generate lee el
     // material del trabajo y un avance silencioso dejaría el trabajo sin él.
@@ -99,7 +114,11 @@ export const PASOS = [
   {
     id: "operaciones",
     label: "Operaciones",
-    puedeAvanzar: (e) => e.operaciones.some((op) => op.seleccionada),
+    ...conFaltantes((e) =>
+      e.operaciones.some((op) => op.seleccionada)
+        ? []
+        : ["al menos una operación"],
+    ),
   },
   {
     id: "resumen",
@@ -143,6 +162,18 @@ export function pasoSiguiente(id: CamStep): Paso | null {
 export function pasoAnterior(id: CamStep): Paso | null {
   const i = indiceDePaso(id);
   return i > 0 ? PASOS[i - 1] : null;
+}
+
+/** Lo que falta para avanzar desde el paso (vacío si el paso no lo declara). */
+export function faltantesDePaso(id: CamStep, estado: CamState): string[] {
+  const paso: PasoDef = pasoPorId(id);
+  return paso.faltantes?.(estado) ?? [];
+}
+
+/** Se muestra "Cancelar proceso": ni en el primer paso ni en el último. */
+export function puedeCancelarseEn(id: CamStep): boolean {
+  const i = indiceDePaso(id);
+  return i > 0 && i < PASOS.length - 1;
 }
 
 export function pasoCerrado(id: CamStep, montajeCerrado: boolean): boolean {

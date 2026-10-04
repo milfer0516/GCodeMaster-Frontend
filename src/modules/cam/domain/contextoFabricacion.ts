@@ -63,8 +63,8 @@ export type FormaStock = "rectangular" | "cilindrico";
 // Cómo se nombra esa forma (el operador ve la palabra de taller, no la clave
 // interna del stock).
 export const FORMA_LABEL: Record<FormaStock, string> = {
-  cilindrico: "Redonda",
-  rectangular: "Prismática",
+  cilindrico: "Redonda (barra, disco o buje)",
+  rectangular: "Cuadrada o rectangular (bloque o placa)",
 };
 
 export interface EstadoPiezaCard {

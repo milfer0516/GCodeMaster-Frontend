@@ -51,13 +51,23 @@ export interface EstadoMontaje {
 
 export type GrupoMontaje = "pieza" | "sosten" | "provisional";
 
-/** Los grupos del panel, en orden, con el título que ve el operario. */
-export const GRUPOS_MONTAJE: ReadonlyArray<{ id: GrupoMontaje; titulo: string }> =
-  [
-    { id: "pieza", titulo: "La pieza" },
-    { id: "sosten", titulo: "Cómo se sostiene" },
-    { id: "provisional", titulo: "Cero y corrector (provisional)" },
-  ];
+/**
+ * Los grupos del panel, en orden, con el título que ve el operario y, si lo
+ * tiene, la etiqueta corta que acompaña a cada sección del grupo.
+ */
+export const GRUPOS_MONTAJE: ReadonlyArray<{
+  id: GrupoMontaje;
+  titulo: string;
+  etiqueta?: string;
+}> = [
+  { id: "pieza", titulo: "La pieza" },
+  { id: "sosten", titulo: "Cómo se sostiene" },
+  {
+    id: "provisional",
+    titulo: "Cero y corrector (provisional)",
+    etiqueta: "provisional",
+  },
+];
 
 /** El contrato de una sección. `Contenido` lo pone la capa de UI. */
 export interface SeccionMontaje<Contenido = unknown> {
@@ -113,8 +123,8 @@ export const REGLAS_MONTAJE = [
     resumen: (e) => {
       const estado =
         ESTADOS_PIEZA.find((c) => c.id === e.estadoPieza)?.titulo ??
-        "Estado sin responder";
-      const forma = e.forma ? FORMA_LABEL[e.forma] : "Forma sin declarar";
+        "Sin responder";
+      const forma = e.forma ? FORMA_LABEL[e.forma] : "Forma sin elegir";
       return `${estado} · ${forma}`;
     },
   },
@@ -214,16 +224,4 @@ export function seccionVisible(
 /** Todo lo que falta para salir de Montaje, en el orden del registro. */
 export function faltantesDeMontaje(estado: EstadoMontaje): string[] {
   return REGLAS_MONTAJE.flatMap((s) => s.faltantes(estado));
-}
-
-/** La sección que se abre al entrar: la primera obligatoria con faltantes. */
-export function seccionInicialMontaje(
-  estado: EstadoMontaje,
-): IdSeccionMontaje | null {
-  const primera = REGLAS_MONTAJE.find(
-    (s) =>
-      seccionVisible(s, estado) &&
-      estadoDeSeccion(s, estado) === "pendiente",
-  );
-  return primera?.id ?? null;
 }
