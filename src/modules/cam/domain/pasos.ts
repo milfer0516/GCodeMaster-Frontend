@@ -14,19 +14,17 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import type { CamState } from "../store/camStore";
 import { asignarMaterialJob } from "../services/camService";
+import { estadoMontajeDe } from "../store/selectoresMontaje";
+import { faltantesDeMontaje } from "./montaje";
 
 /**
  * Lo que falta para salir de Montaje, en palabras del operario. Vacío = se
- * puede avanzar. Es LA condición del paso: puedeAvanzar y la nota de la
- * pantalla leen esta misma lista.
+ * puede avanzar. Es LA condición del paso: puedeAvanzar, la nota de la
+ * pantalla y el estado de cada sección del panel leen las mismas reglas
+ * (domain/montaje.ts); aquí no se escribe otra lista.
  */
 export function pendientesDeMontaje(e: CamState): string[] {
-  const faltan: string[] = [];
-  if (e.montajeConfig.sujecion_config === null) faltan.push("sujeción");
-  if (e.estadoOrientacion !== "sellada") faltan.push("cara sellada");
-  if (!e.contextoRespondido) faltan.push("cómo llega la pieza");
-  if (!e.formaDeclarada) faltan.push("forma");
-  return faltan;
+  return faltantesDeMontaje(estadoMontajeDe(e));
 }
 
 interface PasoDef {
