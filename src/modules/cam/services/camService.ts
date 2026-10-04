@@ -279,7 +279,7 @@ export interface TrabajoPayload {
   // no pueda volver a salir una forma que el motor no lee (antes {x,y,z}).
   datumConfig: DatumConfig;
   montajeConfig: object;
-  // Declaración del operador en el paso Contexto. Viaja SIEMPRE (por defecto
+  // Declaración del operador en Montaje ("¿Cómo llega la pieza?"). Viaja SIEMPRE (por defecto
   // DESCONOCIDO) para que el adaptador del motor construya el ManufacturingContext
   // real en vez de fijarlo a DESCONOCIDO. El frontend solo transporta el valor:
   // no interpreta ni anticipa lo que el MDE hará con él.

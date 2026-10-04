@@ -1,5 +1,6 @@
 // src/modules/cam/components/steps/StepMontaje.tsx
 import { useCallback, useMemo, useState } from "react";
+import { useShallow } from "zustand/react/shallow";
 import { AlertTriangle, CheckCircle2, Loader2, Settings2 } from "lucide-react";
 import { useCamStore } from "../../store/camStore";
 import { sellarCaraApoyo } from "../../services/camService";
@@ -9,6 +10,8 @@ import { LayoutPasoVisor } from "../../../../components/layout/LayoutPasoVisor";
 import { ModalSujecion } from "../sujecion/ModalSujecion";
 import { EditorMontajeEspacial } from "../sujecion/EditorMontajeEspacial";
 import { WizardNavButtons } from "./WizardNavButtons";
+import { SeccionLlegadaPieza } from "../montaje/SeccionLlegadaPieza";
+import { pendientesDeMontaje } from "../../domain/pasos";
 import { alturaTotalDeclarada } from "../../domain/camposMontaje";
 import type { SujecionConfig } from "../../store/camStore";
 import {
@@ -127,6 +130,8 @@ export const StepMontaje = () => {
   const editarCaraApoyo = useCamStore((s) => s.editarCaraApoyo);
   const sellando = estadoOrientacion === "sellando";
   const sellada = estadoOrientacion === "sellada";
+  // Lo que falta para avanzar (sujeción, cara sellada, cómo llega, forma).
+  const pendientes = useCamStore(useShallow(pendientesDeMontaje));
 
   const faceIdApoyo = montajeConfig.face_id_apoyo;
   const esCaraPlana =
@@ -178,6 +183,11 @@ export const StepMontaje = () => {
       aria-busy={sellando}
       className="m-0 min-w-0 space-y-3 border-0 p-0"
     >
+      {/* Cómo llega la pieza: forma de lo que llega + estado (antes, paso Contexto) */}
+      <Collapsible titulo="¿Cómo llega la pieza?" defaultOpen>
+        <SeccionLlegadaPieza />
+      </Collapsible>
+
       {/* Sujeción */}
       <Collapsible titulo="Sistema de sujeción" defaultOpen>
         {montajeConfig.sujecion_config ? (
@@ -506,9 +516,17 @@ export const StepMontaje = () => {
           },
         ]}
         navegacion={
-          // Al avanzar, el registro (domain/pasos.ts) confirma el montaje y
-          // cierra Montaje y Cargar.
-          <WizardNavButtons nextLabel="Seleccionar material" />
+          <>
+            {/* Misma lista que decide puedeAvanzar (domain/pasos.ts). */}
+            {pendientes.length > 0 && (
+              <p className="mb-2 text-xs text-text-muted">
+                Para continuar falta: {pendientes.join(", ")}.
+              </p>
+            )}
+            {/* Al avanzar, el registro (domain/pasos.ts) confirma el montaje y
+                cierra Montaje y Cargar. */}
+            <WizardNavButtons nextLabel="Seleccionar material" />
+          </>
         }
       />
 

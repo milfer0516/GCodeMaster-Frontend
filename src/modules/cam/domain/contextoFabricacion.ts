@@ -8,8 +8,9 @@
 //
 // DOS TABLAS SEPARADAS, a propósito:
 //   1. ESTADOS_PIEZA — las seis tarjetas que ve el operador. Cada tarjeta es
-//      DUEÑA de sus imágenes (redonda/cuadrada, según la forma de bruto que ya
-//      declaró en el paso Stock).
+//      DUEÑA de sus imágenes (redonda/cuadrada, según la forma de lo que llega,
+//      que el operador declara en la misma sección "¿Cómo llega la pieza?" del
+//      paso Montaje).
 //   2. ORIGEN_POR_ESTADO — la ÚNICA traducción tarjeta → ProcessOrigin del MDE.
 //
 // No se fusionan porque la relación NO es 1:1: seis tarjetas de UI contra diez
@@ -55,13 +56,14 @@ export type EstadoPieza =
   | "reparacion"
   | "desconocido";
 
-// Forma del bruto que el operador YA declaró en el paso Stock.
+// Forma de lo que llega. Es stockConfig.tipo: la declara el operador en Montaje
+// ("Forma de lo que llega") y el paso Stock la puede cambiar.
 export type FormaStock = "rectangular" | "cilindrico";
 
-// Cómo se nombra esa forma en las tarjetas (el operador ve la palabra de taller,
-// no la clave interna del stock).
+// Cómo se nombra esa forma (el operador ve la palabra de taller, no la clave
+// interna del stock).
 export const FORMA_LABEL: Record<FormaStock, string> = {
-  cilindrico: "Cilíndrica",
+  cilindrico: "Redonda",
   rectangular: "Prismática",
 };
 
@@ -132,9 +134,7 @@ export const ESTADOS_PIEZA: EstadoPiezaCard[] = [
     id: "desconocido",
     titulo: "No estoy seguro",
     descripcion: "Continúa sin seleccionar un contexto específico.",
-    ayuda:
-      "No se declara el estado de la pieza. Es una respuesta válida y " +
-      "siempre se puede volver a este paso a precisarla.",
+    ayuda: "Si no está seguro, elija esta opción y continúe.",
     imagen: { unica: desconocido },
   },
 ];
@@ -160,9 +160,8 @@ export function procesoOrigenDe(estado: EstadoPieza): ProcessOrigin {
   return ORIGEN_POR_ESTADO[estado].origen;
 }
 
-// Imagen de la tarjeta para la forma de bruto que el operador ya declaró:
-// mostrarle SU caso (barra redonda o bloque cuadrado) refuerza que el sistema
-// viene siguiendo lo que declaró en Stock.
+// Imagen de la tarjeta para la forma de lo que llega: mostrarle SU caso (barra
+// redonda o bloque cuadrado) refuerza que el sistema sigue lo que declaró.
 export function imagenDeEstado(
   card: EstadoPiezaCard,
   forma: FormaStock,

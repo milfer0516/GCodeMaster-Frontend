@@ -13,7 +13,6 @@ import { StepCargarStep } from "../components/steps/StepCargarStep";
 import { StepOperaciones } from "../components/steps/StepOperaciones";
 import { StepMaterial } from "../components/steps/StepMaterial";
 import { StepStock } from "../components/steps/StepStock";
-import { StepContexto } from "../components/steps/StepContexto";
 import { StepResumen } from "../components/steps/StepResumen";
 import { StepSimulacion } from "../components/steps/StepSimulacion";
 import { StepResultado } from "../components/steps/StepResultado";
@@ -27,7 +26,6 @@ const PANTALLA_DE_PASO: Record<CamStep, ComponentType> = {
   montaje: StepMontaje,
   material: StepMaterial,
   stock: StepStock,
-  contexto: StepContexto,
   operaciones: StepOperaciones,
   resumen: StepResumen,
   simulacion: StepSimulacion,

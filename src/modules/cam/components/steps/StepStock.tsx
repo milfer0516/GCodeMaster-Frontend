@@ -1,5 +1,5 @@
 // src/modules/cam/components/steps/StepStock.tsx
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useCamStore } from "../../store/camStore";
 import { CamViewer3D } from "../CamViewer3D";
 import { Collapsible } from "../../../../components/ui/Collapsible";
@@ -95,22 +95,9 @@ export const StepStock = () => {
 
   const closePopover = () => setPopover(null);
 
-  // Default de FORMA de stock (una sola vez por Setup): sugerencia según la pieza,
-  // pero el operador la cambia libremente (declara la forma del bruto de forma
-  // independiente a la pieza). Los offsets ya los deriva el store (todos en 0) al
-  // confirmar montaje — aquí NO se inventa ninguna medida.
-  const initedSetupId = useRef<string | null>(null);
-  useEffect(() => {
-    if (!analisis || !setup) return;
-    if (initedSetupId.current === setup.id) return;
-    initedSetupId.current = setup.id;
-    const tipoPieza = analisis.tipo_pieza || "placa";
-    const tipoDefault = tipoPieza === "disco" ? "cilindrico" : "rectangular";
-    if (stockConfig.tipo !== tipoDefault) {
-      setStockConfig({ ...stockConfig, tipo: tipoDefault });
-    }
-  }, [analisis, setup, stockConfig, setStockConfig]);
-
+  // La FORMA del bruto la declara el operario en Montaje ("¿Cómo llega la
+  // pieza?") y vive en stockConfig.tipo. Aquí se puede cambiar, pero nunca se
+  // sobrescribe con una sugerencia sacada de la geometría.
   const handleTipoChange = (tipo: "rectangular" | "cilindrico") => {
     closePopover();
     setStockConfig({ ...stockConfig, tipo });

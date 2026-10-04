@@ -15,6 +15,20 @@
 import type { CamState } from "../store/camStore";
 import { asignarMaterialJob } from "../services/camService";
 
+/**
+ * Lo que falta para salir de Montaje, en palabras del operario. Vacío = se
+ * puede avanzar. Es LA condición del paso: puedeAvanzar y la nota de la
+ * pantalla leen esta misma lista.
+ */
+export function pendientesDeMontaje(e: CamState): string[] {
+  const faltan: string[] = [];
+  if (e.montajeConfig.sujecion_config === null) faltan.push("sujeción");
+  if (e.estadoOrientacion !== "sellada") faltan.push("cara sellada");
+  if (!e.contextoRespondido) faltan.push("cómo llega la pieza");
+  if (!e.formaDeclarada) faltan.push("forma");
+  return faltan;
+}
+
 interface PasoDef {
   id: string;
   /** Etiqueta del stepper. */
@@ -37,9 +51,7 @@ export const PASOS = [
     id: "montaje",
     label: "Montaje",
     cerradoTrasMontaje: true,
-    puedeAvanzar: (e) =>
-      e.montajeConfig.sujecion_config !== null &&
-      e.estadoOrientacion === "sellada",
+    puedeAvanzar: (e) => pendientesDeMontaje(e).length === 0,
     alSalir: async (get) => {
       // Confirmación explícita del montaje: aquí se construye el Setup
       // persistente (fuente de verdad en frame OCC/máquina) que consumirán
@@ -84,12 +96,6 @@ export const PASOS = [
   {
     id: "stock",
     label: "Stock",
-    puedeAvanzar: () => true,
-  },
-  {
-    id: "contexto",
-    label: "Contexto",
-    // Nunca bloquea: siempre hay un estado declarado (por defecto DESCONOCIDO).
     puedeAvanzar: () => true,
   },
   {

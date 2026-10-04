@@ -307,8 +307,14 @@ export interface CamState {
   datumConfig: DatumConfig;
   ordenSetups: string;
 
-  // Paso 6 — Contexto de fabricación (nunca bloquea: por defecto DESCONOCIDO)
+  // "¿Cómo llega la pieza?" (sección del paso Montaje). El estado de la pieza
+  // viaja SIEMPRE (por defecto DESCONOCIDO); contextoRespondido dice si el
+  // operario eligió una tarjeta ("No estoy seguro" cuenta como respuesta).
   contextoFabricacion: ContextoFabricacion;
+  contextoRespondido: boolean;
+  // true cuando el operario declaró la forma de lo que llega (redonda o
+  // prismática). La forma misma vive en stockConfig.tipo: única fuente.
+  formaDeclarada: boolean;
 
   // Paso 7 — Resultado
   gcodeSetups: SetupResultado[];
@@ -354,6 +360,8 @@ export interface CamState {
   setMaquina: (maquina: Maquina) => void;
   setStockConfig: (config: StockConfig) => void;
   setContextoFabricacion: (estado: EstadoPieza) => void;
+  // Forma de lo que llega: escribe stockConfig.tipo y marca formaDeclarada.
+  setFormaLlegada: (tipo: StockConfig["tipo"]) => void;
   setDatumConfig: (config: DatumConfig) => void;
   setOrdenSetups: (orden: string) => void;
   setGcodeSetups: (setups: SetupResultado[]) => void;
@@ -431,6 +439,12 @@ const CONTEXTO_INICIAL: ContextoFabricacion = {
   proceso_origen: procesoOrigenDe("desconocido"),
 };
 
+// Una pieza nueva empieza sin responder "¿Cómo llega la pieza?" ni su forma.
+const LLEGADA_SIN_RESPONDER = {
+  contextoRespondido: false,
+  formaDeclarada: false,
+};
+
 export const useCamStore = create<CamState>((set, get) => ({
   // DESPUÉS — agrega montajeConfig después de datumConfig
   step: PASO_INICIAL,
@@ -456,6 +470,7 @@ export const useCamStore = create<CamState>((set, get) => ({
   stockConfig: STOCK_INICIAL,
   datumConfig: DATUM_INICIAL,
   contextoFabricacion: CONTEXTO_INICIAL,
+  ...LLEGADA_SIN_RESPONDER,
   montajeConfig: MONTAJE_INICIAL,
   ...ORIENTACION_INICIAL,
   setup: null,
@@ -524,8 +539,12 @@ export const useCamStore = create<CamState>((set, get) => ({
       meshData: null,
       meshError: null,
       setup: null,
-      // Cascade: sin Setup no hay offsets de stock válidos.
-      stockConfig: resetStockMeasurements(state.stockConfig),
+      // Cascade: sin Setup no hay offsets de stock válidos, y la FORMA de lo
+      // que llega la declaró el operario para OTRA pieza: vuelve al inicial.
+      stockConfig: STOCK_INICIAL,
+      // Cascade: "¿Cómo llega la pieza?" se respondió para OTRA pieza.
+      contextoFabricacion: CONTEXTO_INICIAL,
+      ...LLEGADA_SIN_RESPONDER,
       // Cascade: el datum se eligió mirando OTRA pieza. Arrastrarlo enviaría un
       // cero que el operario no decidió para esta geometría.
       datumConfig: DATUM_INICIAL,
@@ -765,10 +784,26 @@ export const useCamStore = create<CamState>((set, get) => ({
   setStockConfig: (stockConfig) => set({ stockConfig }),
   // La UI elige una TARJETA; el ProcessOrigin se deriva aquí con la tabla del
   // dominio, así que en el store no puede quedar un par estado/origen incoherente.
+  // Cascade contexto → MDE: la asesoría depende de proceso_origen. Si la
+  // respuesta CAMBIA, la recomendación anterior se descarta (no las casillas
+  // de las operaciones: esas las decide el operario).
   setContextoFabricacion: (estado) =>
-    set({
+    set((state) => ({
       contextoFabricacion: { estado, proceso_origen: procesoOrigenDe(estado) },
-    }),
+      contextoRespondido: true,
+      ...(state.contextoFabricacion.estado !== estado
+        ? {
+            mdeRecomendaciones: null,
+            mdeEstado: "sin_analisis" as EstadoAnalisisMDE,
+            mdeError: null,
+          }
+        : {}),
+    })),
+  setFormaLlegada: (tipo) =>
+    set((state) => ({
+      stockConfig: { ...state.stockConfig, tipo },
+      formaDeclarada: true,
+    })),
   setDatumConfig: (datumConfig) => set({ datumConfig }),
   setOrdenSetups: (ordenSetups) => set({ ordenSetups }),
   setGcodeSetups: (gcodeSetups) => set({ gcodeSetups }),
@@ -814,6 +849,7 @@ export const useCamStore = create<CamState>((set, get) => ({
       stockConfig: STOCK_INICIAL,
       datumConfig: DATUM_INICIAL,
       contextoFabricacion: CONTEXTO_INICIAL,
+      ...LLEGADA_SIN_RESPONDER,
       montajeConfig: MONTAJE_INICIAL,
       ...ORIENTACION_INICIAL,
       setup: null,
