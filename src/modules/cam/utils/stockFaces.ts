@@ -26,8 +26,7 @@
 //
 // This file is PURE: imports ONLY Setup + three. NEVER the store or React/Viewer.
 
-import * as THREE from "three";
-import type { Setup } from "./computeSetup";
+import type { Setup, Vec3 } from "../domain/setupSellado";
 
 export type StockFaceDirection =
   | "x_pos"
@@ -79,7 +78,8 @@ export function oppositeDirection(d: StockFaceDirection): StockFaceDirection {
 }
 
 // Classify a machine-frame normal to the nearest ±axis direction key.
-function classifyMachineNormal(v: THREE.Vector3): StockFaceDirection {
+function classifyMachineNormal(n: Vec3): StockFaceDirection {
+  const v = { x: n[0], y: n[1], z: n[2] };
   const ax = Math.abs(v.x);
   const ay = Math.abs(v.y);
   const az = Math.abs(v.z);
@@ -88,48 +88,16 @@ function classifyMachineNormal(v: THREE.Vector3): StockFaceDirection {
   return v.x >= 0 ? "x_pos" : "x_neg";
 }
 
-// Rotate an OCC-frame normal into the machine/Setup frame using the montaje
-// rotation. THIS is the "accounts for the montaje rotation" step — we never
-// classify raw OCC/world axes, we classify the rotated normal.
-function occNormalToMachineDir(
-  normalOCC: [number, number, number],
-  rotationOCC: [number, number, number, number],
-): StockFaceDirection {
-  const q = new THREE.Quaternion(
-    rotationOCC[0],
-    rotationOCC[1],
-    rotationOCC[2],
-    rotationOCC[3],
-  );
-  const nMachine = new THREE.Vector3(normalOCC[0], normalOCC[1], normalOCC[2])
-    .applyQuaternion(q)
-    .normalize();
-  return classifyMachineNormal(nMachine);
-}
-
 /**
  * Derive the six StockFaces from a Setup: assign roles (apoyo = supportFace
  * direction + locked; mecanizado = machiningFace direction; the other four =
- * libre) and RESET allowances to 0. Rotation-aware: the support/machining OCC
- * normals are rotated into the machine frame before classification.
+ * libre) and RESET allowances to 0. The Setup comes from the engine's sealed
+ * orientation, so its normals are ALREADY in the machine frame (support = −Z,
+ * machining = +Z): they are classified directly, no rotation.
  */
 export function deriveStockFaces(setup: Setup): StockFace[] {
-  const supportDir = occNormalToMachineDir(
-    setup.supportFace.normalOCC,
-    setup.rotationOCC,
-  );
-
-  let machiningDir: StockFaceDirection;
-  if (setup.machiningFace.faceId !== null) {
-    machiningDir = occNormalToMachineDir(
-      setup.machiningFace.normalOCC,
-      setup.rotationOCC,
-    );
-  } else {
-    // No confidently antiparallel machining face: use the nominal opposite of
-    // the support face (points up off the table).
-    machiningDir = oppositeDirection(supportDir);
-  }
+  const supportDir = classifyMachineNormal(setup.supportFace.normal);
+  let machiningDir = classifyMachineNormal(setup.machiningFace.normal);
 
   // Guard: if classification collapses machining onto support (degenerate),
   // fall back to the opposite so we never mark the same face twice.

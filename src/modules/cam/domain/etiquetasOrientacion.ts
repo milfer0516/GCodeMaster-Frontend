@@ -2,8 +2,11 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // Adaptador fino entre el estado del wizard CAM y el clasificador puro
 // (src/lib/setupFaceClassifier). Arma los lookups que la función pura necesita
-// (normal por cara, cara cilíndrica) a partir de `analisis` y `meshData`, y
-// devuelve un índice op_id → OperacionEtiquetada.
+// (normal por cara, cara cilíndrica) a partir del análisis y la malla SELLADOS
+// por el motor, y devuelve un índice op_id → OperacionEtiquetada.
+//
+// Las normales selladas ya están en el marco de máquina: la rotación que se
+// le pasa al clasificador es la IDENTIDAD (el frontend no calcula ninguna).
 //
 // Aquí NO vive geometría: solo el cableado. La regla de clasificación y el
 // vocabulario están en el helper compartido para que Resumen y G-Code los
@@ -14,10 +17,12 @@ import {
   type OperacionEtiquetada,
 } from "../../../lib/setupFaceClassifier";
 import type { Operacion } from "../store/camStore";
-import type { Setup } from "../utils/computeSetup";
+import type { Setup } from "./setupSellado";
 import type { MeshData } from "../services/camService";
 
 export type IndiceEtiquetas = Map<string, OperacionEtiquetada>;
+
+const SIN_ROTACION = [0, 0, 0, 1] as const;
 
 /**
  * Construye las etiquetas de orientación (marco de máquina) para cada operación.
@@ -27,7 +32,9 @@ export type IndiceEtiquetas = Map<string, OperacionEtiquetada>;
 export function construirEtiquetasOrientacion(
   operaciones: Operacion[],
   setup: Setup | null,
+  /** Análisis del motor en el marco de mecanizado (orientación sellada). */
   analisis: Record<string, any> | null,
+  /** Malla del motor en el marco de mecanizado (orientación sellada). */
   meshData: MeshData | null,
 ): IndiceEtiquetas {
   const indice: IndiceEtiquetas = new Map();
@@ -59,7 +66,7 @@ export function construirEtiquetasOrientacion(
         descripcion: op.descripcion,
         faceIndices: op.face_indices,
         supportFaceId: setup.supportFace.faceId,
-        rotationOCC: setup.rotationOCC,
+        rotationOCC: SIN_ROTACION,
         normalPorCara,
         esCaraCilindrica,
       }),

@@ -142,6 +142,7 @@ export const StepOperaciones = () => {
   // resumen: ver solicitarAnalisis().
   const archivo = useCamStore((s) => s.archivo);
   const setup = useCamStore((s) => s.setup);
+  const orientacionSellada = useCamStore((s) => s.orientacionSellada);
   const meshData = useCamStore((s) => s.meshData);
   const stockConfig = useCamStore((s) => s.stockConfig);
   const datumConfig = useCamStore((s) => s.datumConfig);
@@ -446,12 +447,18 @@ export const StepOperaciones = () => {
 
   // Etiquetas de orientación en el marco de MÁQUINA. El motor rotula en el marco
   // de la pieza; tras el montaje esa etiqueta puede contradecir lo que se ve. El
-  // clasificador puro (setupFaceClassifier) las reexpresa usando la rotación del
-  // Setup y las normales del análisis. Sin Setup, el índice queda vacío y cada
-  // fila muestra la descripción original del motor.
+  // clasificador puro (setupFaceClassifier) las reexpresa con las normales del
+  // análisis SELLADO (ya en el marco de máquina). Sin Setup, el índice queda
+  // vacío y cada fila muestra la descripción original del motor.
   const indiceEtiquetas = useMemo(
-    () => construirEtiquetasOrientacion(operaciones, setup, analisis, meshData),
-    [operaciones, setup, analisis, meshData],
+    () =>
+      construirEtiquetasOrientacion(
+        operaciones,
+        setup,
+        orientacionSellada?.analisis ?? null,
+        orientacionSellada?.mesh_data ?? null,
+      ),
+    [operaciones, setup, orientacionSellada],
   );
 
   // El único `desconocido` con remedio: el análisis guardado es anterior al

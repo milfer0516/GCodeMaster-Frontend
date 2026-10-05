@@ -5,7 +5,7 @@ import type {
   RespuestaOrientacionSellada,
 } from "../services/camService";
 import type { Maquina } from "../../../services/maquinasService";
-import { computeSetup, type Setup } from "../utils/computeSetup";
+import { setupDesdeOrientacionSellada, type Setup } from "../domain/setupSellado";
 import {
   deriveStockFaces,
   CYL_STOCK_INICIAL,
@@ -640,7 +640,7 @@ export const useCamStore = create<CamState>((set, get) => ({
       // Cambiar la cara de apoyo o la sujeción invalida el Setup confirmado:
       // no debe quedar un Setup obsoleto (con orientación vieja) filtrándose
       // hacia Stock/operaciones. face_id_apoyo/sujecion_config son las entradas
-      // de las que depende computeSetup.
+      // de las que depende el Setup.
       const cambiaCara =
         "face_id_apoyo" in config &&
         config.face_id_apoyo !== state.montajeConfig.face_id_apoyo;
@@ -676,27 +676,15 @@ export const useCamStore = create<CamState>((set, get) => ({
     set((state) => ({
       montajeConfig: { ...state.montajeConfig, montaje_espacial },
     })),
+  // El Setup sale SOLO de la orientación sellada por el motor
+  // (domain/setupSellado.ts). Sin ella LANZA: el alSalir de Montaje deja al
+  // operario en el paso y muestra el mensaje. Nunca hay otra fuente de medidas.
   confirmMontaje: () =>
     set((state) => {
-      const faceId = state.montajeConfig.face_id_apoyo;
-      if (!state.meshData || faceId === null) {
-        console.warn(
-          "[camStore] confirmMontaje: falta meshData o cara de apoyo; no se crea Setup.",
-        );
-        return { setup: null };
-      }
-      const setup = computeSetup(
-        state.meshData,
-        faceId,
-        state.analisis,
-        state.montajeConfig.sujecion_config,
+      const setup = setupDesdeOrientacionSellada(
+        state.orientacionSellada,
+        state.montajeConfig.sujecion_config?.envolvente?.part_bottom_z_mm ?? 0,
       );
-      if (!setup) {
-        return {
-          setup: null,
-          stockConfig: resetStockMeasurements(state.stockConfig),
-        };
-      }
       // Cascade Setup → offsets: regenerar las 6 caras desde el nuevo Setup,
       // reasignando roles y RESETEANDO todos los offsets a 0 (los antiguos
       // referían un frame que ya no existe — no se arrastran). También se limpian

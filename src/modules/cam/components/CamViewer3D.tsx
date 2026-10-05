@@ -167,27 +167,13 @@ function formatFaceDimension(face: FaceMetadata): string {
 }
 
 // ── Conversión frame OCC/máquina → display Three.js ─────────────────────────
-// El Setup del dominio almacena la rotación en el frame OCC (Z arriba, mesa en
-// Z=0). El visor la lleva a coordenadas Three.js aplicando la base -90°X
-// (OCC Z → Three.js Y). Ésta es la ÚNICA conversión de frame de la app: NO
-// debe existir en computeSetup ni en los datos del Setup — es un detalle de
+// El marco de máquina tiene Z arriba y la mesa en Z=0. El visor lo lleva a
+// coordenadas Three.js aplicando la base -90°X (OCC Z → Three.js Y). Ésta es la
+// ÚNICA conversión de frame de la app: NO existe en el Setup — es un detalle de
 // implementación de esta librería de render y vive solo aquí.
 const VIEWER_BASE_Q = new THREE.Quaternion().setFromEuler(
   new THREE.Euler(-Math.PI / 2, 0, 0),
 );
-
-function occToDisplay(
-  rotationOCC: [number, number, number, number],
-): THREE.Quaternion {
-  const qOCC = new THREE.Quaternion(
-    rotationOCC[0],
-    rotationOCC[1],
-    rotationOCC[2],
-    rotationOCC[3],
-  );
-  // display = baseQ · rotationOCC  (reproduce exactamente el qTarget histórico)
-  return VIEWER_BASE_Q.clone().multiply(qOCC);
-}
 
 // ── Construir BufferGeometry desde MeshData ────────────────────────────────
 function buildBufferGeometry(meshData: MeshData): THREE.BufferGeometry {
@@ -755,13 +741,10 @@ export function CamViewer3D({
     // Plano de apoyo (base de la pieza) — pivote vertical de la escala de lectura.
     let pivotY = 0;
 
-    // Si existe un montaje confirmado para ESTA cara, el destino se lee del
-    // Setup (verdad de dominio en frame OCC) y se convierte a display solo con
-    // occToDisplay / VIEWER_BASE_Q. Si no (cara elegida pero sin confirmar), se
-    // recomputa en vivo desde la normal para que la interacción previa funcione.
-    const setupAplicable =
-      !!setup?.confirmed && setup.supportFace.faceId === faceIdDestacada;
-
+    // Sellada, la malla ya viene orientada por el motor. Sin sellar (cara
+    // elegida, aún sin establecer), se recomputa en vivo desde la normal para
+    // que la interacción previa funcione. El Setup solo existe con la
+    // orientación sellada, así que no hay un tercer camino.
     if (orientacionSellada) {
       // ── Camino sellado (motor) ──
       // `meshData` ES la malla del motor, ya en el marco de mecanizado (Z
@@ -777,21 +760,6 @@ export function CamViewer3D({
       posZTarget = bb.center[1];
       centerYMundo = zApoyo + (bb.max[2] - bb.min[2]) / 2;
       pivotY = zApoyo;
-    } else if (setupAplicable && setup) {
-      // ── Camino Setup (dominio → display) ──
-      qTarget = occToDisplay(setup.rotationOCC);
-      const posV = new THREE.Vector3(
-        setup.position[0],
-        setup.position[1],
-        setup.position[2],
-      ).applyQuaternion(VIEWER_BASE_Q);
-      posXTarget = posV.x;
-      posYTarget = posV.y;
-      posZTarget = posV.z;
-      // El centro vertical en el mundo display equivale al centro Z máquina
-      // (base en z_apoyo, altura = rotatedBBox.height).
-      centerYMundo = setup.zApoyoMm + setup.rotatedBBox.height / 2;
-      pivotY = setup.zApoyoMm;
     } else {
       // ── Camino en vivo (cara seleccionada, montaje aún sin confirmar) ──
       const face = meshData.faces.find((f) => f.face_id === faceIdDestacada);
