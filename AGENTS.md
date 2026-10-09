@@ -6,6 +6,7 @@
 - The backend contract lives in the backend repository's docs/; read it there, never copy it or hardcode fields per family.
 - Manufacturing values come from docs/ or the owner, never from your own knowledge.
 - Container and deployment commands run only when the task card lists them; otherwise they are owner reference in docs/operacion.md.
+If you were asked to act as the reviewer (see docs/roles/reviewer.md), that contract replaces the executor role, the Task type rule and the Report section; the Never and Domain rules still apply.
 
 ## Never
 
