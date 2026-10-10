@@ -17,15 +17,18 @@
 // utillaje nuevo aparece en este selector: el paso de montaje queda
 // desbloqueado.
 // ─────────────────────────────────────────────────────────────────────────────
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Plus } from "lucide-react";
 import { Modal } from "../../../../components/ui/Modal";
 import { RegistroUtillaje } from "../../../utillajes/components/RegistroUtillaje";
 import {
   getUtillajes,
   getFamiliasUtillaje,
+  getFamiliaSchema,
+  type CampoSchema,
   type UtillajeResumen,
 } from "../../services/utillajesService";
+import { DimensionesUtillaje } from "./DimensionesUtillaje";
 
 interface Props {
   onSelect: (utillaje: UtillajeResumen) => void;
@@ -36,6 +39,13 @@ export const PasoSelectorElemento = ({ onSelect }: Props) => {
   const [etiquetas, setEtiquetas] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
   const [registroAbierto, setRegistroAbierto] = useState(false);
+  // campos_utillaje por familia, para etiquetar las medidas registradas.
+  // null = el schema no se pudo cargar (se pintan clave y valor crudos).
+  const [camposPorFamilia, setCamposPorFamilia] = useState<
+    Record<string, CampoSchema[] | null>
+  >({});
+  // Familias ya pedidas: UNA llamada por familia, también al recargar el parque.
+  const familiasPedidas = useRef(new Set<string>());
 
   const cargar = useCallback(() => {
     let vivo = true;
@@ -46,6 +56,17 @@ export const PasoSelectorElemento = ({ onSelect }: Props) => {
         setEtiquetas(
           Object.fromEntries(familias.map((f) => [f.familia, f.etiqueta])),
         );
+        for (const familia of new Set(lista.map((u) => u.familia))) {
+          if (familiasPedidas.current.has(familia)) continue;
+          familiasPedidas.current.add(familia);
+          Promise.resolve()
+            .then(() => getFamiliaSchema(familia))
+            .then((s) => s?.campos_utillaje ?? null)
+            .catch(() => null)
+            .then((campos) =>
+              setCamposPorFamilia((prev) => ({ ...prev, [familia]: campos })),
+            );
+        }
       })
       .catch(() => {
         if (vivo) setError("No se pudo cargar el parque de utillajes.");
@@ -115,14 +136,20 @@ export const PasoSelectorElemento = ({ onSelect }: Props) => {
           <button
             key={u.id_utillaje}
             onClick={() => onSelect(u)}
-            className="flex flex-col gap-1.5 rounded-xl border border-border bg-bg-primary p-4 text-left transition hover:border-accent-blue/60 hover:bg-accent-blue/5 active:scale-[0.98]"
+            className="flex min-w-0 flex-col gap-1.5 rounded-xl border border-border bg-bg-primary p-4 text-left transition hover:border-accent-blue/60 hover:bg-accent-blue/5 active:scale-[0.98]"
           >
-            <span className="text-sm font-semibold text-text-primary leading-tight">
+            <span className="text-sm font-semibold text-text-primary leading-tight [overflow-wrap:anywhere]">
               {u.nombre}
             </span>
             <span className="text-xs text-accent-blue/80">
               {etiquetas[u.familia] ?? u.familia}
             </span>
+            {u.familia in camposPorFamilia && (
+              <DimensionesUtillaje
+                parametros={u.parametros}
+                campos={camposPorFamilia[u.familia]}
+              />
+            )}
             {u.notas && (
               <span className="text-xs text-text-muted leading-snug">
                 {u.notas}

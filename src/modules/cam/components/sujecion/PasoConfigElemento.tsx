@@ -31,6 +31,7 @@ import {
   type ValoresCampos,
 } from "../../domain/camposMontaje";
 import { CamposSchemaForm } from "./CamposSchemaForm";
+import { DimensionesUtillaje } from "./DimensionesUtillaje";
 
 interface Props {
   utillaje: UtillajeResumen;
@@ -122,6 +123,11 @@ export const PasoConfigElemento = ({
           {utillaje.nombre}
         </p>
         <p className="text-xs text-text-muted mt-0.5">{schema.descripcion}</p>
+        <DimensionesUtillaje
+          parametros={utillaje.parametros}
+          campos={schema.campos_utillaje ?? null}
+          className="mt-2"
+        />
       </div>
 
       {schema.advertencias.map((a, i) => (
