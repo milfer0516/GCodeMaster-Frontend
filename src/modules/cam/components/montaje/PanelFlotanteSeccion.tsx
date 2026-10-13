@@ -15,7 +15,11 @@ import {
   type EstadoMontaje,
 } from "../../domain/montaje";
 import type { SeccionMontajeUI } from "./seccionesMontaje";
-import { COLOR_ESTADO, ICONO_ESTADO } from "./estadoSeccionUI";
+import {
+  COLOR_ESTADO,
+  ICONO_ESTADO,
+  RELLENO_ESTADO,
+} from "./estadoSeccionUI";
 
 interface Props {
   seccion: SeccionMontajeUI;
@@ -60,7 +64,7 @@ export const PanelFlotanteSeccion = forwardRef<HTMLDivElement, Props>(
                 {seccion.titulo}
               </span>
               <span
-                className={`shrink-0 text-[11px] font-medium ${COLOR_ESTADO[estadoSeccion]}`}
+                className={`shrink-0 rounded-md px-1.5 py-0.5 text-[11px] font-medium ${RELLENO_ESTADO[estadoSeccion]}`}
               >
                 {ETIQUETA_ESTADO_SECCION[estadoSeccion]}
               </span>

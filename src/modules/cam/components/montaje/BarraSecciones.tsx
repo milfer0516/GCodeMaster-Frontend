@@ -16,7 +16,7 @@ import {
   type EstadoMontaje,
 } from "../../domain/montaje";
 import { SECCIONES_MONTAJE } from "./seccionesMontaje";
-import { COLOR_ESTADO, ICONO_ESTADO } from "./estadoSeccionUI";
+import { ICONO_ESTADO, RELLENO_ESTADO } from "./estadoSeccionUI";
 import { ID_PANEL_SECCION } from "./PanelFlotanteSeccion";
 
 interface Props {
@@ -33,7 +33,9 @@ export function BarraSecciones({ estado, abierta, onAbrir, refBoton }: Props) {
       aria-label="Secciones de montaje"
       className="relative w-full min-w-0 max-w-full overflow-x-auto overscroll-x-contain pb-1"
     >
-      <div className="flex w-max items-center gap-2">
+      {/* p-1: sitio para el anillo/contorno (offset + grosor) sin que el
+          overflow de la barra lo recorte. */}
+      <div className="flex w-max items-center gap-2 p-1">
         {GRUPOS_MONTAJE.map((grupo, i) => {
           const secciones = SECCIONES_MONTAJE.filter(
             (s) => s.grupo === grupo.id && seccionVisible(s, estado),
@@ -63,16 +65,18 @@ export function BarraSecciones({ estado, abierta, onAbrir, refBoton }: Props) {
                     aria-expanded={activa}
                     aria-controls={activa ? ID_PANEL_SECCION : undefined}
                     title={seccion.resumen(estado)}
-                    className={`flex min-h-[40px] shrink-0 items-center gap-1.5 whitespace-nowrap rounded-xl border px-3 py-1.5 text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-40 ${
+                    // Relleno = estado; anillo azul con separación = abierta;
+                    // contorno text-primary = foco de teclado.
+                    className={`flex min-h-[40px] shrink-0 items-center gap-1.5 whitespace-nowrap rounded-xl border px-3 py-1.5 text-sm font-medium transition hover:border-accent-blue/50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-text-primary disabled:cursor-not-allowed disabled:opacity-40 ${
+                      RELLENO_ESTADO[estadoSeccion]
+                    } ${
                       activa
-                        ? "border-accent-blue bg-accent-blue/10 text-text-primary"
-                        : "border-border bg-bg-primary text-text-muted hover:border-accent-blue/50 hover:text-text-primary"
+                        ? "ring-2 ring-accent-blue ring-offset-2 ring-offset-bg-surface"
+                        : ""
                     }`}
                   >
-                    <Icono
-                      aria-hidden
-                      className={`h-4 w-4 shrink-0 ${COLOR_ESTADO[estadoSeccion]}`}
-                    />
+                    {/* Hereda el color del texto de la pestaña. */}
+                    <Icono aria-hidden className="h-4 w-4 shrink-0" />
                     <span className="sr-only">
                       {ETIQUETA_ESTADO_SECCION[estadoSeccion]}:
                     </span>
@@ -80,7 +84,7 @@ export function BarraSecciones({ estado, abierta, onAbrir, refBoton }: Props) {
                     {bloqueada && (
                       <Lock
                         aria-label="Queda fija al avanzar"
-                        className="h-3.5 w-3.5 shrink-0 text-text-muted"
+                        className="h-3.5 w-3.5 shrink-0"
                       />
                     )}
                   </button>
