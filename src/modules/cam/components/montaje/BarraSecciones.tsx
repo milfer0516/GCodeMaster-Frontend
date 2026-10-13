@@ -31,7 +31,7 @@ export function BarraSecciones({ estado, abierta, onAbrir, refBoton }: Props) {
   return (
     <nav
       aria-label="Secciones de montaje"
-      className="w-full min-w-0 max-w-full overflow-x-auto overscroll-x-contain pb-1"
+      className="relative w-full min-w-0 max-w-full overflow-x-auto overscroll-x-contain pb-1"
     >
       <div className="flex w-max items-center gap-2">
         {GRUPOS_MONTAJE.map((grupo, i) => {
