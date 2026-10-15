@@ -2,8 +2,9 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // PRESENTADOR de las secciones de Montaje: barra arriba + panel flotante sobre
 // el visor. Devuelve los dos nodos para los slots del shell (LayoutPasoVisor:
-// barraSuperior y superposicionVisor) y guarda el ÚNICO estado de presentación:
-// qué sección está abierta (una a la vez; nada se abre solo al entrar).
+// barraSuperior y superposicionVisor) y guarda el estado de presentación: qué
+// sección está abierta (una a la vez; nada se abre solo al entrar) y si el
+// panel está minimizado.
 //
 //   · Abrir mueve el foco al panel; cerrar (X, Escape, mismo botón) lo devuelve
 //     al botón de la sección.
@@ -38,6 +39,9 @@ export function useSeccionesFlotantes(): {
   const estado = useEstadoMontaje();
   const sellando = useCamStore((s) => s.estadoOrientacion === "sellando");
   const [abierta, setAbierta] = useState<string | null>(null);
+  // Panel minimizado (solo cabecera). Se conserva al cambiar de sección y
+  // vuelve a false al cerrarse el panel.
+  const [minimizado, setMinimizado] = useState(false);
   const botones = useRef(new Map<string, HTMLButtonElement>());
   const panelRef = useRef<HTMLDivElement>(null);
   // A qué botón devolver el foco cuando el panel se cierre.
@@ -85,6 +89,15 @@ export function useSeccionesFlotantes(): {
     (s) => s.id === abierta && seccionVisible(s, estado),
   );
 
+  // Cerrado por cualquier vía (X, Escape, mismo botón, sección oculta): el
+  // próximo panel abre sin minimizar. Al desmontarse, el panel también pierde
+  // su desplazamiento y vuelve a su sitio.
+  const hayPanel = !!seccion;
+  useEffect(() => {
+    if (!hayPanel) setMinimizado(false);
+  }, [hayPanel]);
+  const alternarMinimizado = useCallback(() => setMinimizado((m) => !m), []);
+
   const barra = (
     // Mientras el motor orienta la pieza, la barra también queda deshabilitada.
     <fieldset disabled={sellando} className="m-0 min-w-0 border-0 p-0">
@@ -103,6 +116,8 @@ export function useSeccionesFlotantes(): {
       seccion={seccion}
       estado={estado}
       deshabilitado={sellando}
+      minimizado={minimizado}
+      onAlternarMinimizado={alternarMinimizado}
       onCerrar={cerrar}
     />
   ) : null;
