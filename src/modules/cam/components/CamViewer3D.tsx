@@ -6,7 +6,7 @@ import { useCamStore } from "../store/camStore";
 import { tessellateStep } from "../services/camService";
 import type { MeshData, FaceMetadata } from "../services/camService";
 import type { Operacion } from "../store/camStore";
-import { Loader2, AlertCircle } from "lucide-react";
+import { Loader2, AlertCircle, LocateFixed } from "lucide-react";
 import { formatMm } from "../../../utils/format";
 import type { SujecionConfig, StockConfig } from "../store/camStore";
 import type { StockFaceRole, StockPickRegion } from "../utils/stockFaces";
@@ -174,6 +174,203 @@ function formatFaceDimension(face: FaceMetadata): string {
 const VIEWER_BASE_Q = new THREE.Quaternion().setFromEuler(
   new THREE.Euler(-Math.PI / 2, 0, 0),
 );
+
+// ── Vista del operario ─────────────────────────────────────────────────────
+// Cámara DELANTE de la máquina (lado −Y máquina = +Z display, por VIEWER_BASE_Q),
+// algo elevada y mirando al centro. La dirección vive en el plano YZ del
+// display, así que el "derecha" de la cámara es exactamente +X máquina: frente,
+// izquierda y derecha se distinguen sin girar. Elevación ≈ 10°: vista baja,
+// casi de frente, como la del operario de pie ante la mesa.
+const ELEVACION_VISTA_OPERARIO_RAD = THREE.MathUtils.degToRad(10);
+const DIR_VISTA_OPERARIO = new THREE.Vector3(
+  0,
+  Math.sin(ELEVACION_VISTA_OPERARIO_RAD),
+  Math.cos(ELEVACION_VISTA_OPERARIO_RAD),
+);
+// Ejes de pantalla de esa vista (camera.up = +Y): derecha = +X; arriba =
+// DIR × derecha = (0, cos e, −sin e).
+const DERECHA_VISTA_OPERARIO = new THREE.Vector3(1, 0, 0);
+const ARRIBA_VISTA_OPERARIO = new THREE.Vector3()
+  .crossVectors(DIR_VISTA_OPERARIO, DERECHA_VISTA_OPERARIO)
+  .normalize();
+// Margen del encuadre: fracción del semiancho y del semialto del panel que
+// puede ocupar lo proyectado (mesa + pieza). 0.7 ⇒ 15 % libre por lado; en un
+// panel ancho el limitante es el canto delantero de la mesa, que ocupa así
+// ~70 % del ancho.
+const OCUPACION_VISTA_OPERARIO = 0.7;
+
+/**
+ * Distancia cámara–target de la vista del operario para un panel de aspecto
+ * `aspect`. Mirando a `target` desde DIR_VISTA_OPERARIO, un punto con
+ * coordenadas de pantalla (x, y) y z hacia la cámara está a profundidad D − z;
+ * cabe si |x| ≤ tx·(D − z) y |y| ≤ ty·(D − z), es decir D ≥ |x|/tx + z y
+ * D ≥ |y|/ty + z. Ancho y alto se evalúan por separado (tx, ty) y gana el más
+ * exigente de todos los puntos.
+ */
+function distanciaVistaOperario(
+  puntos: THREE.Vector3[],
+  target: THREE.Vector3,
+  fovGrados: number,
+  aspect: number,
+): number {
+  const tanV = Math.tan(THREE.MathUtils.degToRad(fovGrados) / 2);
+  const ty = tanV * OCUPACION_VISTA_OPERARIO;
+  const tx = tanV * aspect * OCUPACION_VISTA_OPERARIO;
+  const rel = new THREE.Vector3();
+  let distancia = 0;
+  for (const p of puntos) {
+    rel.subVectors(p, target);
+    const x = rel.dot(DERECHA_VISTA_OPERARIO);
+    const y = rel.dot(ARRIBA_VISTA_OPERARIO);
+    const z = rel.dot(DIR_VISTA_OPERARIO);
+    distancia = Math.max(distancia, Math.abs(x) / tx + z, Math.abs(y) / ty + z);
+  }
+  return distancia;
+}
+
+// ── Encuadre continuo según el aspecto del panel ───────────────────────────
+// Misma dirección y mismo target (centro de la pieza) en todo panel; solo la
+// DISTANCIA depende del aspecto (ancho/alto del panel, no del dispositivo):
+//   · aspecto ≥ ASPECTO_PANEL_ANCHO: la de siempre, cabe mesa + pieza.
+//   · aspecto ≤ ASPECTO_PANEL_ESTRECHO: cabe solo la pieza (la mesa puede
+//     salirse por los lados), con el mismo margen OCUPACION_VISTA_OPERARIO.
+//   · entre ambos: interpolación con smoothstep, sin saltos al redimensionar.
+// La pieza es un subconjunto de lo encuadrado con mesa, así que su distancia es
+// ≤ la de la mesa y cualquier mezcla la deja entera dentro del margen.
+const ASPECTO_PANEL_ANCHO = 1.6;
+const ASPECTO_PANEL_ESTRECHO = 0.75;
+
+/** Las 8 esquinas de la caja de la pieza tal como se dibuja (coords display:
+ *  centrada en XZ, base en `baseY`). */
+function esquinasCajaPieza(
+  semiX: number,
+  semiZ: number,
+  baseY: number,
+  alto: number,
+): THREE.Vector3[] {
+  const esquinas: THREE.Vector3[] = [];
+  for (const sx of [-1, 1]) {
+    for (const sz of [-1, 1]) {
+      esquinas.push(new THREE.Vector3(sx * semiX, baseY, sz * semiZ));
+      esquinas.push(new THREE.Vector3(sx * semiX, baseY + alto, sz * semiZ));
+    }
+  }
+  return esquinas;
+}
+
+/**
+ * Distancia cámara–target de la vista del operario para un panel de aspecto
+ * `aspect`: mezcla entre encuadrar mesa + pieza (paneles anchos; idéntica a
+ * distanciaVistaOperario sobre todos los puntos) y encuadrar solo la pieza
+ * (paneles estrechos). Continua en `aspect`.
+ */
+function distanciaEncuadreOperario(
+  puntosMesa: THREE.Vector3[],
+  puntosPieza: THREE.Vector3[],
+  target: THREE.Vector3,
+  fovGrados: number,
+  aspect: number,
+): number {
+  const conMesa = distanciaVistaOperario(
+    [...puntosMesa, ...puntosPieza],
+    target,
+    fovGrados,
+    aspect,
+  );
+  // 0 desde ASPECTO_PANEL_ANCHO hacia arriba (smoothstep da 1 exacto) ⇒ lerp
+  // devuelve `conMesa` sin alterar.
+  const haciaPieza =
+    1 -
+    THREE.MathUtils.smoothstep(
+      aspect,
+      ASPECTO_PANEL_ESTRECHO,
+      ASPECTO_PANEL_ANCHO,
+    );
+  if (haciaPieza === 0) return conMesa;
+  const soloPieza = distanciaVistaOperario(
+    puntosPieza,
+    target,
+    fovGrados,
+    aspect,
+  );
+  return THREE.MathUtils.lerp(conMesa, soloPieza, haciaPieza);
+}
+
+/** Geometría que encuadra la vista del operario (coords display, tal como se
+ *  dibuja). Con mesa: esquinas de mesa y de la caja de la pieza, y el radio
+ *  envolvente de ambas. Sin mesa: la diagonal de la pieza. `targetPieza` es el
+ *  centro de la pieza en los dos casos. */
+type VistaOperario =
+  | {
+      conMesa: true;
+      puntosMesa: THREE.Vector3[];
+      puntosPieza: THREE.Vector3[];
+      radio: number;
+      targetPieza: THREE.Vector3;
+    }
+  | { conMesa: false; diagonal: number; targetPieza: THREE.Vector3 };
+
+/** Cámara y límites de la vista del operario. */
+interface EncuadreOperario {
+  posicion: THREE.Vector3;
+  target: THREE.Vector3;
+  near: number;
+  far: number;
+  minDistance: number;
+  maxDistance: number;
+}
+
+/**
+ * ÚNICO cálculo del encuadre de la vista del operario para un panel de aspecto
+ * `aspect`; lo usan el encuadre inmediato (7a-fit, redimensionado) y la
+ * animación del botón. Misma dirección (DIR_VISTA_OPERARIO) y target (centro
+ * de la pieza) siempre.
+ *   · Con mesa: distancia de distanciaEncuadreOperario; planos y límites
+ *     acordes a ella (si no, update() clamparía contra el maxDistance del panel
+ *     anterior). minDistance no supera la distancia, para que update() no aleje
+ *     la pieza encuadrada en paneles estrechos.
+ *   · Sin mesa: distancia la de siempre (|(1, 0.8, 1)|·diagonal), que no
+ *     depende del aspecto.
+ */
+function encuadreVistaOperario(
+  vista: VistaOperario,
+  fovGrados: number,
+  aspect: number,
+): EncuadreOperario {
+  const target = vista.targetPieza.clone();
+  if (!vista.conMesa) {
+    const d = vista.diagonal;
+    return {
+      posicion: target
+        .clone()
+        .addScaledVector(DIR_VISTA_OPERARIO, d * Math.hypot(1, 0.8, 1)),
+      target,
+      near: d * 0.001,
+      far: d * 20,
+      minDistance: d * 0.1,
+      maxDistance: d * 6,
+    };
+  }
+  const distance = distanciaEncuadreOperario(
+    vista.puntosMesa,
+    vista.puntosPieza,
+    target,
+    fovGrados,
+    aspect,
+  );
+  return {
+    posicion: target.clone().addScaledVector(DIR_VISTA_OPERARIO, distance),
+    target,
+    near: Math.max(0.5, distance * 0.05),
+    far: distance + vista.radio * 4,
+    minDistance: Math.min(vista.radio * 0.3, distance),
+    maxDistance: distance * 4,
+  };
+}
+
+// Duración de la vuelta animada a la vista del operario (botón). Con
+// prefers-reduced-motion la vuelta es inmediata.
+const DURACION_VUELTA_VISTA_OPERARIO_MS = 1000;
 
 // ── Construir BufferGeometry desde MeshData ────────────────────────────────
 function buildBufferGeometry(meshData: MeshData): THREE.BufferGeometry {
@@ -470,6 +667,16 @@ export function CamViewer3D({
   // Mesa física (Fase 1): grupo propio, NUNCA referenciado por los raycasters
   // de pieza/stock ⇒ excluido del picking por construcción.
   const tableGroupRef = useRef<THREE.Group | null>(null);
+  // Vista del operario (7a-fit): lo que encuadra, para recalcularla con el
+  // tamaño del panel que haya (redimensionado, botón). El fin del efecto 4b la
+  // actualiza con la pieza tal como queda dibujada. null = aún sin encuadre.
+  const vistaOperarioRef = useRef<VistaOperario | null>(null);
+  // El operario orbitó/paneó/hizo zoom desde el último encuadre: un cambio de
+  // tamaño del panel ya no re-encuadra (no se pisa lo que movió a mano).
+  const camaraMovidaRef = useRef(false);
+  // Vuelta animada del botón en curso: función que la detiene (cancela el
+  // frame y quita sus listeners). null = sin animación.
+  const animacionVistaRef = useRef<(() => void) | null>(null);
 
   // Cara seleccionada con click simple para mostrar su dimensión en el panel
   const [faceInfo, setFaceInfo] = useState<FaceMetadata | null>(null);
@@ -568,6 +775,21 @@ export function CamViewer3D({
     controls.target.set(0, 0, 0);
     controlsRef.current = controls;
 
+    // Cámara movida por el operario: un "change" DENTRO de una interacción
+    // (start…end). Un clic o doble clic sin arrastre (medidas, cara de apoyo)
+    // no mueve la cámara y no cuenta; los cambios por código (encuadre,
+    // animación 4b) ocurren fuera de start…end.
+    let interactuando = false;
+    controls.addEventListener("start", () => {
+      interactuando = true;
+    });
+    controls.addEventListener("change", () => {
+      if (interactuando) camaraMovidaRef.current = true;
+    });
+    controls.addEventListener("end", () => {
+      interactuando = false;
+    });
+
     // Luces
     scene.add(new THREE.AmbientLight(0xffffff, 0.6));
 
@@ -617,6 +839,19 @@ export function CamViewer3D({
       camera.aspect = W2 / H2;
       camera.updateProjectionMatrix();
       renderer.setSize(W2, H2);
+      // Re-encuadre para el tamaño nuevo (solo con mesa: sin mesa el encuadre
+      // no depende del aspecto), salvo que el operario haya movido la cámara
+      // desde el último encuadre o que la vuelta animada del botón esté en
+      // curso (ya apunta al encuadre del tamaño actual en cada frame).
+      // aplicarVistaOperario solo lee refs, así que llamarla desde este closure
+      // inicial es seguro.
+      if (
+        !camaraMovidaRef.current &&
+        !animacionVistaRef.current &&
+        vistaOperarioRef.current?.conMesa
+      ) {
+        aplicarVistaOperario(W2 / H2);
+      }
     };
     window.addEventListener("resize", onResize);
 
@@ -632,6 +867,7 @@ export function CamViewer3D({
       cancelAnimationFrame(animId);
       window.removeEventListener("resize", onResize);
       resizeObserver.disconnect();
+      animacionVistaRef.current?.();
       controls.dispose();
       if (scene.background instanceof THREE.Texture) scene.background.dispose();
       renderer.dispose();
@@ -740,6 +976,11 @@ export function CamViewer3D({
     let centerYMundo: number;
     // Plano de apoyo (base de la pieza) — pivote vertical de la escala de lectura.
     let pivotY = 0;
+    // Caja de la pieza ya orientada (sin escalar, coords display): la que
+    // encuadra la vista del operario al terminar la animación.
+    let cajaX: number;
+    let cajaZ: number;
+    let cajaAlto: number;
 
     // Sellada, la malla ya viene orientada por el motor. Sin sellar (cara
     // elegida, aún sin establecer), se recomputa en vivo desde la normal para
@@ -760,6 +1001,9 @@ export function CamViewer3D({
       posZTarget = bb.center[1];
       centerYMundo = zApoyo + (bb.max[2] - bb.min[2]) / 2;
       pivotY = zApoyo;
+      cajaX = bb.max[0] - bb.min[0];
+      cajaZ = bb.max[1] - bb.min[1];
+      cajaAlto = bb.max[2] - bb.min[2];
     } else {
       // ── Camino en vivo (cara seleccionada, montaje aún sin confirmar) ──
       const face = meshData.faces.find((f) => f.face_id === faceIdDestacada);
@@ -819,6 +1063,9 @@ export function CamViewer3D({
       posZTarget = -centerZTransformado;
       centerYMundo = posYTarget + centerYTransformado;
       pivotY = zApoyo;
+      cajaX = maxXTransformado - minXTransformado;
+      cajaZ = maxZTransformado - minZTransformado;
+      cajaAlto = maxYTransformado - minYTransformado;
     }
 
     // ── Escala de LECTURA (SOLO display) ──
@@ -869,6 +1116,25 @@ export function CamViewer3D({
 
       if (t < 1) {
         animId = requestAnimationFrame(animar);
+      } else {
+        // La vista del operario guardada sigue a la pieza que deja esta
+        // animación (centro y caja tal como se dibujan): el botón y el
+        // redimensionado encuadran lo que hay en pantalla.
+        const vista = vistaOperarioRef.current;
+        if (vista) {
+          vista.targetPieza.copy(targetEnd);
+          if (vista.conMesa) {
+            vista.puntosPieza = esquinasCajaPieza(
+              (s * cajaX) / 2,
+              (s * cajaZ) / 2,
+              pivotY,
+              s * cajaAlto,
+            );
+          } else {
+            vista.diagonal = Math.hypot(cajaX, cajaZ, cajaAlto) * s;
+          }
+        }
+        controlsRef.current.target0.copy(targetEnd);
       }
     };
 
@@ -1580,16 +1846,14 @@ export function CamViewer3D({
       sujecionConfig?.envolvente?.part_bottom_z_mm ?? setup?.zApoyoMm ?? 0;
 
     if (!hayMesa) {
-      // Encuadre por pieza (el que hacía el efecto 3), ahora escalado.
-      const centroY = zApoyo + piezaH / 2;
-      camera.position.set(diagonal, centroY + diagonal * 0.8, diagonal);
-      camera.near = diagonal * 0.001;
-      camera.far = diagonal * 20;
-      camera.updateProjectionMatrix();
-      controls.target.set(0, centroY, 0);
-      controls.minDistance = diagonal * 0.1;
-      controls.maxDistance = diagonal * 6;
-      controls.update();
+      // Encuadre por pieza (el que hacía el efecto 3), ahora escalado, desde la
+      // vista del operario (encuadreVistaOperario sin mesa).
+      vistaOperarioRef.current = {
+        conMesa: false,
+        diagonal,
+        targetPieza: new THREE.Vector3(0, zApoyo + piezaH / 2, 0),
+      };
+      aplicarVistaOperario(camera.aspect);
       return;
     }
 
@@ -1603,40 +1867,186 @@ export function CamViewer3D({
     const aspect = wFit > 0 && hFit > 0 ? wFit / hFit : camera.aspect || 1;
     camera.aspect = aspect;
 
-    // Fit estándar por esfera envolvente de la MESA + PIEZA escalada (mm reales,
-    // ratio mesa_x:mesa_y intacto). Se elige el semiángulo MÁS restrictivo
-    // (vertical u horizontal según el aspect) para que la mesa quepa a lo ancho.
+    // Radio envolvente de MESA + PIEZA escalada: solo para planos de recorte y
+    // límites de zoom; la distancia sale del encuadre proyectado.
     const R = 0.5 * Math.sqrt(mesaX * mesaX + mesaY * mesaY + piezaH * piezaH);
-    const vHalf = THREE.MathUtils.degToRad(camera.fov) / 2;
-    const hHalf = Math.atan(Math.tan(vHalf) * aspect);
-    const fitHalf = Math.min(vHalf, hHalf);
 
-    // FACTOR < 1: la cámara entra DENTRO de la esfera envolvente. La mesa es un
-    // plano (no una esfera), así que su silueta llena bastante menos que la
-    // esfera; al acercar la cámara la mesa DOMINA la vista (~80-90% de la
-    // dimensión menor) en vez de quedar diminuta rodeada de vacío. Valor ajustado
-    // por el resultado RENDERADO, no por una fórmula.
-    const FACTOR = 0.5;
-    const distance = (R / Math.sin(fitHalf)) * FACTOR;
-
-    // Objetivo: centro de la mesa elevado media altura de pieza (escalada).
-    // Dirección de vista isométrica de siempre; solo la DISTANCIA depende del
-    // tamaño.
+    // Objetivo: centro de la mesa elevado media altura de pieza (escalada). Es
+    // el mismo punto al que el efecto 4b lleva el target con la pieza sellada,
+    // así su animación no inclina la vista recién encuadrada.
     const target = new THREE.Vector3(0, zApoyo + piezaH / 2, 0);
-    const dir = new THREE.Vector3(1, 0.8, 1).normalize();
-    camera.position.copy(target).addScaledVector(dir, distance);
 
-    camera.near = Math.max(0.5, distance * 0.05);
-    camera.far = distance + R * 4;
-    camera.updateProjectionMatrix();
-
-    controls.target.copy(target);
-    controls.minDistance = R * 0.3;
-    controls.maxDistance = distance * 4;
-    controls.update();
+    // Lo que tiene que caber: las 4 esquinas de la mesa (plano y = 0, coords
+    // display: X máquina → x, Y máquina → −z) y las 8 de la caja de la pieza tal
+    // como se dibuja (escalada, centrada en XZ, base en el plano de apoyo).
+    const hx = mesaX / 2;
+    const hy = mesaY / 2;
+    const puntosMesa: THREE.Vector3[] = [];
+    for (const sx of [-1, 1]) {
+      for (const sz of [-1, 1]) {
+        puntosMesa.push(new THREE.Vector3(sx * hx, 0, sz * hy));
+      }
+    }
+    vistaOperarioRef.current = {
+      conMesa: true,
+      puntosMesa,
+      puntosPieza: esquinasCajaPieza(
+        (Math.max(0, bb.max[0] - bb.min[0]) * s) / 2,
+        (Math.max(0, bb.max[1] - bb.min[1]) * s) / 2,
+        zApoyo,
+        piezaH,
+      ),
+      radio: R,
+      targetPieza: target,
+    };
+    aplicarVistaOperario(aspect);
     // sujecionConfig/setup solo se LEEN (pivote de apoyo); el guard de arriba
     // impide que su cambio re-encuadre.
   }, [mostrarMesa, maquina, meshData, sujecionConfig, setup]);
+
+  // ── Aplicar la vista del operario de golpe ──────────────────────────────
+  // Encuadre inmediato (7a-fit, redimensionado del panel, fin de la vuelta
+  // animada): coloca cámara, planos y límites de encuadreVistaOperario para
+  // `aspect` y guarda el estado (saveState). Detiene una vuelta animada en
+  // curso: el encuadre nuevo manda. Solo lee refs.
+  const aplicarVistaOperario = (aspect: number) => {
+    const camera = cameraRef.current;
+    const controls = controlsRef.current;
+    const vista = vistaOperarioRef.current;
+    if (!camera || !controls || !vista || !(aspect > 0)) return;
+    animacionVistaRef.current?.();
+
+    const e = encuadreVistaOperario(vista, camera.fov, aspect);
+    camera.position.copy(e.posicion);
+    camera.near = e.near;
+    camera.far = e.far;
+    camera.updateProjectionMatrix();
+
+    controls.target.copy(e.target);
+    controls.minDistance = e.minDistance;
+    controls.maxDistance = e.maxDistance;
+    controls.update();
+    controls.saveState();
+    camaraMovidaRef.current = false;
+  };
+
+  // Aspecto ACTUAL del panel (el de la cámara si el panel aún no tiene tamaño).
+  const aspectoPanel = (): number => {
+    const el = mountRef.current;
+    return el && el.clientWidth > 0 && el.clientHeight > 0
+      ? el.clientWidth / el.clientHeight
+      : (cameraRef.current?.aspect ?? 0);
+  };
+
+  // ── Volver a la vista del operario (botón, animado) ─────────────────────
+  // Va al encuadre de encuadreVistaOperario para el tamaño de panel y la
+  // geometría ACTUALES (sin vista guardada ni reset()), recalculado en cada
+  // frame: si el panel cambia o 4b termina durante la vuelta, acaba en el
+  // encuadre vigente. Trayectoria en esféricas alrededor del target (órbita +
+  // zoom, sin cruzar la pieza) con el target interpolado en línea recta; el
+  // último frame aplica el encuadre exacto. Cualquier pulsación o rueda en el
+  // canvas la detiene donde esté. Con prefers-reduced-motion, de golpe.
+  const irAVistaOperario = () => {
+    const controls = controlsRef.current;
+    const camera = cameraRef.current;
+    const renderer = rendererRef.current;
+    if (!controls || !camera || !renderer || !vistaOperarioRef.current) return;
+    animacionVistaRef.current?.();
+
+    // Consumir la inercia: con damping, el giro/paneo pendiente seguiría
+    // aplicándose sobre la vuelta y la cámara derivaría. Un update() SIN
+    // damping aplica ese resto y lo pone a cero.
+    controls.enableDamping = false;
+    controls.update();
+    controls.enableDamping = true;
+
+    const reducirMovimiento =
+      window.matchMedia?.("(prefers-reduced-motion: reduce)").matches === true;
+    if (reducirMovimiento) {
+      aplicarVistaOperario(aspectoPanel());
+      return;
+    }
+
+    const targetInicio = controls.target.clone();
+    const esfInicio = new THREE.Spherical().setFromVector3(
+      camera.position.clone().sub(targetInicio),
+    );
+    const nearInicio = camera.near;
+    const farInicio = camera.far;
+    // Sin límites de distancia durante la vuelta: update() no debe clampar
+    // las distancias intermedias.
+    controls.minDistance = 0;
+    controls.maxDistance = Infinity;
+
+    const el = renderer.domElement;
+    const inicio = performance.now();
+    let frameId = 0;
+    let ultimo: EncuadreOperario | null = null;
+    const esfFin = new THREE.Spherical();
+    const offset = new THREE.Vector3();
+
+    const detener = () => {
+      cancelAnimationFrame(frameId);
+      el.removeEventListener("pointerdown", interrumpir);
+      el.removeEventListener("wheel", interrumpir);
+      if (animacionVistaRef.current === detener) animacionVistaRef.current = null;
+    };
+    // Entrada del usuario: la cámara se queda donde está y pasa a ser suya
+    // (el redimensionado ya no re-encuadra). Límites de nuevo activos, sin
+    // clampar la posición actual.
+    const interrumpir = () => {
+      detener();
+      const distancia = camera.position.distanceTo(controls.target);
+      controls.minDistance = Math.min(ultimo?.minDistance ?? distancia, distancia);
+      controls.maxDistance = Math.max(ultimo?.maxDistance ?? distancia, distancia);
+      camaraMovidaRef.current = true;
+    };
+
+    const paso = (ahora: number) => {
+      const vista = vistaOperarioRef.current;
+      if (!vista) {
+        interrumpir();
+        return;
+      }
+      const t = Math.min((ahora - inicio) / DURACION_VUELTA_VISTA_OPERARIO_MS, 1);
+      if (t >= 1) {
+        detener();
+        aplicarVistaOperario(aspectoPanel()); // el encuadre exacto
+        return;
+      }
+      const e = encuadreVistaOperario(vista, camera.fov, aspectoPanel());
+      ultimo = e;
+      const k = t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t;
+
+      esfFin.setFromVector3(offset.subVectors(e.posicion, e.target));
+      // Giro por el camino corto.
+      let dTheta = (esfFin.theta - esfInicio.theta) % (2 * Math.PI);
+      if (dTheta > Math.PI) dTheta -= 2 * Math.PI;
+      if (dTheta < -Math.PI) dTheta += 2 * Math.PI;
+      // Zoom en escala logarítmica: velocidad aparente uniforme.
+      const radio =
+        esfInicio.radius > 0 && esfFin.radius > 0
+          ? esfInicio.radius * Math.pow(esfFin.radius / esfInicio.radius, k)
+          : THREE.MathUtils.lerp(esfInicio.radius, esfFin.radius, k);
+      offset.setFromSphericalCoords(
+        radio,
+        THREE.MathUtils.lerp(esfInicio.phi, esfFin.phi, k),
+        esfInicio.theta + dTheta * k,
+      );
+      controls.target.lerpVectors(targetInicio, e.target, k);
+      camera.position.copy(controls.target).add(offset);
+      camera.near = THREE.MathUtils.lerp(nearInicio, e.near, k);
+      camera.far = THREE.MathUtils.lerp(farInicio, e.far, k);
+      camera.updateProjectionMatrix();
+      controls.update();
+      frameId = requestAnimationFrame(paso);
+    };
+
+    el.addEventListener("pointerdown", interrumpir, { passive: true });
+    el.addEventListener("wheel", interrumpir, { passive: true });
+    animacionVistaRef.current = detener;
+    frameId = requestAnimationFrame(paso);
+  };
 
   // ── Render ─────────────────────────────────────────────────────────────
   if (meshLoading) {
@@ -1668,6 +2078,21 @@ export function CamViewer3D({
         className="w-full h-full rounded-xl overflow-hidden"
         style={{ minHeight: "300px", cursor: "grab", background: "#0d1117" }}
       />
+
+      {/* Botón "Vista del operario" — hermano del canvas, no hijo: sus eventos
+          nunca llegan a OrbitControls ni a los handlers de picking (todos
+          escuchan en renderer.domElement). Abajo a la derecha desde 640 px;
+          arriba a la derecha en móvil, donde el panel de sección es una hoja
+          inferior que taparía la esquina de abajo. */}
+      <button
+        type="button"
+        onClick={irAVistaOperario}
+        aria-label="Vista del operario"
+        title="Vista del operario"
+        className="absolute right-3 top-3 z-10 flex h-11 w-11 touch-manipulation items-center justify-center rounded-xl border border-border bg-bg-surface/90 text-text-muted shadow-soft backdrop-blur transition hover:border-accent-blue/50 hover:text-text-primary sm:bottom-3 sm:top-auto"
+      >
+        <LocateFixed className="h-5 w-5" aria-hidden />
+      </button>
 
       {/* Panel de dimensión — esquina inferior izquierda.
           pointer-events:none para no estorbar la rotación con OrbitControls. */}
