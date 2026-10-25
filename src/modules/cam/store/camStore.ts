@@ -389,10 +389,27 @@ const resetStockMeasurements = (s: StockConfig): StockConfig => ({
   tipo: s.tipo,
 });
 
+// Cascada de la lista de operaciones: la lista y todo lo que está keyed por
+// op_id (herramienta elegida, asesoría del MDE, veredictos de mecanizabilidad)
+// se emitieron sobre las operaciones vigentes. Al reemplazar la lista se vacían
+// JUNTOS: conservar cualquiera de ellos dejaría ids huérfanos apuntando a
+// operaciones que ya no existen.
+const listaDeOperacionesVacia = () => ({
+  operaciones: [] as Operacion[],
+  herramientaPorOperacion: {} as Record<string, number>,
+  mdeRecomendaciones: null,
+  mdeEstado: "sin_analisis" as EstadoAnalisisMDE,
+  mdeError: null,
+  mecanizabilidad: null,
+  mecanizabilidadEstado: "sin_analisis" as EstadoConsulta,
+  mecanizabilidadError: null,
+});
+
 // Cascada de un cambio de cara de apoyo: el Setup confirmado (y con él los
-// offsets de stock) y el veredicto de mecanizabilidad dependen de la cara. La
-// usan setMontajeConfig (cara distinta) y editarCaraApoyo (orientación
-// desellada), para que ambas invaliden exactamente lo mismo.
+// offsets de stock), la lista de operaciones y el veredicto de mecanizabilidad
+// dependen de la cara. La usan setMontajeConfig (cara distinta) y
+// editarCaraApoyo (orientación desellada), para que ambas invaliden exactamente
+// lo mismo.
 const invalidarPorCambioDeCara = (state: {
   setup: Setup | null;
   stockConfig: StockConfig;
@@ -400,9 +417,7 @@ const invalidarPorCambioDeCara = (state: {
   ...(state.setup !== null
     ? { setup: null, stockConfig: resetStockMeasurements(state.stockConfig) }
     : {}),
-  mecanizabilidad: null,
-  mecanizabilidadEstado: "sin_analisis" as EstadoConsulta,
-  mecanizabilidadError: null,
+  ...listaDeOperacionesVacia(),
   // Los puntos del cero salen de la pieza orientada sobre ESA cara: con otra
   // cara (o sin sellar) el punto elegido ya no está donde el operario lo vio.
   datumConfig: DATUM_INICIAL,
@@ -707,6 +722,11 @@ export const useCamStore = create<CamState>((set, get) => ({
   // Solo se aplica si sigue esperando ESA cara de ESE trabajo: una respuesta
   // que llegue tras cancelar o cambiar de pieza se descarta en vez de sellar
   // una orientación que ya no corresponde.
+  //
+  // La lista de operaciones sale del análisis SELLADO (marco de mecanizado), no
+  // del /cam/analyze original: /cam/generate solo acepta operaciones contenidas
+  // en el conjunto sellado (mismo `tipo` y mismos `face_indices`). Se reemplaza
+  // junto con todo lo keyed por op_id, y nace sin ninguna marcada.
   completarSellado: (respuesta, faceId, idJob) =>
     set((state) => {
       if (
@@ -721,6 +741,8 @@ export const useCamStore = create<CamState>((set, get) => ({
         return {};
       }
       return {
+        ...listaDeOperacionesVacia(),
+        operaciones: convertirOperaciones(respuesta.analisis),
         orientacionSellada: respuesta,
         estadoOrientacion: "sellada",
         errorOrientacion: null,
