@@ -23,7 +23,13 @@
 //   · MARCAR (la casilla): decide si la operación se mecaniza. Solo la casilla
 //     la cambia; enfocar no marca nada.
 // ─────────────────────────────────────────────────────────────────────────────
-import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { useCamStore } from "../../store/camStore";
 import type { SujecionConfig } from "../../store/camStore";
 import { CamViewer3D } from "../CamViewer3D";
@@ -445,6 +451,49 @@ export const StepOperaciones = () => {
     [mecanizabilidad],
   );
 
+  // Veredicto vigente: la respuesta existe Y la consulta terminó. Durante una
+  // re-evaluación el store puede conservar la respuesta anterior; no debe
+  // agrupar ni bloquear mientras está "analizando".
+  const veredictoDisponible =
+    mecanizabilidad !== null && mecanizabilidadEstado === "listo";
+
+  // Aviso compacto DENTRO de la lista. La cabecera ya explica el detalle; este
+  // recuerda que, sin veredicto, no se oculta ninguna operación.
+  const mensajeMecanizabilidad = veredictoDisponible
+    ? null
+    : mecanizabilidadEstado === "analizando"
+      ? "Evaluando mecanizabilidad: se muestran todas las operaciones."
+      : mecanizabilidadEstado === "error"
+        ? `${mecanizabilidadError?.trim() || "No se pudo evaluar la mecanizabilidad."} · Se muestran todas las operaciones.`
+        : "Mecanizabilidad no disponible: se muestran todas las operaciones.";
+
+  // Una operación no alcanzable no puede quedar seleccionada ni aunque el MDE
+  // la hubiera marcado. Se desmarca en el store para que el gate de "Siguiente"
+  // no la cuente; la lista además la pinta siempre sin marcar.
+  useLayoutEffect(() => {
+    if (!veredictoDisponible) return;
+    const noAlcanzables = new Set<string>();
+    indiceMecanizabilidad.forEach((veredicto, id) => {
+      if (veredicto.mecanizabilidad === NO_ALCANZABLE) {
+        noAlcanzables.add(id);
+      }
+    });
+    if (noAlcanzables.size === 0) return;
+    if (!operaciones.some((op) => op.seleccionada && noAlcanzables.has(op.id))) {
+      return;
+    }
+    setOperaciones(
+      operaciones.map((op) =>
+        noAlcanzables.has(op.id) ? { ...op, seleccionada: false } : op,
+      ),
+    );
+  }, [
+    veredictoDisponible,
+    indiceMecanizabilidad,
+    operaciones,
+    setOperaciones,
+  ]);
+
   // Etiquetas de orientación en el marco de MÁQUINA. El motor rotula en el marco
   // de la pieza; tras el montaje esa etiqueta puede contradecir lo que se ve. El
   // clasificador puro (setupFaceClassifier) las reexpresa con las normales del
@@ -679,14 +728,29 @@ export const StepOperaciones = () => {
             operaciones={operaciones}
             indiceMDE={indiceMDE}
             indiceMecanizabilidad={indiceMecanizabilidad}
+            veredictoDisponible={veredictoDisponible}
+            mensajeMecanizabilidad={mensajeMecanizabilidad}
             indiceEtiquetas={indiceEtiquetas}
             herramientaDe={herramientaDe}
             opEnfocada={opEnfocada}
             onEnfocar={setOpEnfocada}
             onAlternar={toggleOperacion}
-            onSeleccionarTodas={() =>
-              setOperaciones(operaciones.map((op) => ({ ...op, seleccionada: true })))
-            }
+            onSeleccionarTodas={() => {
+              if (!veredictoDisponible) return;
+              setOperaciones(
+                operaciones.map((op) => {
+                  const veredicto =
+                    indiceMecanizabilidad.get(op.id)?.mecanizabilidad;
+                  if (veredicto === ALCANZABLE) {
+                    return { ...op, seleccionada: true };
+                  }
+                  if (veredicto === NO_ALCANZABLE) {
+                    return { ...op, seleccionada: false };
+                  }
+                  return op;
+                }),
+              );
+            }}
             onDeseleccionarTodas={() =>
               setOperaciones(operaciones.map((op) => ({ ...op, seleccionada: false })))
             }

@@ -13,7 +13,9 @@
 // tipo · borde izquierdo del color del ESTADO.
 //
 // Las operaciones que el MDE marcó LIKELY_ALREADY_DONE aparecen DESMARCADAS
-// pero presentes y se pueden volver a marcar: no se esconde ninguna.
+// pero presentes y se pueden volver a marcar. Las que el veredicto declara no
+// alcanzables no se esconden: van a una sección plegable con su motivo y la
+// casilla deshabilitada, para que el operario vea por qué no puede elegirlas.
 // ─────────────────────────────────────────────────────────────────────────────
 import {
   ESTADO_FILA_BORDE,
@@ -27,11 +29,13 @@ import {
   textoMotivo,
   tieneRemedioReanalisis,
   veredictoDe,
+  DESCONOCIDO,
   NO_ALCANZABLE,
   TEXTO_REMEDIO_REANALISIS,
   VEREDICTO_CLASE,
   VEREDICTO_ETIQUETA,
   type IndiceMecanizabilidad,
+  type OperacionMecanizabilidad,
 } from "../../domain/mecanizabilidad";
 import { TIPOS_OPERACION, tipoOperacionPunto } from "../../domain/tiposOperacion";
 import {
@@ -45,10 +49,19 @@ interface Props {
   operaciones: Operacion[];
   indiceMDE: IndiceMDE;
   /**
-   * Veredicto del motor por op_id. Una operación sin entrada NO lleva insignia:
-   * ausencia de veredicto no es `desconocido` — `desconocido` lo dice el motor.
+   * Veredicto del motor por op_id. Una operación sin entrada no es
+   * `desconocido` — `desconocido` lo dice el motor — y se marca aparte como
+   * "Sin veredicto" para no atribuirle una decisión que el motor no tomó.
    */
   indiceMecanizabilidad: IndiceMecanizabilidad;
+  /**
+   * ¿El veredicto está disponible y vigente? Si es false (cargando, error o sin
+   * analizar), no se agrupa ni se oculta nada: todas las filas quedan en la
+   * lista principal y "Seleccionar todas" se deshabilita.
+   */
+  veredictoDisponible: boolean;
+  /** Aviso visible cuando la mecanizabilidad no está disponible. */
+  mensajeMecanizabilidad: string | null;
   /**
    * Etiqueta de orientación en el marco de máquina por op_id. Una operación sin
    * entrada (o sin re-etiqueta) muestra su descripción original del motor.
@@ -71,10 +84,29 @@ const ORDENES = [
   { value: "inferior_primero", label: "Cara inferior primero (OP10 → OP20)" },
 ];
 
+/**
+ * Formato de la evidencia del motor para el tooltip. Solo presenta pares
+ * clave/valor; no interpreta ni recalcula el veredicto.
+ */
+function textoEvidencia(
+  evidencia: Record<string, unknown> | null | undefined,
+): string {
+  if (!evidencia || typeof evidencia !== "object") return "";
+  return Object.entries(evidencia)
+    .map(([clave, valor]) => {
+      if (valor == null) return `${clave}: —`;
+      if (typeof valor === "object") return `${clave}: ${JSON.stringify(valor)}`;
+      return `${clave}: ${String(valor)}`;
+    })
+    .join(" · ");
+}
+
 export function ListaOperaciones({
   operaciones,
   indiceMDE,
   indiceMecanizabilidad,
+  veredictoDisponible,
+  mensajeMecanizabilidad,
   indiceEtiquetas,
   herramientaDe,
   opEnfocada,
@@ -92,161 +124,247 @@ export function ListaOperaciones({
     operaciones.some((op) => op.setup === 1 && op.seleccionada) &&
     operaciones.some((op) => op.setup === 2 && op.seleccionada);
 
+  // El veredicto solo agrupa cuando está disponible y vigente. Mientras carga,
+  // falla o no se ha pedido, no se oculta ninguna operación: todas quedan en la
+  // lista principal y el botón "Seleccionar todas" se deshabilita.
+  const filas = operaciones.map((op, indice) => ({
+    op,
+    indice,
+    veredicto: veredictoDisponible ? veredictoDe(indiceMecanizabilidad, op) : null,
+  }));
+
+  const principales = filas.filter(
+    (fila) => fila.veredicto?.mecanizabilidad !== NO_ALCANZABLE,
+  );
+  const noDisponibles = filas.filter(
+    (fila) => fila.veredicto?.mecanizabilidad === NO_ALCANZABLE,
+  );
+  const sinVeredictos =
+    veredictoDisponible &&
+    filas.length > 0 &&
+    filas.every((fila) => fila.veredicto === null);
+
+  const filaOperacion = (
+    op: Operacion,
+    indice: number,
+    veredicto: OperacionMecanizabilidad | null,
+    bloqueada: boolean,
+  ) => {
+    const rec = recomendacionDe(indiceMDE, op);
+    const estado = estadoFila(rec);
+    const herramienta = herramientaDe(op);
+    const t = numeroT(herramienta);
+    const enfocada = op.id === opEnfocada;
+    const etiqueta = indiceEtiquetas.get(op.id);
+    const reetiquetada = etiqueta?.orientacion != null;
+    const descripcion = etiqueta?.descripcion ?? op.descripcion;
+    // Una operación no alcanzable NUNCA se pinta marcada, aunque una selección
+    // anterior siguiera viva en el store. El efecto de StepOperaciones la
+    // desmarca además en el store, para que el gate de "Siguiente" no la cuente.
+    const seleccionada = bloqueada ? false : op.seleccionada;
+
+    // Evidencia del motor en el tooltip, junto al motivo. Es solo formato:
+    // no se interpreta ni se recalcula nada.
+    const evidencia = veredicto ? textoEvidencia(veredicto.evidencia) : "";
+    const tituloVeredicto = veredicto
+      ? textoMotivo(veredicto.motivo) +
+        (tieneRemedioReanalisis(veredicto.motivo)
+          ? ` — ${TEXTO_REMEDIO_REANALISIS}`
+          : "") +
+        (evidencia ? ` · ${evidencia}` : "")
+      : undefined;
+
+    return (
+      <li key={op.id}>
+        <div
+          role="button"
+          tabIndex={0}
+          onClick={() => onEnfocar(op.id)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault();
+              onEnfocar(op.id);
+            }
+          }}
+          className={`flex w-full cursor-pointer items-start gap-2 rounded-lg border border-l-4 px-2 py-1.5 text-left transition ${
+            ESTADO_FILA_BORDE[estado]
+          } ${
+            enfocada
+              ? "border-accent-blue bg-accent-blue/20"
+              : "border-border bg-bg-primary hover:bg-bg-elevated"
+          }`}
+        >
+          {/* Casilla — decide si la operación se mecaniza. Va aparte del
+              clic en la fila (que solo ENFOCA), para que mirar una
+              operación no la marque sin querer. */}
+          <button
+            type="button"
+            disabled={bloqueada}
+            onClick={(e) => {
+              e.stopPropagation();
+              if (!bloqueada) onAlternar(op.id);
+            }}
+            aria-label={
+              bloqueada
+                ? `${descripcion} — no disponible con esta cara de apoyo`
+                : `${seleccionada ? "Quitar" : "Incluir"} ${descripcion}`
+            }
+            aria-pressed={seleccionada}
+            className={`mt-0.5 h-4 w-4 shrink-0 rounded border-2 transition ${
+              bloqueada
+                ? "cursor-not-allowed border-border opacity-40"
+                : seleccionada
+                  ? "border-accent-blue bg-accent-blue"
+                  : "border-border hover:border-accent-blue/60"
+            }`}
+          >
+            {seleccionada && (
+              <svg viewBox="0 0 12 12" className="h-full w-full p-0.5 text-white">
+                <path
+                  d="M2 6l3 3 5-5"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  fill="none"
+                  strokeLinecap="round"
+                />
+              </svg>
+            )}
+          </button>
+
+          <span className="mt-0.5 w-4 shrink-0 text-right font-mono text-[10px] text-text-muted">
+            {indice + 1}
+          </span>
+
+          <span
+            className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${tipoOperacionPunto(op.tipo)}`}
+            title={op.tipo}
+          />
+
+          <div className="min-w-0 flex-1">
+            {/* NOMBRE COMPLETO. break-words, nunca truncate. Para una
+                operación re-etiquetada se muestra SOLO el rótulo de
+                máquina; la descripción original del motor no se pinta
+                (contradiría lo que se ve) y vive únicamente en el title
+                (traza CAD) y en un span sr-only para lectores de pantalla. */}
+            <p
+              className="break-words text-[12px] leading-snug text-text-primary"
+              title={etiqueta?.refCad ?? undefined}
+            >
+              {descripcion}
+              {reetiquetada && (
+                <span className="sr-only"> ({op.descripcion})</span>
+              )}
+            </p>
+
+            {herramienta ? (
+              <p className="mt-0.5 break-words text-[10px] text-text-muted">
+                {herramienta.nombre ?? "Herramienta sin nombre"}
+                {herramienta.diametro_mm != null &&
+                  ` · Ø${herramienta.diametro_mm} mm`}
+              </p>
+            ) : (
+              <p className="mt-0.5 text-[10px] text-text-muted/70">
+                Sin herramienta asignada
+              </p>
+            )}
+
+            <div className="mt-0.5 flex flex-wrap items-center gap-1">
+              <p className="text-[9px] uppercase tracking-wide text-text-muted/70">
+                {rec ? TEXTO_ESTADO[rec.status] : ESTADO_FILA_TEXTO[estado]}
+              </p>
+
+              {/* Insignia de mecanizabilidad. El texto sale de la tabla
+                  del veredicto que emitió el motor; el motivo se explica
+                  en el title. Nada de esto se deduce de la geometría. */}
+              {veredicto ? (
+                <span
+                  title={tituloVeredicto}
+                  className={`rounded border px-1 py-px text-[9px] ${
+                    VEREDICTO_CLASE[veredicto.mecanizabilidad]
+                  }`}
+                >
+                  {VEREDICTO_ETIQUETA[veredicto.mecanizabilidad]}
+                </span>
+              ) : veredictoDisponible ? (
+                /* El motor no emitió veredicto para esta operación. No es
+                   `desconocido` (eso lo dice el motor): es ausencia de fila. */
+                <span
+                  title="El motor no emitió veredicto para esta operación"
+                  className={`rounded border px-1 py-px text-[9px] ${
+                    VEREDICTO_CLASE[DESCONOCIDO]
+                  }`}
+                >
+                  Sin veredicto
+                </span>
+              ) : null}
+
+              {/* Motivo de no-alcanzabilidad, JUNTO al badge y visible (no
+                  solo en el tooltip): "No alcanzable" a secas obliga a
+                  pasar el ratón para saber POR QUÉ. Solo para no_alcanzable
+                  y solo si el motor nombró un motivo; el texto es la
+                  traducción del código (textoMotivo), nunca una deducción
+                  de la UI. */}
+              {veredicto &&
+                veredicto.mecanizabilidad === NO_ALCANZABLE &&
+                veredicto.motivo && (
+                  <span
+                    className="text-[9px] text-red-400/90"
+                    title={tituloVeredicto}
+                  >
+                    — {textoMotivo(veredicto.motivo)}
+                  </span>
+                )}
+            </div>
+          </div>
+
+          {/* Número de herramienta del carrusel. Solo si existe: un T
+              inventado se teclea tal cual en la máquina. */}
+          {t && (
+            <span className="mt-0.5 shrink-0 rounded border border-border bg-bg-elevated px-1.5 py-0.5 font-mono text-[10px] text-text-primary">
+              {t}
+            </span>
+          )}
+        </div>
+      </li>
+    );
+  };
+
   return (
     <div className="flex h-full flex-col">
       <ol className="flex-1 space-y-1 p-2">
-        {operaciones.map((op, indice) => {
-          const rec = recomendacionDe(indiceMDE, op);
-          const estado = estadoFila(rec);
-          const veredicto = veredictoDe(indiceMecanizabilidad, op);
-          const herramienta = herramientaDe(op);
-          const t = numeroT(herramienta);
-          const enfocada = op.id === opEnfocada;
+        {(mensajeMecanizabilidad || sinVeredictos) && (
+          <li className="list-none space-y-1">
+            {mensajeMecanizabilidad && (
+              <p className="rounded-lg border border-border bg-bg-elevated px-2 py-1.5 text-[11px] text-text-muted">
+                {mensajeMecanizabilidad}
+              </p>
+            )}
+            {sinVeredictos && (
+              <p className="rounded-lg border border-border bg-bg-elevated px-2 py-1.5 text-[11px] text-text-muted">
+                Ninguna operación de la lista tiene veredicto de mecanizabilidad.
+              </p>
+            )}
+          </li>
+        )}
 
-          // Descripción en el marco de máquina si el clasificador la reexpresó;
-          // si no, la original del motor. El tooltip lleva la referencia CAD.
-          const etiqueta = indiceEtiquetas.get(op.id);
-          const reetiquetada = etiqueta?.orientacion != null;
-          const descripcion = etiqueta?.descripcion ?? op.descripcion;
+        {principales.map(({ op, indice, veredicto }) =>
+          filaOperacion(op, indice, veredicto, false),
+        )}
 
-          return (
-            <li key={op.id}>
-              <div
-                role="button"
-                tabIndex={0}
-                onClick={() => onEnfocar(op.id)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" || e.key === " ") {
-                    e.preventDefault();
-                    onEnfocar(op.id);
-                  }
-                }}
-                className={`flex w-full cursor-pointer items-start gap-2 rounded-lg border border-l-4 px-2 py-1.5 text-left transition ${
-                  ESTADO_FILA_BORDE[estado]
-                } ${
-                  enfocada
-                    ? "border-accent-blue bg-accent-blue/20"
-                    : "border-border bg-bg-primary hover:bg-bg-elevated"
-                }`}
-              >
-                {/* Casilla — decide si la operación se mecaniza. Va aparte del
-                    clic en la fila (que solo ENFOCA), para que mirar una
-                    operación no la marque sin querer. */}
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onAlternar(op.id);
-                  }}
-                  aria-label={`${op.seleccionada ? "Quitar" : "Incluir"} ${descripcion}`}
-                  aria-pressed={op.seleccionada}
-                  className={`mt-0.5 h-4 w-4 shrink-0 rounded border-2 transition ${
-                    op.seleccionada
-                      ? "border-accent-blue bg-accent-blue"
-                      : "border-border hover:border-accent-blue/60"
-                  }`}
-                >
-                  {op.seleccionada && (
-                    <svg viewBox="0 0 12 12" className="h-full w-full p-0.5 text-white">
-                      <path
-                        d="M2 6l3 3 5-5"
-                        stroke="currentColor"
-                        strokeWidth="2"
-                        fill="none"
-                        strokeLinecap="round"
-                      />
-                    </svg>
-                  )}
-                </button>
-
-                <span className="mt-0.5 w-4 shrink-0 text-right font-mono text-[10px] text-text-muted">
-                  {indice + 1}
-                </span>
-
-                <span
-                  className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${tipoOperacionPunto(op.tipo)}`}
-                  title={op.tipo}
-                />
-
-                <div className="min-w-0 flex-1">
-                  {/* NOMBRE COMPLETO. break-words, nunca truncate. Para una
-                      operación re-etiquetada se muestra SOLO el rótulo de
-                      máquina; la descripción original del motor no se pinta
-                      (contradiría lo que se ve) y vive únicamente en el title
-                      (traza CAD) y en un span sr-only para lectores de pantalla. */}
-                  <p
-                    className="break-words text-[12px] leading-snug text-text-primary"
-                    title={etiqueta?.refCad ?? undefined}
-                  >
-                    {descripcion}
-                    {reetiquetada && (
-                      <span className="sr-only"> ({op.descripcion})</span>
-                    )}
-                  </p>
-
-                  {herramienta ? (
-                    <p className="mt-0.5 break-words text-[10px] text-text-muted">
-                      {herramienta.nombre ?? "Herramienta sin nombre"}
-                      {herramienta.diametro_mm != null &&
-                        ` · Ø${herramienta.diametro_mm} mm`}
-                    </p>
-                  ) : (
-                    <p className="mt-0.5 text-[10px] text-text-muted/70">
-                      Sin herramienta asignada
-                    </p>
-                  )}
-
-                  <div className="mt-0.5 flex flex-wrap items-center gap-1">
-                    <p className="text-[9px] uppercase tracking-wide text-text-muted/70">
-                      {rec ? TEXTO_ESTADO[rec.status] : ESTADO_FILA_TEXTO[estado]}
-                    </p>
-
-                    {/* Insignia de mecanizabilidad. El texto sale de la tabla
-                        del veredicto que emitió el motor; el motivo se explica
-                        en el title. Nada de esto se deduce de la geometría. */}
-                    {veredicto && (
-                      <span
-                        title={
-                          textoMotivo(veredicto.motivo) +
-                          (tieneRemedioReanalisis(veredicto.motivo)
-                            ? ` — ${TEXTO_REMEDIO_REANALISIS}`
-                            : "")
-                        }
-                        className={`rounded border px-1 py-px text-[9px] ${
-                          VEREDICTO_CLASE[veredicto.mecanizabilidad]
-                        }`}
-                      >
-                        {VEREDICTO_ETIQUETA[veredicto.mecanizabilidad]}
-                      </span>
-                    )}
-
-                    {/* Motivo de no-alcanzabilidad, JUNTO al badge y visible (no
-                        solo en el tooltip): "No alcanzable" a secas obliga a
-                        pasar el ratón para saber POR QUÉ. Solo para no_alcanzable
-                        y solo si el motor nombró un motivo; el texto es la
-                        traducción del código (textoMotivo), nunca una deducción
-                        de la UI. */}
-                    {veredicto &&
-                      veredicto.mecanizabilidad === NO_ALCANZABLE &&
-                      veredicto.motivo && (
-                        <span className="text-[9px] text-red-400/90">
-                          — {textoMotivo(veredicto.motivo)}
-                        </span>
-                      )}
-                  </div>
-                </div>
-
-                {/* Número de herramienta del carrusel. Solo si existe: un T
-                    inventado se teclea tal cual en la máquina. */}
-                {t && (
-                  <span className="mt-0.5 shrink-0 rounded border border-border bg-bg-elevated px-1.5 py-0.5 font-mono text-[10px] text-text-primary">
-                    {t}
-                  </span>
+        {noDisponibles.length > 0 && (
+          <li className="list-none">
+            <details className="rounded-lg border border-border bg-bg-primary/60">
+              <summary className="cursor-pointer select-none px-2 py-1.5 text-[11px] font-semibold text-text-muted">
+                No disponibles con esta cara de apoyo ({noDisponibles.length})
+              </summary>
+              <ol className="space-y-1 p-2 pt-1">
+                {noDisponibles.map(({ op, indice, veredicto }) =>
+                  filaOperacion(op, indice, veredicto, true),
                 )}
-              </div>
-            </li>
-          );
-        })}
+              </ol>
+            </details>
+          </li>
+        )}
 
         {operaciones.length === 0 && (
           <li className="px-2 py-6 text-center text-xs text-text-muted">
@@ -284,7 +402,13 @@ export function ListaOperaciones({
         <div className="flex gap-1.5">
           <button
             onClick={onSeleccionarTodas}
-            className="flex-1 rounded-lg border border-border px-2 py-1.5 text-[11px] text-text-muted transition hover:border-accent-blue/50 hover:text-text-primary"
+            disabled={!veredictoDisponible}
+            title={
+              !veredictoDisponible
+                ? "La mecanizabilidad no está disponible."
+                : undefined
+            }
+            className="flex-1 rounded-lg border border-border px-2 py-1.5 text-[11px] text-text-muted transition hover:border-accent-blue/50 hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-50"
           >
             Seleccionar todas
           </button>
