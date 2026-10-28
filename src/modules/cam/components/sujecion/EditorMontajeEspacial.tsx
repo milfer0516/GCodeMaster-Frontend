@@ -2,8 +2,10 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // EDITOR DE DATOS DEL MONTAJE (formulario a escala real, sin lienzo propio).
 //
-// Es un EDITOR DE DATOS: el operador declara posiciones, alturas y orientación,
-// y lo ÚNICO que se guarda son números en `montaje_espacial`. La representación
+// Es un EDITOR DE DATOS: el operador declara posiciones y alturas, y lo ÚNICO
+// que se guarda son números en `montaje_espacial`. `orientacion_fisica_deg` ya
+// no es editable: ni el visor ni el motor la aplican, así que se siembra en 0 y
+// solo se informa (un giro editable haría creer que cambia el G-code). La representación
 // espacial vive ahora en el visor 3D único (CamViewer3D): este componente ya no
 // dibuja su propia superficie 2D (SVG). Se conservan intactos el modelo de datos,
 // las mutaciones y el cableado onChange — solo se retiró la capa de dibujo/arrastre.
@@ -12,7 +14,7 @@
 // geometría que el operador coloca; la holgura la decide el motor.
 // ─────────────────────────────────────────────────────────────────────────────
 import { useEffect, useState } from "react";
-import { Plus, Trash2, RotateCw } from "lucide-react";
+import { Plus, Trash2 } from "lucide-react";
 import type { Maquina } from "../../../../services/maquinasService";
 import type {
   MontajeEspacial,
@@ -165,12 +167,6 @@ export const EditorMontajeEspacial = ({
       zonas_sujecion: zonas_sujecion.filter((_, i) => i !== idx),
     });
 
-  const rotarPieza = (deg: number) =>
-    onChange({
-      ...value,
-      pieza: { ...pieza, orientacion_fisica_deg: ((deg % 360) + 360) % 360 },
-    });
-
   // Edita un campo numérico de la pieza. Incluye `altura_total_pieza_mm`, que es
   // el dato físico que el operario declara/confirma (no una medida derivada de
   // la sujeción).
@@ -206,8 +202,8 @@ export const EditorMontajeEspacial = ({
         {maquina.mesa_x_mm == null && " (recorrido — mesa no declarada)"}
       </div>
 
-      {/* Inspector de la PIEZA: X/Y, orientación y altura total FÍSICA declarada
-          por el operario. */}
+      {/* Inspector de la PIEZA: X/Y y altura total FÍSICA declarada por el
+          operario. La orientación solo se informa (no se aplica todavía). */}
       <div className="rounded-lg border border-accent-blue/30 bg-accent-blue/5 px-2.5 py-2">
         <p className="mb-1.5 text-xs font-medium text-text-primary">Pieza</p>
         <div className="flex flex-wrap items-end gap-3">
@@ -234,26 +230,6 @@ export const EditorMontajeEspacial = ({
             />
           </label>
           <label className="text-[11px] text-text-muted">
-            orientación (°)
-            <div className="flex items-center gap-1">
-              <input
-                type="number"
-                value={pieza.orientacion_fisica_deg}
-                onChange={(e) =>
-                  rotarPieza(Number(e.target.value))
-                }
-                className={inputCls}
-              />
-              <button
-                onClick={() => rotarPieza(pieza.orientacion_fisica_deg + 15)}
-                className="rounded border border-border p-1 hover:border-accent-blue/50"
-                title="+15°"
-              >
-                <RotateCw className="h-3 w-3 text-text-muted" />
-              </button>
-            </div>
-          </label>
-          <label className="text-[11px] text-text-muted">
             altura total (mm)
             <input
               type="number"
@@ -270,6 +246,18 @@ export const EditorMontajeEspacial = ({
             corrígela
           </span>
         </div>
+        {/* Orientación: ni el visor ni el motor la aplican todavía, así que no se
+            ofrece como campo editable. Se avisa del giro que el programa asume. */}
+        <p className="mt-2 text-[11px] text-text-muted">
+          Orientación sobre la mesa: el programa se genera con la pieza sin girar
+          (0°). Colócala así: el G-code todavía no tiene en cuenta ningún giro.
+        </p>
+        {(pieza.orientacion_fisica_deg ?? 0) !== 0 && (
+          <p className="mt-1 rounded border border-amber-500/40 bg-amber-500/10 px-2 py-1 text-[11px] text-amber-400">
+            Este montaje tiene guardado un giro de {pieza.orientacion_fisica_deg}°,
+            pero ese giro NO se aplica: el G-code se genera para la pieza a 0°.
+          </p>
+        )}
       </div>
 
       {/* Inspector de elementos */}
