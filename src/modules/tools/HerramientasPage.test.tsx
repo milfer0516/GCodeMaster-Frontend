@@ -219,9 +219,19 @@ describe("HerramientasPage — inventario de dos secciones (diseño)", () => {
       await screen.findByText("Prensa mecánica de precisión")
     ).closest(".border-t") as HTMLElement;
 
+    // Plegada: el parámetro solo aparece en la línea resumen de la fila.
+    expect(within(fila).getAllByText("ancho_mordazas_mm: 125")).toHaveLength(1);
+    expect(
+      within(fila).queryByText("Copiado de plantilla del catálogo global."),
+    ).toBeNull();
+
     // Icono directo, sin kebab; al pulsarlo se despliega el detalle bajo la fila
+    // (el detalle repite el parámetro: resumen + detalle = 2 apariciones).
     fireEvent.click(within(fila).getByLabelText("Ver"));
-    expect(screen.getByText("ancho_mordazas_mm: 125")).toBeTruthy();
+    expect(within(fila).getAllByText("ancho_mordazas_mm: 125")).toHaveLength(2);
+    expect(
+      within(fila).getByText("Copiado de plantilla del catálogo global."),
+    ).toBeTruthy();
     expect(screen.queryByLabelText(/Acciones de /)).toBeNull();
   });
 
