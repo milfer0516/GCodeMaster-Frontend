@@ -6,6 +6,10 @@
 - The backend contract lives in the backend repository's docs/; read it there, never copy it or hardcode fields per family.
 - Manufacturing values come from docs/ or the owner, never from your own knowledge.
 - Container and deployment commands run only when the task card lists them; otherwise they are owner reference in docs/operacion.md.
+- The Executor does not run `npx tsc --noEmit`, `npm test` or `npx vitest`, even if a task card lists them; the Reviewer runs them (see docs/roles/reviewer.md). In the report write "tsc: NOT RUN (Reviewer runs it)" and "npm test: NOT RUN (Reviewer runs it)".
+- The Executor does only what the task card and this file authorize. It does not save to Claude Code memory, does not create or edit files outside this repository, does not install or reconfigure tools, and does not run commands the task card does not list.
+- The report covers only the task card. Under Findings, list only (1) something that blocks the current task or contradicts its premise, and (2) a silent failure (a wrong result with no error) in a file the task touched. Maximum 3 items. Do not search for other problems, do not propose follow-up tasks, and do not add "Pendientes para el tablero" unless the task card asks for it.
+- Launch (Claude Code): Executor `claude --permission-mode default`; Reviewer `claude --agent reviewer --permission-mode default`. Do not use auto mode.
 If you were asked to act as the reviewer (see docs/roles/reviewer.md), that contract replaces the executor role, the Task type rule and the Report section; the Never and Domain rules still apply.
 
 ## Never

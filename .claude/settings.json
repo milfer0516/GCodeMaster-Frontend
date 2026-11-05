@@ -1,15 +1,10 @@
 {
   "permissions": {
     "allow": [
-      "Bash(npx tsc *)",
-      "Bash(npx vite *)",
-      "Bash(npm run build)",
-      "Bash(npm run *)",
       "Bash(git status)",
       "Bash(git diff*)",
       "Bash(git log*)",
       "Bash(git show*)",
-      "Bash(git stash*)",
       "Bash(grep *)",
       "Bash(grep -n *)",
       "Bash(grep -rn *)",
@@ -23,6 +18,21 @@
       "Bash(echo *)"
     ],
     "ask": [
+      "Bash(npx tsc *)",
+      "Bash(npx vite *)",
+      "Bash(npx vitest *)",
+      "Bash(npm test *)",
+      "Bash(npm run *)",
+      "Bash(git stash *)",
+      "Bash(git add *)",
+      "Bash(python*)",
+      "PowerShell(npx tsc *)",
+      "PowerShell(npx vite *)",
+      "PowerShell(npx vitest *)",
+      "PowerShell(npm test *)",
+      "PowerShell(npm run *)",
+      "PowerShell(git stash *)",
+      "PowerShell(git add *)",
       "Bash(docker*)",
       "Bash(ssh*)",
       "Bash(git push*)",
