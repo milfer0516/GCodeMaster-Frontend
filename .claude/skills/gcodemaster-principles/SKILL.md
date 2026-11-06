@@ -12,4 +12,4 @@ description: Product principles of GCodeMaster CNC that every change must respec
 - Use FreeCAD's native API; build custom code only where FreeCAD truly lacks the capability.
 - Grow by extension: no hardcoded catalogs or special-case conditionals; a new capability is a new rule or row.
 - Mark every claim PROBADO (with the output that proves it) or NO VERIFICADO.
-- Never commit or push; the owner integrates. Answer in Spanish.
+- Never commit on main and never push; commit only on develop. Only the owner merges into main. Answer in Spanish.
