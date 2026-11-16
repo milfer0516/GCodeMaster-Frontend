@@ -8,7 +8,7 @@
 - Container and deployment commands run only when the task card lists them; otherwise they are owner reference in docs/operacion.md.
 - The Executor does not run `npx tsc --noEmit`, `npm test` or `npx vitest`, even if a task card lists them; the Reviewer runs them (see docs/roles/reviewer.md). In the report write "tsc: NOT RUN (Reviewer runs it)" and "npm test: NOT RUN (Reviewer runs it)".
 - The Executor does only what the task card and this file authorize. It does not save to Claude Code memory, does not create or edit files outside this repository, does not install or reconfigure tools, and does not run commands the task card does not list.
-- The report covers only the task card. Under Findings, list only (1) something that blocks the current task or contradicts its premise, and (2) a silent failure (a wrong result with no error) in a file the task touched. Maximum 3 items. Do not search for other problems, do not propose follow-up tasks, and do not add "Pendientes para el tablero" unless the task card asks for it.
+- The report covers only the task card. Do not search for other problems and do not propose follow-up tasks; findings follow the findings rule in Never.
 - Launch (Claude Code): Executor `claude --permission-mode default`; Reviewer `claude --agent reviewer --permission-mode default`. Do not use auto mode.
 If you were asked to act as the reviewer (see docs/roles/reviewer.md), that contract replaces the executor role, the Task type rule and the Report section; the Never and Domain rules still apply.
 
@@ -17,10 +17,11 @@ If you were asked to act as the reviewer (see docs/roles/reviewer.md), that cont
 - Never edit a repository the task card does not name. Reading another repo to understand a contract is allowed; writing is not.
 - Never invent a manufacturing value. If it is unknown, declare it unknown explicitly.
 - Never commit or push; the owner commits.
-- Never read .env files or credentials.
-- Never connect to the database; the owner runs any query.
-- Every claim about the code cites file:line or is marked NOT VERIFIED.
-- Never report something as working without running it.
+- Never read .env files or credentials. Never connect to the database; the owner runs any query.
+- Every claim about the code cites file:line or is marked NOT VERIFIED. Never report something as working without running it.
+- No new silent failures. Any code path that cannot compute or decide something must show a clear error to the operator or return an explicit warning. Never a console-only message, a hidden default value, a swallowed exception, or a "success" with missing data.
+- Every review checks the diff for new silent failures. If the Reviewer finds one, the verdict is FALLA.
+- No agent creates, edits or deletes tasks on the project board. Findings outside the task go in the report only: at most 5 one-line items tagged BLOQUEA, SILENCIOSO or OTRO. Milfer decides what enters the board.
 
 ## Domain rules
 
@@ -41,7 +42,7 @@ These are never violated:
   1. It prevents finishing the current task correctly.
   2. It produces incorrect data.
   3. It fails silently: wrong results with no exception, log or warning. This is the most dangerous case: the software generates G-code that drives a real machine.
-- In any of the three, stop and justify technically why the fix cannot be closed without widening the scope; never widen the scope yourself. Otherwise it goes to the pending list.
+- In any of the three, stop and justify technically why the fix cannot be closed without widening the scope; never widen the scope yourself. Otherwise report it as a finding.
 - Stop and ask when a decision is not yours.
 
 ## Proof
@@ -58,8 +59,7 @@ These are never violated:
 1. Task type first.
 2. What changed (files and behaviour).
 3. Proof outputs (diff and raw command output).
-4. At most 5 one-line findings, each tagged BLOQUEA, SILENCIOSO or OTRO. A finding that produces incorrect data with no error, log or warning is SILENCIOSO.
-5. Everything else as "Pendientes para el tablero" (project board), no commentary.
+4. Findings (limits and tags in Never). A finding that produces incorrect data with no error, log or warning is SILENCIOSO.
 
 The last line of every report is exactly: READY FOR REVIEW. Never write 'done'. The reviewer, the owner or the architect reviews it.
 

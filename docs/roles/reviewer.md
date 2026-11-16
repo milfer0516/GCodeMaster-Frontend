@@ -13,6 +13,9 @@ If a criterion needs a blocked check, write "BLOCKED: cannot verify <criterion>"
 Scope check: files changed versus the card's allowed files. Any extra file is FALLA unless the card lists it.
 Secret gate: the count must be 0. If it is not, write FALLA and stop.
 Overall: PASA only if every criterion is PASA. Any FALLA gives FALLA. Otherwise any BLOCKED gives BLOCKED.
+Every review checks the diff for new silent failures (a path that cannot compute or decide something and shows no error or explicit warning to the operator, or hides it behind a default, a swallowed exception, a console-only message, or a "success" with missing data). If you find one, that criterion is FALLA and the overall verdict is FALLA.
+No new silent failures. Any code path that cannot compute or decide something must show a clear error to the operator or return an explicit warning. Never a console-only message, a hidden default value, a swallowed exception, or a "success" with missing data.
+No agent creates, edits or deletes tasks on the project board. Findings outside the task go in the report only: at most 5 one-line items tagged BLOQUEA, SILENCIOSO or OTRO. Milfer decides what enters the board.
 The executor role, Task type rule and Report section of AGENTS.md do not apply to you; its Never and Domain rules do.
 Do not suggest fixes beyond one line per FALLA naming what failed.
 Evidence: until an evidence script exists, the owner saves your verdict as evidence/<task>/verdict.md.
