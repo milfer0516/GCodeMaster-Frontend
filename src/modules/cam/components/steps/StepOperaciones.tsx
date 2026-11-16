@@ -132,10 +132,42 @@ function claveConsultaMec(c: {
   return `${c.idJob}:${c.faceIdApoyo}:${c.idMaquina}:${JSON.stringify(c.sujecionConfig)}`;
 }
 
+/** Convierte también el detail OBJETO del rechazo de sellado en texto visible. */
+export function mensajeErrorSolicitudMDE(e: any): string {
+  const fallback = mensajeError(e, "No se pudo obtener el análisis del MDE.");
+  const detalle = e?.response?.data?.detail;
+  if (!detalle || typeof detalle !== "object" || Array.isArray(detalle)) {
+    return fallback;
+  }
+
+  const mensaje =
+    typeof detalle.mensaje === "string" && detalle.mensaje.trim()
+      ? detalle.mensaje
+      : fallback;
+  const fuera = Array.isArray(detalle.operaciones_fuera_del_sellado)
+    ? detalle.operaciones_fuera_del_sellado
+    : [];
+  const motivos: string[] = [];
+  fuera.forEach((op: any, indice: number) => {
+    if (typeof op?.motivo !== "string" || !op.motivo.trim()) return;
+    const id =
+      typeof op?.op_id === "string" && op.op_id
+        ? op.op_id
+        : `operación ${indice + 1}`;
+    motivos.push(`${id}: ${op.motivo}`);
+  });
+  return motivos.length > 0 ? `${mensaje} ${motivos.join(" · ")}` : mensaje;
+}
+
 export const StepOperaciones = () => {
   const analisis = useCamStore((s) => s.analisis);
   const operaciones = useCamStore((s) => s.operaciones);
-  const setOperaciones = useCamStore((s) => s.setOperaciones);
+  const operacionesSeleccionadas = useCamStore(
+    (s) => s.operacionesSeleccionadas,
+  );
+  const setOperacionesSeleccionadas = useCamStore(
+    (s) => s.setOperacionesSeleccionadas,
+  );
   const toggleOperacion = useCamStore((s) => s.toggleOperacion);
   const montajeConfig = useCamStore((s) => s.montajeConfig);
   const ordenSetups = useCamStore((s) => s.ordenSetups);
@@ -172,6 +204,18 @@ export const StepOperaciones = () => {
   const mecanizabilidadError = useCamStore((s) => s.mecanizabilidadError);
   const setMecanizabilidad = useCamStore((s) => s.setMecanizabilidad);
   const setMecanizabilidadEstado = useCamStore((s) => s.setMecanizabilidadEstado);
+
+  // `operaciones` permanece EXACTAMENTE como respondió el motor y es lo único
+  // que se envía. Estos modelos añaden metadatos exclusivamente para la UI;
+  // nunca se guardan en el store ni se serializan en operaciones_json.
+  const operacionesVista = useMemo(() => {
+    const elegidas = new Set(operacionesSeleccionadas);
+    return operaciones.map((op) => ({
+      ...op,
+      id: op.op_id,
+      seleccionada: elegidas.has(op.op_id),
+    }));
+  }, [operaciones, operacionesSeleccionadas]);
 
   const consultaMecanizabilidadRef = useRef({
     idJob,
@@ -428,10 +472,7 @@ export const StepOperaciones = () => {
         }),
       );
     } catch (e: any) {
-      setMdeEstado(
-        "error",
-        mensajeError(e, "No se pudo obtener el análisis del MDE."),
-      );
+      setMdeEstado("error", mensajeErrorSolicitudMDE(e));
     }
   };
 
@@ -468,8 +509,8 @@ export const StepOperaciones = () => {
         : "Mecanizabilidad no disponible: se muestran todas las operaciones.";
 
   // Una operación no alcanzable no puede quedar seleccionada ni aunque el MDE
-  // la hubiera marcado. Se desmarca en el store para que el gate de "Siguiente"
-  // no la cuente; la lista además la pinta siempre sin marcar.
+  // la hubiera marcado. Se quita su op_id de la selección para que el gate de
+  // "Siguiente" no la cuente; el objeto sellado permanece intacto.
   useLayoutEffect(() => {
     if (!veredictoDisponible) return;
     const noAlcanzables = new Set<string>();
@@ -479,19 +520,16 @@ export const StepOperaciones = () => {
       }
     });
     if (noAlcanzables.size === 0) return;
-    if (!operaciones.some((op) => op.seleccionada && noAlcanzables.has(op.id))) {
-      return;
-    }
-    setOperaciones(
-      operaciones.map((op) =>
-        noAlcanzables.has(op.id) ? { ...op, seleccionada: false } : op,
-      ),
+    const siguenElegidas = operacionesSeleccionadas.filter(
+      (id) => !noAlcanzables.has(id),
     );
+    if (siguenElegidas.length === operacionesSeleccionadas.length) return;
+    setOperacionesSeleccionadas(siguenElegidas);
   }, [
     veredictoDisponible,
     indiceMecanizabilidad,
-    operaciones,
-    setOperaciones,
+    operacionesSeleccionadas,
+    setOperacionesSeleccionadas,
   ]);
 
   // Etiquetas de orientación en el marco de MÁQUINA. El motor rotula en el marco
@@ -502,12 +540,12 @@ export const StepOperaciones = () => {
   const indiceEtiquetas = useMemo(
     () =>
       construirEtiquetasOrientacion(
-        operaciones,
+        operacionesVista,
         setup,
         orientacionSellada?.analisis ?? null,
         orientacionSellada?.mesh_data ?? null,
       ),
-    [operaciones, setup, orientacionSellada],
+    [operacionesVista, setup, orientacionSellada],
   );
 
   // El único `desconocido` con remedio: el análisis guardado es anterior al
@@ -543,8 +581,8 @@ export const StepOperaciones = () => {
 
   // ── Totales del pie ──────────────────────────────────────────────────────
   const seleccionadas = useMemo(
-    () => operaciones.filter((op) => op.seleccionada),
-    [operaciones],
+    () => operacionesVista.filter((op) => op.seleccionada),
+    [operacionesVista],
   );
 
   const cambiosHerramienta = useMemo(
@@ -563,7 +601,8 @@ export const StepOperaciones = () => {
         .join(" · ")
     : null;
 
-  const opActual = operaciones.find((op) => op.id === opEnfocada) ?? null;
+  const opActual =
+    operacionesVista.find((op) => op.id === opEnfocada) ?? null;
 
   const dimensiones = analisis?.dimensiones ?? { x: 100, y: 100, z: 50 };
   const operacionesBackend = [
@@ -690,7 +729,7 @@ export const StepOperaciones = () => {
             dimensiones={dimensiones}
             mostrarMesa
             modoLecturaMontaje
-            operaciones={operaciones}
+            operaciones={operacionesVista}
             operacionesBackend={operacionesBackend}
             seleccionadas={idsSeleccionadas}
             opEnfocada={opEnfocada}
@@ -725,7 +764,7 @@ export const StepOperaciones = () => {
           }
         >
           <ListaOperaciones
-            operaciones={operaciones}
+            operaciones={operacionesVista}
             indiceMDE={indiceMDE}
             indiceMecanizabilidad={indiceMecanizabilidad}
             veredictoDisponible={veredictoDisponible}
@@ -737,23 +776,19 @@ export const StepOperaciones = () => {
             onAlternar={toggleOperacion}
             onSeleccionarTodas={() => {
               if (!veredictoDisponible) return;
-              setOperaciones(
-                operaciones.map((op) => {
-                  const veredicto =
-                    indiceMecanizabilidad.get(op.id)?.mecanizabilidad;
-                  if (veredicto === ALCANZABLE) {
-                    return { ...op, seleccionada: true };
-                  }
-                  if (veredicto === NO_ALCANZABLE) {
-                    return { ...op, seleccionada: false };
-                  }
-                  return op;
-                }),
+              setOperacionesSeleccionadas(
+                operacionesVista
+                  .filter((op) => {
+                    const veredicto =
+                      indiceMecanizabilidad.get(op.id)?.mecanizabilidad;
+                    if (veredicto === ALCANZABLE) return true;
+                    if (veredicto === NO_ALCANZABLE) return false;
+                    return op.seleccionada;
+                  })
+                  .map((op) => op.id),
               );
             }}
-            onDeseleccionarTodas={() =>
-              setOperaciones(operaciones.map((op) => ({ ...op, seleccionada: false })))
-            }
+            onDeseleccionarTodas={() => setOperacionesSeleccionadas([])}
             ordenSetups={ordenSetups}
             onOrdenSetups={setOrdenSetups}
           />

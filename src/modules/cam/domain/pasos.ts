@@ -114,11 +114,15 @@ export const PASOS = [
   {
     id: "operaciones",
     label: "Operaciones",
-    ...conFaltantes((e) =>
-      e.operaciones.some((op) => op.seleccionada)
+    ...conFaltantes((e) => {
+      const vigentes = new Set(e.operaciones.map((op) => op.op_id));
+      const seleccionVigente =
+        e.operacionesSeleccionadas.length > 0 &&
+        e.operacionesSeleccionadas.every((id) => vigentes.has(id));
+      return seleccionVigente && !e.errorAvance
         ? []
-        : ["al menos una operación"],
-    ),
+        : ["al menos una operación vigente y sin errores de selección"];
+    }),
   },
   {
     id: "resumen",

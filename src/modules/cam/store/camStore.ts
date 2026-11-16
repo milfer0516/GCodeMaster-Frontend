@@ -40,14 +40,54 @@ export type { EstadoPieza, ProcessOrigin };
 // Los pasos del wizard (ids, orden, reglas) viven en domain/pasos.ts.
 export type { CamStep };
 
-export interface Operacion {
-  id: string;
+/** Operación del motor, conservada sin añadir, quitar ni cambiar campos. */
+export interface OperacionSellada extends Record<string, any> {
+  op_id: string;
   tipo: string;
   descripcion: string;
   setup: number;
-  seleccionada: boolean;
-  herramienta_sugerida?: string;
   face_indices?: number[];
+}
+
+/** Modelo de vista: NUNCA se guarda como operación sellada ni se envía al motor. */
+export interface Operacion extends OperacionSellada {
+  id: string;
+  seleccionada: boolean;
+}
+
+const idsNoVigentes = (
+  operaciones: readonly OperacionSellada[],
+  seleccionadas: readonly string[],
+): string[] => {
+  const vigentes = new Set(operaciones.map((op) => op.op_id));
+  return [...new Set(seleccionadas.filter((id) => !vigentes.has(id)))];
+};
+
+const mensajeIdsNoVigentes = (ids: readonly string[]): string =>
+  `La selección contiene operaciones que no pertenecen al análisis sellado: ${ids.join(", ")}. ` +
+  "Vuelva a sellar la pieza o elija operaciones vigentes.";
+
+/**
+ * Ruta de producción de selección para la futura generación. MDE NO la usa:
+ * su consulta necesita el array sellado completo para recomendar la selección.
+ * Devuelve referencias intactas; nunca sustituye una selección vacía o inválida
+ * por todas las operaciones.
+ */
+export function operacionesSeleccionadasParaEnvio(
+  operaciones: readonly OperacionSellada[],
+  seleccionadas: readonly string[],
+): OperacionSellada[] {
+  if (seleccionadas.length === 0) {
+    throw new Error(
+      "Seleccione al menos una operación antes de generar.",
+    );
+  }
+  const noVigentes = idsNoVigentes(operaciones, seleccionadas);
+  if (noVigentes.length > 0) {
+    throw new Error(mensajeIdsNoVigentes(noVigentes));
+  }
+  const elegidas = new Set(seleccionadas);
+  return operaciones.filter((op) => elegidas.has(op.op_id));
 }
 
 /**
@@ -260,8 +300,11 @@ export interface CamState {
   // Se crea en confirmMontaje() y se invalida al cambiar cara/sujeción/mesh.
   setup: Setup | null;
 
-  // Paso 3 — Operaciones
-  operaciones: Operacion[];
+  // Paso 3 — Operaciones del motor, EXACTAS (incluidos op_id y campos extra).
+  // La selección es una decisión del operador y vive aparte: nunca contamina
+  // los objetos que se comparan con el sellado ni los payloads del motor.
+  operaciones: OperacionSellada[];
+  operacionesSeleccionadas: string[];
 
   // ── Asesoría del MDE (paso Operaciones) ────────────────────────────────
   // `mdeRecomendaciones` es la respuesta del motor GUARDADA TAL CUAL. El
@@ -349,7 +392,7 @@ export interface CamState {
   editarCaraApoyo: () => void;
   cerrarMontaje: () => void;
   invalidateSetup: () => void;
-  setOperaciones: (ops: Operacion[]) => void;
+  setOperacionesSeleccionadas: (ids: string[]) => void;
   toggleOperacion: (id: string) => void;
   setMdeEstado: (estado: EstadoAnalisisMDE, error?: string | null) => void;
   setMdeRecomendaciones: (respuesta: RespuestaMDESetup[] | null) => void;
@@ -395,7 +438,8 @@ const resetStockMeasurements = (s: StockConfig): StockConfig => ({
 // JUNTOS: conservar cualquiera de ellos dejaría ids huérfanos apuntando a
 // operaciones que ya no existen.
 const listaDeOperacionesVacia = () => ({
-  operaciones: [] as Operacion[],
+  operaciones: [] as OperacionSellada[],
+  operacionesSeleccionadas: [] as string[],
   herramientaPorOperacion: {} as Record<string, number>,
   mdeRecomendaciones: null,
   mdeEstado: "sin_analisis" as EstadoAnalisisMDE,
@@ -470,6 +514,7 @@ export const useCamStore = create<CamState>((set, get) => ({
   idJob: null,
   analisis: null,
   operaciones: [],
+  operacionesSeleccionadas: [],
   mdeRecomendaciones: null,
   mdeEstado: "sin_analisis",
   mdeError: null,
@@ -539,6 +584,7 @@ export const useCamStore = create<CamState>((set, get) => ({
       idJob,
       analisis,
       operaciones: ops,
+      operacionesSeleccionadas: [],
       // Cascade: otra geometría son otras operaciones. La asesoría del MDE y las
       // herramientas asignadas se referían a las anteriores; arrastrarlas
       // mostraría una recomendación de una pieza que ya no está en la máquina.
@@ -575,13 +621,46 @@ export const useCamStore = create<CamState>((set, get) => ({
       },
     }));
   },
-  setOperaciones: (operaciones) => set({ operaciones }),
+  setOperacionesSeleccionadas: (operacionesSeleccionadas) =>
+    set((state) => {
+      const noVigentes = idsNoVigentes(
+        state.operaciones,
+        operacionesSeleccionadas,
+      );
+      if (noVigentes.length > 0) {
+        // Rechazo ATÓMICO: no se acepta una parte y se oculta la otra. El
+        // WizardNavButtons muestra errorAvance con role="alert".
+        return { errorAvance: mensajeIdsNoVigentes(noVigentes) };
+      }
+      const elegidas = new Set(operacionesSeleccionadas);
+      return {
+        operacionesSeleccionadas: state.operaciones
+          .filter((op) => elegidas.has(op.op_id))
+          .map((op) => op.op_id),
+        errorAvance: null,
+      };
+    }),
   toggleOperacion: (id) =>
-    set((state) => ({
-      operaciones: state.operaciones.map((op) =>
-        op.id === id ? { ...op, seleccionada: !op.seleccionada } : op,
-      ),
-    })),
+    set((state) => {
+      const noVigentes = idsNoVigentes(state.operaciones, [
+        ...state.operacionesSeleccionadas,
+        id,
+      ]);
+      if (noVigentes.length > 0) {
+        return { errorAvance: mensajeIdsNoVigentes(noVigentes) };
+      }
+      const elegidas = new Set(state.operacionesSeleccionadas);
+      if (elegidas.has(id)) elegidas.delete(id);
+      else elegidas.add(id);
+      return {
+        // Se conserva el orden del análisis y, sobre todo, no se tocan las
+        // operaciones: solo cambia la decisión del operador sobre sus op_id.
+        operacionesSeleccionadas: state.operaciones
+          .filter((op) => elegidas.has(op.op_id))
+          .map((op) => op.op_id),
+        errorAvance: null,
+      };
+    }),
   setMdeEstado: (mdeEstado, mdeError = null) => set({ mdeEstado, mdeError }),
 
   // Guarda la respuesta del MDE y REFLEJA en las casillas lo que el motor
@@ -600,15 +679,35 @@ export const useCamStore = create<CamState>((set, get) => ({
   // información nueva sobre él, y ausencia de dato no es una orden de desmarcar.
   setMdeRecomendaciones: (mdeRecomendaciones) =>
     set((state) => {
+      const noVigentes = idsNoVigentes(
+        state.operaciones,
+        state.operacionesSeleccionadas,
+      );
+      if (noVigentes.length > 0) {
+        const mensaje = mensajeIdsNoVigentes(noVigentes);
+        return {
+          mdeRecomendaciones,
+          mdeEstado: "error" as EstadoAnalisisMDE,
+          mdeError: mensaje,
+          errorAvance: mensaje,
+        };
+      }
       const indice = indexarRecomendaciones(mdeRecomendaciones, state.ordenSetups);
+      const elegidas = new Set(state.operacionesSeleccionadas);
+      for (const op of state.operaciones) {
+        const rec = recomendacionDe(indice, op);
+        if (!rec) continue;
+        if (rec.default_checked) elegidas.add(op.op_id);
+        else elegidas.delete(op.op_id);
+      }
       return {
         mdeRecomendaciones,
         mdeEstado: mdeRecomendaciones ? "listo" : "sin_analisis",
         mdeError: null,
-        operaciones: state.operaciones.map((op) => {
-          const rec = recomendacionDe(indice, op);
-          return rec ? { ...op, seleccionada: rec.default_checked } : op;
-        }),
+        errorAvance: null,
+        operacionesSeleccionadas: state.operaciones
+          .filter((op) => elegidas.has(op.op_id))
+          .map((op) => op.op_id),
       };
     }),
 
@@ -844,6 +943,7 @@ export const useCamStore = create<CamState>((set, get) => ({
       idJob: null,
       analisis: null,
       operaciones: [],
+      operacionesSeleccionadas: [],
       mdeRecomendaciones: null,
       mdeEstado: "sin_analisis",
       mdeError: null,
@@ -869,26 +969,27 @@ export const useCamStore = create<CamState>((set, get) => ({
     }),
 }));
 
-const convertirOperaciones = (analisis: Record<string, any>): Operacion[] => {
+const convertirOperaciones = (
+  analisis: Record<string, any>,
+): OperacionSellada[] => {
   const opsBackend = analisis?.operaciones ?? [];
 
-  const ops = opsBackend.map((op: any, idx: number) => ({
-    id: op.op_id ?? `setup${op.setup}_${op.tipo}_${idx}`,
-    tipo: op.tipo,
-    descripcion: op.descripcion,
-    setup: op.setup ?? 1,
-    seleccionada: false,
-    herramienta_sugerida: op.fresa_max_mm
-      ? `Máx Ø${op.fresa_max_mm}mm`
-      : op.diametro_mm
-        ? `Ø${op.diametro_mm}mm`
-        : undefined,
-    face_indices: op.face_indices,
-  }));
+  const ops = opsBackend.map((op: any, idx: number): OperacionSellada => {
+    if (typeof op?.op_id !== "string" || !op.op_id.trim()) {
+      throw new Error(
+        `El motor devolvió la operación ${idx + 1} sin op_id válido. ` +
+          "Vuelva a analizar o sellar la pieza: sin esa identidad no se puede " +
+          "comprobar que la operación enviada coincida con el sellado.",
+      );
+    }
+    // Ni alias ni metadatos de UI: la referencia almacenada es la operación
+    // completa que emitió el motor, con todos sus campos presentes y futuros.
+    return op as OperacionSellada;
+  });
 
   console.log(
-    "OP IDs generados:",
-    ops.map((o: Operacion) => o.id),
+    "OP IDs del motor:",
+    ops.map((o: OperacionSellada) => o.op_id),
   );
   console.log("Operaciones backend RAW:", opsBackend);
 
