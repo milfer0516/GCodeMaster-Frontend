@@ -1,34 +1,61 @@
+// src/modules/cam/components/steps/StepResumen.tsx
+// RESUMEN DEL PROCESO DE MECANIZADO (hoja de setup) antes de generar: la pieza
+// en el visor 3D único, lo que ya tienen los pasos anteriores (pieza, material
+// y stock, máquina, montaje, cero) y la tabla de operaciones seleccionadas con
+// la herramienta que nombró el MDE y su S y F. El modelo de cada fila vive en
+// components/resumen/hojaSetup.ts (puro); aquí solo se compone la pantalla.
+// Este paso no llama a la API ni calcula valores de fabricación, y la hoja no
+// muestra nada de la respuesta de generación (eso es del paso de resultado).
+// El botón inferior es el "Siguiente paso" de siempre (WizardNavButtons).
+import { useMemo } from "react";
+import {
+  AlertCircle,
+  Box,
+  ClipboardList,
+  Crosshair,
+  Layers3,
+  MonitorCog,
+  Wrench,
+  type LucideIcon,
+} from "lucide-react";
 import { useCamStore } from "../../store/camStore";
 import { WizardNavButtons } from "./WizardNavButtons";
-import { AlertCircle, CheckCircle, Wrench, Gauge, Layers } from "lucide-react";
-import { formatMm } from "../../../../utils/format";
-import { totalOnAxis, cylTotals } from "../../utils/stockFaces";
+import {
+  hojaDeSetup,
+  operacionesDeLaHoja,
+  type IdSeccion,
+} from "../resumen/hojaSetup";
+import { BloqueSeccion } from "../resumen/BloqueSeccion";
+import { ListaOperacionesHoja } from "../resumen/ListaOperacionesHoja";
+import { VisorPiezaResumen } from "../resumen/VisorPiezaResumen";
+
+export const TITULO_RESUMEN = "Resumen del proceso de mecanizado";
+
+// Solo iconos (sin dibujos de máquina ni de utillaje). Record<IdSeccion, …>
+// obliga a que cada sección del modelo tenga el suyo.
+const ICONO_SECCION: Record<IdSeccion, LucideIcon> = {
+  pieza: Box,
+  material: Layers3,
+  maquina: MonitorCog,
+  montaje: Wrench,
+  cero: Crosshair,
+};
 
 export const StepResumen = () => {
-  const engineResponse = useCamStore((s) => s.engineResponse);
-  const stockConfig = useCamStore((s) => s.stockConfig);
-  const setup = useCamStore((s) => s.setup);
-  const material = useCamStore((s) => s.material);
+  const estado = useCamStore((s) => s);
+  const engineResponse = estado.engineResponse;
 
-  // Read-only RESULTING stock size, DERIVED from part dims + per-region offsets
-  // (never a stored/typed value).
-  const stockResultante = ((): string => {
-    if (!setup) return "—";
-    if (stockConfig.tipo === "rectangular") {
-      const tx = totalOnAxis(stockConfig.stockFaces, setup, "x");
-      const ty = totalOnAxis(stockConfig.stockFaces, setup, "y");
-      const tz = totalOnAxis(stockConfig.stockFaces, setup, "z");
-      return `${formatMm(tx)} × ${formatMm(ty)} × ${formatMm(tz)} mm`;
-    }
-    const { diameter, length } = cylTotals(
-      setup.rotatedBBox,
-      stockConfig.cyl,
-      setup.partCylinderOD,
-      setup.partCylinderLen,
-    );
-    return `Ø${formatMm(diameter)} × ${formatMm(length)} mm`;
-  })();
+  const secciones = useMemo(() => hojaDeSetup(estado), [estado]);
+  const operaciones = useMemo(() => operacionesDeLaHoja(estado), [estado]);
+  // La pieza va junto al visor; el resto, debajo en su orden.
+  const seccionPieza = secciones.find((s) => s.id === "pieza");
+  const seccionCero = secciones.find((s) => s.id === "cero");
+  const seccionesMedias = secciones.filter(
+    (s) => s.id !== "pieza" && s.id !== "cero",
+  );
 
+  // Bloque PREVIO, sin cambios: pasos.ts bloquea "Siguiente" con
+  // engineResponse.error, así que su motivo tiene que seguir a la vista.
   // Display engine's Spanish validation error if stock is too small
   if (engineResponse?.error) {
     return (
@@ -67,157 +94,48 @@ export const StepResumen = () => {
     );
   }
 
-  // Display engine's manufacturing plan when available
-  const plan = engineResponse?.plan_mecanizado;
-  const params = engineResponse?.parametros_corte;
-
   return (
     <div className="space-y-4 md:space-y-6">
-      <div>
-        <h2 className="text-base md:text-lg font-bold text-text-primary">
-          Plan de Mecanizado
-        </h2>
-        <p className="mt-1 text-xs md:text-sm text-text-muted">
-          Revisión del plan calculado por el motor CAM
-        </p>
-      </div>
-
-      {/* Material bruto ingresado */}
-      <div className="rounded-xl border border-border bg-bg-elevated p-4 md:p-6">
-        <h3 className="text-sm font-semibold text-text-primary mb-3">
-          Material Bruto
-        </h3>
-        <div className="space-y-2 text-xs md:text-sm">
-          <div className="flex justify-between">
-            <span className="text-text-muted">Forma:</span>
-            <span className="font-medium text-text-primary">
-              {stockConfig.tipo === "rectangular" ? "Rectangular" : "Cilíndrico"}
-            </span>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-text-muted">Material bruto resultante:</span>
-            <span className="font-mono text-text-primary">{stockResultante}</span>
-          </div>
-          {material && (
-            <div className="flex justify-between pt-2 border-t border-border">
-              <span className="text-text-muted">Material:</span>
-              <span className="font-medium text-text-primary">
-                {material.nombre}
-              </span>
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Engine's manufacturing plan */}
-      {plan && (
-        <div className="rounded-xl border border-accent-blue/30 bg-accent-blue/5 p-4 md:p-6">
-          <div className="flex items-center gap-2 mb-4">
-            <Layers className="h-5 w-5 text-accent-blue" />
-            <h3 className="text-sm font-semibold text-text-primary">
-              Material a Remover
-            </h3>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs md:text-sm">
-            {plan.por_eje && (
-              <>
-                {plan.por_eje.x && (
-                  <div className="flex justify-between">
-                    <span className="text-text-muted">Eje X:</span>
-                    <span className="font-mono text-text-primary">{plan.por_eje.x} mm</span>
-                  </div>
-                )}
-                {plan.por_eje.y && (
-                  <div className="flex justify-between">
-                    <span className="text-text-muted">Eje Y:</span>
-                    <span className="font-mono text-text-primary">{plan.por_eje.y} mm</span>
-                  </div>
-                )}
-                {plan.por_eje.z && (
-                  <div className="flex justify-between">
-                    <span className="text-text-muted">Eje Z:</span>
-                    <span className="font-mono text-text-primary">{plan.por_eje.z} mm</span>
-                  </div>
-                )}
-              </>
-            )}
-            {plan.radial_por_lado && (
-              <div className="flex justify-between">
-                <span className="text-text-muted">Radial (por lado):</span>
-                <span className="font-mono text-text-primary">{plan.radial_por_lado} mm</span>
-              </div>
-            )}
-            {plan.axial && (
-              <div className="flex justify-between">
-                <span className="text-text-muted">Axial:</span>
-                <span className="font-mono text-text-primary">{plan.axial} mm</span>
-              </div>
-            )}
-          </div>
-          <div className="mt-4 pt-4 border-t border-accent-blue/20 grid grid-cols-1 md:grid-cols-2 gap-3 text-xs md:text-sm">
-            {plan.pasadas_desbaste != null && (
-              <div className="flex justify-between">
-                <span className="text-text-muted">Pasadas desbaste:</span>
-                <span className="font-mono text-accent-blue">{plan.pasadas_desbaste}</span>
-              </div>
-            )}
-            {plan.pasadas_acabado != null && (
-              <div className="flex justify-between">
-                <span className="text-text-muted">Pasadas acabado:</span>
-                <span className="font-mono text-accent-blue">{plan.pasadas_acabado}</span>
-              </div>
-            )}
-            {plan.profundidad_corte_mm != null && (
-              <div className="flex justify-between">
-                <span className="text-text-muted">Prof. de corte:</span>
-                <span className="font-mono text-text-primary">{plan.profundidad_corte_mm} mm</span>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* Engine's cutting parameters */}
-      {params && (
-        <div className="rounded-xl border border-green-500/30 bg-green-500/5 p-4 md:p-6">
-          <div className="flex items-center gap-2 mb-4">
-            <Gauge className="h-5 w-5 text-green-400" />
-            <h3 className="text-sm font-semibold text-text-primary">
-              Parámetros de Corte
-            </h3>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs md:text-sm">
-            {params.rpm != null && (
-              <div className="flex justify-between">
-                <span className="text-text-muted">Velocidad husillo:</span>
-                <span className="font-mono text-green-300">{params.rpm} RPM</span>
-              </div>
-            )}
-            {params.feed_mm_min != null && (
-              <div className="flex justify-between">
-                <span className="text-text-muted">Avance:</span>
-                <span className="font-mono text-green-300">{params.feed_mm_min} mm/min</span>
-              </div>
-            )}
-            {params.vc_m_min != null && (
-              <div className="flex justify-between">
-                <span className="text-text-muted">Velocidad corte:</span>
-                <span className="font-mono text-text-primary">{params.vc_m_min} m/min</span>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* Placeholder when engine hasn't been called yet */}
-      {!plan && !params && !engineResponse?.error && (
-        <div className="rounded-xl border border-border bg-bg-elevated/50 p-6 text-center">
-          <Wrench className="h-8 w-8 text-text-muted mx-auto mb-3" />
-          <p className="text-sm text-text-muted">
-            El plan de mecanizado se calculará al generar el G-Code
+      <div className="flex items-start gap-3">
+        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-accent-blue/15 text-accent-blue md:h-12 md:w-12">
+          <ClipboardList className="h-5 w-5 md:h-6 md:w-6" aria-hidden />
+        </span>
+        <div className="min-w-0">
+          <h2 className="text-base md:text-xl font-bold text-text-primary">
+            {TITULO_RESUMEN}
+          </h2>
+          <p className="mt-1 text-xs md:text-sm text-text-muted">
+            Hoja de preparación (setup sheet). Revise cada decisión antes de
+            generar el programa: es lo que declaró en los pasos anteriores y lo
+            que ya devolvieron el sellado de la pieza y el MDE. Si una fila
+            muestra un «valor inicial», ese valor se enviará aunque usted no lo
+            haya elegido.
           </p>
         </div>
+      </div>
+
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+        <VisorPiezaResumen estado={estado} />
+        {seccionPieza && (
+          <BloqueSeccion seccion={seccionPieza} icono={ICONO_SECCION.pieza} />
+        )}
+      </div>
+
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+        {seccionesMedias.map((seccion) => (
+          <BloqueSeccion
+            key={seccion.id}
+            seccion={seccion}
+            icono={ICONO_SECCION[seccion.id]}
+          />
+        ))}
+      </div>
+
+      {seccionCero && (
+        <BloqueSeccion seccion={seccionCero} icono={ICONO_SECCION.cero} />
       )}
+
+      <ListaOperacionesHoja hoja={operaciones} />
 
       <WizardNavButtons />
     </div>

@@ -43,6 +43,13 @@ export interface StockFace {
   role: StockFaceRole; // derived from the Setup (for viewer presentation)
   allowance: number; // Phase 2B: RAW MATERIAL on this face (operator measured with caliper)
   locked: boolean; // true for the apoyo face (no material against the clamp)
+  // REGISTRO de la declaración del operario (solo lo lee la hoja de Resumen).
+  // true cuando su última edición (setFaceAllowance) dejó un valor > 0. Un 0
+  // NO cuenta como declarado: el campo de Stock muestra 0 vacío ("Medir con
+  // calibre") y emite el mismo 0 al escribir "0" que al borrar el campo, así
+  // que no se puede saber si lo midió. Ausente = nunca editada. No viaja en
+  // stock_json: buildStockPayload solo lee `allowance`.
+  declarada?: boolean;
 }
 
 // THREE.BoxGeometry group order (materialIndex 0..5). The Viewer reports the
@@ -171,7 +178,8 @@ export function setFaceAllowance(
   return faces.map((f) => {
     if (f.direction !== direction) return f;
     if (f.locked) return { ...f, allowance: 0 };
-    return { ...f, allowance: Math.max(0, allowance) };
+    const valor = Math.max(0, allowance);
+    return { ...f, allowance: valor, declarada: valor > 0 };
   });
 }
 
@@ -252,6 +260,11 @@ export interface CylStock {
   radial: number; // offset on the radius (OD grows by 2× this)
   axialMachining: number; // offset on the free/top flat end
   axialSupport: number; // support end — LOCKED at 0
+  // REGISTRO de la declaración del operario por región (solo lo lee la hoja de
+  // Resumen). true cuando su última edición (setCylOffset) dejó un valor > 0;
+  // mismo criterio y mismo motivo que StockFace.declarada. No viaja en
+  // stock_json: buildStockPayload solo lee los tres offsets.
+  declaradas?: Partial<Record<CylRegionKind, boolean>>;
 }
 
 export const CYL_STOCK_INICIAL: CylStock = {
@@ -311,8 +324,12 @@ export function setCylOffset(
 ): CylStock {
   const v = Math.max(0, value);
   if (kind === "axial_support") return { ...cyl, axialSupport: 0 };
-  if (kind === "radial") return { ...cyl, radial: v };
-  return { ...cyl, axialMachining: v };
+  const declaradas: Partial<Record<CylRegionKind, boolean>> = {
+    ...cyl.declaradas,
+  };
+  declaradas[kind] = v > 0;
+  if (kind === "radial") return { ...cyl, radial: v, declaradas };
+  return { ...cyl, axialMachining: v, declaradas };
 }
 
 /** The 3 cylinder regions in pick-index order (materialIndex 0..2) for the

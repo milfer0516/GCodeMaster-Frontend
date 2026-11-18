@@ -285,6 +285,11 @@ export interface CamState {
   analisis: Record<string, any> | null;
 
   montajeConfig: MontajeConfig;
+  // true cuando el operario eligió un corrector (setMontajeConfig con `wcs`).
+  // montajeConfig.wcs empieza en "G54" y viaja igual aunque nadie lo elija:
+  // este registro es lo único que distingue la elección del valor inicial.
+  // Vive FUERA de montajeConfig para no cambiar montaje_json.
+  wcsDeclarado: boolean;
 
   // Orientación SELLADA por el motor (/cam/analyze-setup), guardada tal cual.
   // null mientras se edita. Es la única fuente de la rotación tras sellar.
@@ -532,6 +537,7 @@ export const useCamStore = create<CamState>((set, get) => ({
   contextoFabricacion: CONTEXTO_INICIAL,
   ...LLEGADA_SIN_RESPONDER,
   montajeConfig: MONTAJE_INICIAL,
+  wcsDeclarado: false,
   ...ORIENTACION_INICIAL,
   setup: null,
   ordenSetups: "superior_primero",
@@ -765,6 +771,8 @@ export const useCamStore = create<CamState>((set, get) => ({
 
       return {
         montajeConfig: { ...state.montajeConfig, ...config },
+        // Solo registra que el operario eligió corrector (aunque sea "G54").
+        ...(config.wcs !== undefined ? { wcsDeclarado: true } : {}),
         // Cascade Setup → StockFaces: invalidar el Setup limpia las StockFaces
         // para que no queden sobre-materiales huérfanos en un frame que ya no
         // existe (se regeneran en el próximo confirmMontaje).
@@ -961,6 +969,7 @@ export const useCamStore = create<CamState>((set, get) => ({
       contextoFabricacion: CONTEXTO_INICIAL,
       ...LLEGADA_SIN_RESPONDER,
       montajeConfig: MONTAJE_INICIAL,
+      wcsDeclarado: false,
       ...ORIENTACION_INICIAL,
       setup: null,
       ordenSetups: "superior_primero",

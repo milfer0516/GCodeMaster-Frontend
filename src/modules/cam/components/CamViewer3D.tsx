@@ -12,6 +12,7 @@ import type { SujecionConfig, StockConfig } from "../store/camStore";
 import type { StockFaceRole, StockPickRegion } from "../utils/stockFaces";
 import { cylTotals } from "../utils/stockFaces";
 import { INSTRUCCION_ELEGIR_DATUM, type PuntoDatum } from "../domain/datum";
+import { liberarObjeto3D } from "../../../lib/viewer3d/dispose";
 
 // ── Props — mismas que el visor anterior para no romper StepOperaciones ──
 // DESPUÉS
@@ -21,6 +22,8 @@ interface Props {
   operacionesBackend?: any[];
   seleccionadas?: string[];
   faceIdDestacada?: number | null;
+  // Resumen encuadra solo la pieza y dibuja a demanda durante todo el montaje.
+  modoResumen?: boolean;
 
   // ── Operación ENFOCADA (paso Operaciones) ──
   // Es la que el operador está mirando en la lista/panel MDE, y NO es lo mismo
@@ -198,6 +201,7 @@ const ARRIBA_VISTA_OPERARIO = new THREE.Vector3()
 // panel ancho el limitante es el canto delantero de la mesa, que ocupa así
 // ~70 % del ancho.
 const OCUPACION_VISTA_OPERARIO = 0.7;
+const OCUPACION_VISTA_RESUMEN = 0.88;
 
 /**
  * Distancia cámara–target de la vista del operario para un panel de aspecto
@@ -208,14 +212,15 @@ const OCUPACION_VISTA_OPERARIO = 0.7;
  * exigente de todos los puntos.
  */
 function distanciaVistaOperario(
-  puntos: THREE.Vector3[],
+  puntos: Iterable<THREE.Vector3>,
   target: THREE.Vector3,
   fovGrados: number,
   aspect: number,
+  ocupacion = OCUPACION_VISTA_OPERARIO,
 ): number {
   const tanV = Math.tan(THREE.MathUtils.degToRad(fovGrados) / 2);
-  const ty = tanV * OCUPACION_VISTA_OPERARIO;
-  const tx = tanV * aspect * OCUPACION_VISTA_OPERARIO;
+  const ty = tanV * ocupacion;
+  const tx = tanV * aspect * ocupacion;
   const rel = new THREE.Vector3();
   let distancia = 0;
   for (const p of puntos) {
@@ -308,7 +313,22 @@ type VistaOperario =
       radio: number;
       targetPieza: THREE.Vector3;
     }
-  | { conMesa: false; diagonal: number; targetPieza: THREE.Vector3 };
+  | {
+      conMesa: false;
+      diagonal: number;
+      targetPieza: THREE.Vector3;
+      malla?: THREE.Mesh;
+    };
+
+// La perspectiva se ajusta a los vértices dibujados. Las esquinas de una
+// caja envolvente podrían alejar la cámara de una pieza oblicua o redonda.
+function* verticesEnEscena(mesh: THREE.Mesh): Iterable<THREE.Vector3> {
+  const posiciones = mesh.geometry.getAttribute("position");
+  const punto = new THREE.Vector3();
+  for (let i = 0; i < posiciones.count; i++) {
+    yield punto.fromBufferAttribute(posiciones, i).applyMatrix4(mesh.matrixWorld);
+  }
+}
 
 /** Cámara y límites de la vista del operario. */
 interface EncuadreOperario {
@@ -329,8 +349,8 @@ interface EncuadreOperario {
  *     acordes a ella (si no, update() clamparía contra el maxDistance del panel
  *     anterior). minDistance no supera la distancia, para que update() no aleje
  *     la pieza encuadrada en paneles estrechos.
- *   · Sin mesa: distancia la de siempre (|(1, 0.8, 1)|·diagonal), que no
- *     depende del aspecto.
+ *   · Resumen: ajusta la proyección de la malla al ancho y alto del panel.
+ *   · Operaciones: conserva la distancia |(1, 0.8, 1)|·diagonal.
  */
 function encuadreVistaOperario(
   vista: VistaOperario,
@@ -340,6 +360,25 @@ function encuadreVistaOperario(
   const target = vista.targetPieza.clone();
   if (!vista.conMesa) {
     const d = vista.diagonal;
+    if (vista.malla) {
+      const near = d * 0.001;
+      const distancia = distanciaVistaOperario(
+        verticesEnEscena(vista.malla),
+        target,
+        fovGrados,
+        aspect,
+        OCUPACION_VISTA_RESUMEN,
+      ) + 2 * near;
+      const maxDistance = Math.max(d * 6, distancia * 4);
+      return {
+        posicion: target.clone().addScaledVector(DIR_VISTA_OPERARIO, distancia),
+        target,
+        near,
+        far: maxDistance + d * 4,
+        minDistance: Math.min(d * 0.1, distancia),
+        maxDistance,
+      };
+    }
     return {
       posicion: target
         .clone()
@@ -497,9 +536,18 @@ function buildMaterials(
   operaciones: Operacion[],
   seleccionadas: string[],
   opEnfocada: string | null,
+  faceIdDestacada: number | null,
+  indiceHover: number | null,
 ): THREE.MeshStandardMaterial[] {
-  return faces.map((face) => {
-    const aspecto = aspectoDeCara(face, operaciones, seleccionadas, opEnfocada);
+  return faces.map((face, materialIndex) => {
+    const aspecto = aspectoDeCara(
+      face,
+      operaciones,
+      seleccionadas,
+      opEnfocada,
+      materialIndex === indiceHover,
+      face.face_id === faceIdDestacada,
+    );
 
     return new THREE.MeshStandardMaterial({
       color: aspecto.color,
@@ -627,14 +675,37 @@ function TarjetaModoDatum({
 
 // ── Componente principal ───────────────────────────────────────────────────
 // DESPUÉS — misma ubicación
+const SIN_OPERACIONES: Operacion[] = [];
+const SIN_OPERACIONES_SELECCIONADAS: string[] = [];
+const SIN_ACCION = () => {};
+
+const PERFIL_INTERACTIVO = {
+  teselarSiFaltaMalla: true,
+  sombras: true,
+  renderContinuo: true,
+  sentidoCentroZ: -1,
+  animarTransiciones: true,
+  encuadrarMalla: false,
+};
+
+const PERFIL_RESUMEN = {
+  teselarSiFaltaMalla: false,
+  sombras: false,
+  renderContinuo: false,
+  sentidoCentroZ: 1,
+  animarTransiciones: false,
+  encuadrarMalla: true,
+};
+
 export function CamViewer3D({
   dimensiones,
-  operaciones = [],
+  operaciones = SIN_OPERACIONES,
   operacionesBackend = [],
-  seleccionadas = [],
+  seleccionadas = SIN_OPERACIONES_SELECCIONADAS,
   faceIdDestacada = null,
+  modoResumen = false,
   opEnfocada = null,
-  onToggle = () => {},
+  onToggle = SIN_ACCION,
   onFaceClick,
   sujecionConfig = null,
   piezaBoundingBox,
@@ -651,6 +722,15 @@ export function CamViewer3D({
   onDatumPick,
   onSalirModoDatum,
 }: Props) {
+  const {
+    teselarSiFaltaMalla,
+    sombras,
+    renderContinuo,
+    sentidoCentroZ,
+    animarTransiciones,
+    encuadrarMalla,
+  } = modoResumen ? PERFIL_RESUMEN : PERFIL_INTERACTIVO;
+
   const mountRef = useRef<HTMLDivElement>(null);
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
   const sceneRef = useRef<THREE.Scene | null>(null);
@@ -659,6 +739,7 @@ export function CamViewer3D({
   const hoveredRef = useRef<number | null>(null); // materialIndex en hover
   const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
   const controlsRef = useRef<OrbitControls | null>(null);
+  const solicitarRenderRef = useRef<(() => void) | null>(null);
   const stockMeshRef = useRef<THREE.Group | null>(null);
   // Malla de la caja de stock (para picking) y sus 6 materiales (uno por cara
   // de la BoxGeometry, materialIndex 0..5) para resaltar caras individuales.
@@ -671,6 +752,7 @@ export function CamViewer3D({
   // tamaño del panel que haya (redimensionado, botón). El fin del efecto 4b la
   // actualiza con la pieza tal como queda dibujada. null = aún sin encuadre.
   const vistaOperarioRef = useRef<VistaOperario | null>(null);
+  const encuadreRef = useRef<{ mesh: MeshData; clave: string } | null>(null);
   // El operario orbitó/paneó/hizo zoom desde el último encuadre: un cambio de
   // tamaño del panel ya no re-encuadra (no se pisa lo que movió a mano).
   const camaraMovidaRef = useRef(false);
@@ -680,6 +762,7 @@ export function CamViewer3D({
 
   // Cara seleccionada con click simple para mostrar su dimensión en el panel
   const [faceInfo, setFaceInfo] = useState<FaceMetadata | null>(null);
+  const [errorEncuadre, setErrorEncuadre] = useState(false);
   // Índice de cara de stock bajo el cursor (para resaltar + label de valor).
   const [stockHover, setStockHover] = useState<number | null>(null);
   // Marcadores de datum: grupo HIJO de la malla de la pieza (hereda su giro,
@@ -715,7 +798,7 @@ export function CamViewer3D({
 
   // ── 1. Cargar mesh OCC la primera vez que se monta ──────────────────────
   useEffect(() => {
-    if (!archivo || !idJob || meshDataTeselado || meshLoading) return;
+    if (!teselarSiFaltaMalla || !archivo || !idJob || meshDataTeselado || meshLoading) return;
 
     const cargar = async () => {
       setMeshLoading(true);
@@ -730,7 +813,7 @@ export function CamViewer3D({
     };
 
     cargar();
-  }, [archivo, idJob]);
+  }, [archivo, idJob, teselarSiFaltaMalla]);
 
   // ── 2. Inicializar Three.js una sola vez ────────────────────────────────
   useEffect(() => {
@@ -743,7 +826,7 @@ export function CamViewer3D({
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
     renderer.setSize(W, H);
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.enabled = sombras;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -780,15 +863,20 @@ export function CamViewer3D({
     // no mueve la cámara y no cuenta; los cambios por código (encuadre,
     // animación 4b) ocurren fuera de start…end.
     let interactuando = false;
-    controls.addEventListener("start", () => {
+    const alIniciarInteraccion = () => {
       interactuando = true;
-    });
-    controls.addEventListener("change", () => {
+      solicitarRenderRef.current?.();
+    };
+    const alMoverCamara = () => {
       if (interactuando) camaraMovidaRef.current = true;
-    });
-    controls.addEventListener("end", () => {
+      solicitarRenderRef.current?.();
+    };
+    const alTerminarInteraccion = () => {
       interactuando = false;
-    });
+    };
+    controls.addEventListener("start", alIniciarInteraccion);
+    controls.addEventListener("change", alMoverCamara);
+    controls.addEventListener("end", alTerminarInteraccion);
 
     // Luces
     scene.add(new THREE.AmbientLight(0xffffff, 0.6));
@@ -822,36 +910,49 @@ export function CamViewer3D({
     // Ejes
     scene.add(new THREE.AxesHelper(maxDim * 0.4));
 
-    // Loop de animación
-    let animId: number;
-    const animate = () => {
-      animId = requestAnimationFrame(animate);
+    let animId: number | null = null;
+    const dibujar = () => {
+      animId = null;
+      if (renderContinuo) solicitarRender();
       controls.update();
       renderer.render(scene, camera);
     };
-    animate();
+    const solicitarRender = () => {
+      if (animId === null) animId = requestAnimationFrame(dibujar);
+    };
+    if (renderContinuo) {
+      dibujar();
+    } else {
+      solicitarRenderRef.current = solicitarRender;
+      solicitarRender();
+    }
 
     // Resize — sincroniza renderer + cámara con el tamaño ACTUAL del contenedor.
+    let ancho = W;
+    let alto = H;
     const onResize = () => {
       const W2 = el.clientWidth;
       const H2 = el.clientHeight;
       if (W2 === 0 || H2 === 0) return; // ignora tamaños transitorios (evita aspect NaN)
+      if (!renderContinuo && W2 === ancho && H2 === alto) return;
+      ancho = W2;
+      alto = H2;
       camera.aspect = W2 / H2;
       camera.updateProjectionMatrix();
       renderer.setSize(W2, H2);
-      // Re-encuadre para el tamaño nuevo (solo con mesa: sin mesa el encuadre
-      // no depende del aspecto), salvo que el operario haya movido la cámara
-      // desde el último encuadre o que la vuelta animada del botón esté en
-      // curso (ya apunta al encuadre del tamaño actual en cada frame).
+      // Resumen y los pasos con mesa se reencuadran salvo tras un movimiento
+      // manual o durante la vuelta animada del botón.
       // aplicarVistaOperario solo lee refs, así que llamarla desde este closure
       // inicial es seguro.
+      const vista = vistaOperarioRef.current;
       if (
         !camaraMovidaRef.current &&
         !animacionVistaRef.current &&
-        vistaOperarioRef.current?.conMesa
+        vista && (vista.conMesa || vista.malla)
       ) {
         aplicarVistaOperario(W2 / H2);
       }
+      solicitarRenderRef.current?.();
     };
     window.addEventListener("resize", onResize);
 
@@ -864,14 +965,38 @@ export function CamViewer3D({
     resizeObserver.observe(el);
 
     return () => {
-      cancelAnimationFrame(animId);
+      solicitarRenderRef.current = null;
+      if (animId !== null) cancelAnimationFrame(animId);
       window.removeEventListener("resize", onResize);
       resizeObserver.disconnect();
       animacionVistaRef.current?.();
+      controls.removeEventListener("start", alIniciarInteraccion);
+      controls.removeEventListener("change", alMoverCamara);
+      controls.removeEventListener("end", alTerminarInteraccion);
       controls.dispose();
+      // El efecto de datum libera su propio grupo.
+      datumGroupRef.current?.removeFromParent();
+      liberarObjeto3D(scene);
       if (scene.background instanceof THREE.Texture) scene.background.dispose();
+      dirLight.dispose();
+      scene.clear();
       renderer.dispose();
+      renderer.forceContextLoss();
       if (el.contains(renderer.domElement)) el.removeChild(renderer.domElement);
+      rendererRef.current = null;
+      sceneRef.current = null;
+      cameraRef.current = null;
+      controlsRef.current = null;
+      meshRef.current = null;
+      materialsRef.current = [];
+      hoveredRef.current = null;
+      stockMeshRef.current = null;
+      stockPickMeshRef.current = null;
+      stockMaterialsRef.current = [];
+      tableGroupRef.current = null;
+      vistaOperarioRef.current = null;
+      encuadreRef.current = null;
+      camaraMovidaRef.current = false;
     };
   }, []);
 
@@ -896,6 +1021,8 @@ export function CamViewer3D({
       operaciones,
       seleccionadas,
       opEnfocada,
+      faceIdDestacada,
+      hoveredRef.current,
     );
     materialsRef.current = materials;
 
@@ -926,18 +1053,20 @@ export function CamViewer3D({
     mesh.position.set(
       -center[0] * s, // centrar en X (pivote 0 ⇒ pos = s·pos)
       -bbMin[2] * s,  // base en Y=0: Z_min de OCC → punto más bajo del mesh
-      -center[1] * s, // centrar en Z (Y de OCC — negado por la rotación)
+      sentidoCentroZ * center[1] * s, // centrar el eje Z del visor
     );
 
     scene.add(mesh);
     meshRef.current = mesh;
+    solicitarRenderRef.current?.();
 
     // La cámara NO se toca aquí: la encuadra solo el efecto 7a-fit, con la
     // misma escala de lectura `s`.
     // maquina/mostrarMesa: la escala de lectura depende de mesa_x/y y de si se
     // muestra la mesa; reconstruir desde meshData (ya cacheado, sin re-teselar)
-    // al llegar la máquina.
-  }, [meshData, maquina, mostrarMesa]);
+    // al llegar la máquina. Los materiales ya incorporan la selección, el
+    // apoyo y el hover vigentes; el efecto 4 actualiza sus cambios posteriores.
+  }, [meshData, maquina, mostrarMesa, sentidoCentroZ]);
 
   // ── 4. Actualizar colores cuando cambia selección ───────────────────────
   useEffect(() => {
@@ -961,6 +1090,7 @@ export function CamViewer3D({
       mat.transparent = aspecto.transparent;
       mat.opacity = aspecto.opacity;
     });
+    solicitarRenderRef.current?.();
   }, [seleccionadas, operaciones, meshData, faceIdDestacada, opEnfocada]);
 
   // ── 4b. Rotar mesh con animación suave según cara de apoyo ─────────────
@@ -1081,6 +1211,12 @@ export function CamViewer3D({
     posYTarget = (1 - s) * pivotY + s * posYTarget;
     centerYMundo = (1 - s) * pivotY + s * centerYMundo;
 
+    if (!animarTransiciones) {
+      meshRef.current.quaternion.copy(qTarget);
+      meshRef.current.position.set(posXTarget, posYTarget, posZTarget);
+      return;
+    }
+
     // Posiciones iniciales
     const posYStart = meshRef.current.position.y;
     const posXStart = meshRef.current.position.x;
@@ -1141,7 +1277,7 @@ export function CamViewer3D({
     animId = requestAnimationFrame(animar);
 
     return () => cancelAnimationFrame(animId);
-  }, [faceIdDestacada, meshData, sujecionConfig, analisis, setup, maquina, mostrarMesa, orientacionSellada]);
+  }, [faceIdDestacada, meshData, sujecionConfig, analisis, setup, maquina, mostrarMesa, orientacionSellada, animarTransiciones]);
 
   // ── 5. Picking por cara — hover y click ────────────────────────────────
   useEffect(() => {
@@ -1190,6 +1326,7 @@ export function CamViewer3D({
       const faceId = getHitFaceId(e);
       const materialIndex =
         faceId === null ? null : (faceIdToMaterialIndex.get(faceId) ?? null);
+      if (materialIndex === hoveredRef.current) return;
 
       // Restaurar cara anterior si cambió
       if (hoveredRef.current !== null && hoveredRef.current !== materialIndex) {
@@ -1243,6 +1380,7 @@ export function CamViewer3D({
           el.style.cursor = "pointer";
         }
       }
+      solicitarRenderRef.current?.();
     };
 
     // Click simple — SOLO muestra la dimensión de la cara, no selecciona.
@@ -1812,15 +1950,34 @@ export function CamViewer3D({
   // lectura con la que se dibuja la pieza (pieceDisplayScale), así que la
   // distancia corresponde al tamaño que se ve en pantalla.
   //   · Con mesa (Montaje y Stock): encuadra mesa + pieza escalada.
-  //   · Sin mesa (Operaciones): encuadra la pieza (s=1).
+  //   · Resumen: ajusta el encuadre a la pieza dibujada y al panel.
+  //   · Operaciones: encuadra la pieza (s=1).
   // Se re-encuadra SOLO cuando cambia la malla mostrada (sellar, editar la cara,
   // pieza nueva: `meshData` es la sellada o la teselada) o cuando la escala
   // misma cambia (llega la máquina con sus medidas de mesa). Cualquier otro
   // cambio —modo datum, sujeción, stock, selección— NO mueve la cámara, para no
   // pisar lo que el operario orbitó a mano.
-  const encuadreRef = useRef<{ mesh: MeshData; clave: string } | null>(null);
   useEffect(() => {
     if (!meshData || !cameraRef.current || !controlsRef.current) return;
+    if (encuadrarMalla && meshRef.current) {
+      const mesh = meshRef.current;
+      const caja = new THREE.Box3().setFromObject(mesh);
+      const diagonal = caja.getSize(new THREE.Vector3()).length();
+      const encuadrable = Number.isFinite(diagonal) && diagonal > 0;
+      setErrorEncuadre(!encuadrable);
+      if (!encuadrable) {
+        vistaOperarioRef.current = null;
+        return;
+      }
+      vistaOperarioRef.current = {
+        conMesa: false,
+        diagonal,
+        targetPieza: caja.getCenter(new THREE.Vector3()),
+        malla: mesh,
+      };
+      aplicarVistaOperario(aspectoPanel());
+      return;
+    }
     const mesaX = mostrarMesa ? (maquina?.mesa_x_mm ?? 0) : 0;
     const mesaY = mostrarMesa ? (maquina?.mesa_y_mm ?? 0) : 0;
     const hayMesa = mesaX > 0 && mesaY > 0;
@@ -1902,7 +2059,7 @@ export function CamViewer3D({
     aplicarVistaOperario(aspect);
     // sujecionConfig/setup solo se LEEN (pivote de apoyo); el guard de arriba
     // impide que su cambio re-encuadre.
-  }, [mostrarMesa, maquina, meshData, sujecionConfig, setup]);
+  }, [mostrarMesa, maquina, meshData, sujecionConfig, setup, encuadrarMalla, faceIdDestacada, analisis, orientacionSellada]);
 
   // ── Aplicar la vista del operario de golpe ──────────────────────────────
   // Encuadre inmediato (7a-fit, redimensionado del panel, fin de la vuelta
@@ -1918,6 +2075,7 @@ export function CamViewer3D({
 
     const e = encuadreVistaOperario(vista, camera.fov, aspect);
     camera.position.copy(e.posicion);
+    if (!vista.conMesa && vista.malla) camera.aspect = aspect;
     camera.near = e.near;
     camera.far = e.far;
     camera.updateProjectionMatrix();
@@ -1928,6 +2086,7 @@ export function CamViewer3D({
     controls.update();
     controls.saveState();
     camaraMovidaRef.current = false;
+    solicitarRenderRef.current?.();
   };
 
   // Aspecto ACTUAL del panel (el de la cámara si el panel aún no tiene tamaño).
@@ -1962,7 +2121,7 @@ export function CamViewer3D({
 
     const reducirMovimiento =
       window.matchMedia?.("(prefers-reduced-motion: reduce)").matches === true;
-    if (reducirMovimiento) {
+    if (!animarTransiciones || reducirMovimiento) {
       aplicarVistaOperario(aspectoPanel());
       return;
     }
@@ -2078,6 +2237,12 @@ export function CamViewer3D({
         className="w-full h-full rounded-xl overflow-hidden"
         style={{ minHeight: "300px", cursor: "grab", background: "#0d1117" }}
       />
+
+      {errorEncuadre && (
+        <p role="alert" className="absolute inset-x-4 top-4 text-sm text-red-300">
+          Vista 3D no disponible: la malla de la pieza no se puede encuadrar.
+        </p>
+      )}
 
       {/* Botón "Vista del operario" — hermano del canvas, no hijo: sus eventos
           nunca llegan a OrbitControls ni a los handlers de picking (todos
